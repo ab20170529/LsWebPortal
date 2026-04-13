@@ -1,0 +1,20 @@
+{
+  "name": "@lserp/erp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "dependencies": {
+    "@lserp/renderer-react": "workspace:*",
+    "@lserp/runtime-actions": "workspace:*",
+    "@lserp/runtime-datasource": "workspace:*",
+    "@lserp/runtime-permission": "workspace:*",
+    "@lserp/runtime-store": "workspace:*",
+    "@lserp/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}

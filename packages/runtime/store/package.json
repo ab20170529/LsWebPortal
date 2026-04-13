@@ -1,0 +1,16 @@
+{
+  "name": "@lserp/runtime-store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "dependencies": {
+    "@lserp/contracts": "workspace:*",
+    "@lserp/runtime-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}

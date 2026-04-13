@@ -1,0 +1,54 @@
+@import "tailwindcss";
+@source "../../../../packages";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Inter", "Plus Jakarta Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+}
+
+:root {
+  --portal-color-brand-500: #2563eb;
+  --portal-color-brand-600: #1d4ed8;
+  --portal-color-brand-700: #1e40af;
+  --portal-color-border-soft: #e2e8f0;
+  --portal-color-border-strong: #cbd5e1;
+  --portal-color-glow-primary: rgba(37, 99, 235, 0.08);
+  --portal-color-glow-secondary: rgba(14, 165, 233, 0.06);
+  --portal-color-surface-canvas: #f8fafc;
+  --portal-color-surface-canvas-alt: #f1f5f9;
+  --portal-color-surface-muted: #f1f5f9;
+  --portal-color-surface-panel: #ffffff;
+  --portal-color-text-primary: #0f172a;
+  --portal-color-text-secondary: #475569;
+  --portal-color-text-soft: #64748b;
+  color: var(--portal-color-text-primary);
+  color-scheme: light;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at 0% 0%, var(--portal-color-glow-primary), transparent 25%),
+    radial-gradient(circle at 100% 0%, var(--portal-color-glow-secondary), transparent 30%),
+    linear-gradient(
+      135deg,
+      var(--portal-color-surface-canvas) 0%,
+      var(--portal-color-surface-canvas-alt) 50%,
+      #ffffff 100%
+    );
+}
+
+body {
+  font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

@@ -1,0 +1,52 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "useDefineForClassFields": true,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@lserp/auth": ["packages/platform/auth/src/index.tsx"],
+      "@lserp/contracts": ["packages/schema/contracts/src/index.ts"],
+      "@lserp/designer": ["packages/studio/designer/src/index.tsx"],
+      "@lserp/erp": ["packages/products/erp/src/index.tsx"],
+      "@lserp/http": ["packages/platform/http/src/index.ts"],
+      "@lserp/project": ["packages/products/project/src/index.tsx"],
+      "@lserp/renderer-react": ["packages/renderer/react/src/index.tsx"],
+      "@lserp/runtime-actions": ["packages/runtime/actions/src/index.ts"],
+      "@lserp/runtime-core": ["packages/runtime/core/src/index.ts"],
+      "@lserp/runtime-datasource": ["packages/runtime/datasource/src/index.ts"],
+      "@lserp/runtime-expression": ["packages/runtime/expression/src/index.ts"],
+      "@lserp/runtime-permission": ["packages/runtime/permission/src/index.ts"],
+      "@lserp/runtime-store": ["packages/runtime/store/src/index.tsx"],
+      "@lserp/runtime-validation": ["packages/runtime/validation/src/index.ts"],
+      "@lserp/tokens": ["packages/platform/tokens/src/index.tsx"],
+      "@lserp/ui": ["packages/platform/ui/src/index.tsx"]
+    },
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "apps/**/*.d.ts",
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "packages/**/*.d.ts"
+  ],
+  "exclude": ["**/*.test.ts", "**/dist/**", "**/node_modules/**"]
+}

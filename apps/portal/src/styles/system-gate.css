@@ -1,0 +1,67 @@
+@layer components {
+  .portal-system-gate {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .portal-system-gate__hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 36px;
+    padding: 2rem;
+  }
+
+  .portal-system-gate__grid {
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .portal-system-gate__systems {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .portal-system-card {
+    border: 1px solid color-mix(in srgb, var(--portal-color-border-soft) 74%, white);
+    border-radius: 26px;
+    background: color-mix(in srgb, var(--portal-color-surface-panel) 80%, white);
+    padding: 1.25rem;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+
+  .portal-system-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 24px 44px -34px rgba(15, 23, 42, 0.28);
+  }
+
+  .portal-system-gate__side-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+@media (min-width: 768px) {
+  @layer components {
+    .portal-system-gate__systems {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+@media (min-width: 1024px) {
+  @layer components {
+    .portal-system-gate__hero {
+      padding: 2.5rem;
+    }
+  }
+}
+
+@media (min-width: 1280px) {
+  @layer components {
+    .portal-system-gate__grid {
+      grid-template-columns: 1.15fr 0.85fr;
+    }
+  }
+}

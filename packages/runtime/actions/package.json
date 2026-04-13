@@ -1,0 +1,13 @@
+{
+  "name": "@lserp/runtime-actions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@lserp/contracts": "workspace:*",
+    "@lserp/runtime-store": "workspace:*"
+  }
+}
