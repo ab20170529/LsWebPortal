@@ -7,10 +7,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type AttachmentItem = {
+  downloadUrl?: string | null;
   fileCategory?: string | null;
+  fileExt?: string | null;
   fileName: string;
+  filePath?: string | null;
   fileSize?: number | null;
   id: number;
+  projectId: number;
+  projectNodeId?: number | null;
+  projectTaskId?: number | null;
+  remark?: string | null;
+  uploadTime?: string | null;
+  uploaderId?: string | null;
   uploaderName?: string | null;
 };
 
@@ -261,5 +270,5 @@ export const DAY_COLUMN_WIDTH = 52;
 export const DAY_IN_MS = 24 * 60 * 60 * 1000;
 export const CATEGORY_ROW_HEIGHT = 40;
 export const SUB_CATEGORY_ROW_HEIGHT = 32;
-export const TASK_ROW_HEIGHT = 40;
+export const TASK_ROW_HEIGHT = 52;
 export const SIDEBAR_SEARCH_BAND_HEIGHT = 56;

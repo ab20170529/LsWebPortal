@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { hasSystemAccess, usePortalAuth } from '@lserp/auth';
-import { getPlatformSystemEntry } from '@lserp/contracts';
+import { BiHomePage } from '@lserp/bi';
+import { getPlatformSystemEntry as getPlatformSystemEntryById } from '@lserp/contracts';
 import { DesignerHomePage } from '@lserp/designer';
 import { ErpHomePage } from '@lserp/erp';
 import { ProjectHomePage } from '@lserp/project';
@@ -15,14 +16,17 @@ import {
 import { PortalLoginPage } from './features/auth/portal-login-page';
 import { clearAuthSession } from './features/auth/services/storage-service';
 import { AccessDeniedPage, SystemAccessPage } from './pages/system-access-page';
+import { PortalSystemManagerPage } from './pages/portal-system-manager-page';
 
 type RouteKey =
+  | 'bi'
   | 'designer'
   | 'erp'
   | 'login'
   | 'not-found'
   | 'project'
   | 'settings'
+  | 'system-manager'
   | 'systems';
 
 function normalizePathname(pathname: string) {
@@ -41,7 +45,13 @@ export function navigate(to: string) {
 }
 
 function resolveRoute(pathname: string): RouteKey {
-  switch (normalizePathname(pathname)) {
+  const normalizedPath = normalizePathname(pathname);
+
+  if (normalizedPath === '/bi' || normalizedPath.startsWith('/bi/')) {
+    return 'bi';
+  }
+
+  switch (normalizedPath) {
     case '/':
       return 'login';
     case '/systems':
@@ -54,9 +64,19 @@ function resolveRoute(pathname: string): RouteKey {
       return 'project';
     case '/settings':
       return 'settings';
+    case '/system-manager':
+      return 'system-manager';
     default:
       return 'not-found';
   }
+}
+
+function isPlatformSystemRoute(route: RouteKey): route is 'bi' | 'designer' | 'erp' | 'project' {
+  return route === 'bi' || route === 'designer' || route === 'erp' || route === 'project';
+}
+
+function getPlatformSystemEntry(route: RouteKey) {
+  return isPlatformSystemRoute(route) ? getPlatformSystemEntryById(route) : undefined;
 }
 
 function usePathname() {
@@ -250,6 +270,7 @@ export function PortalRouter() {
   const { isAuthenticated, session, signOut } = usePortalAuth();
   const pathname = usePathname();
   const route = resolveRoute(pathname);
+  const isPublicBiShareRoute = pathname === '/bi/share' || pathname.startsWith('/bi/share/');
 
   useEffect(() => {
     if (isAuthenticated && session && route === 'login') {
@@ -259,6 +280,10 @@ export function PortalRouter() {
 
   if (route === 'login') {
     return <PortalLoginPage />;
+  }
+
+  if (route === 'bi' && isPublicBiShareRoute) {
+    return <BiHomePage />;
   }
 
   if (!isAuthenticated || !session) {
@@ -280,6 +305,20 @@ export function PortalRouter() {
     return <SystemAccessPage session={session} />;
   }
 
+  if (route === 'system-manager') {
+    // 检查是否有管理权限（管理员或张又文）
+    const isAdmin = session.admin === true;
+    const isZhangYouwen = (session.employeeName ?? session.displayName ?? '').trim() === '张又文';
+    if (!isAdmin && !isZhangYouwen) {
+      return (
+        <AppShell pathname={pathname}>
+          <AccessDeniedPage session={session} targetLabel="系统管理" />
+        </AppShell>
+      );
+    }
+    return <PortalSystemManagerPage />;
+  }
+
   if (route === 'project') {
     if (!hasSystemAccess(session, 'project')) {
       return (
@@ -298,6 +337,18 @@ export function PortalRouter() {
         }}
       />
     );
+  }
+
+  if (route === 'bi') {
+    if (!hasSystemAccess(session, 'bi')) {
+      return (
+        <AppShell pathname={pathname}>
+          <AccessDeniedPage session={session} targetLabel="BI 分析平台" />
+        </AppShell>
+      );
+    }
+
+    return <BiHomePage />;
   }
 
   let content = <NotFoundPage />;

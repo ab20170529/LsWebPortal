@@ -509,7 +509,7 @@ function NodeTreeItem({
         onClick={() => onSelect(node.id)}
       >
         {/* Expand/Collapse indicator */}
-        <div className="w-4 h-4 flex items-center justify-center" onClick={(e) => { e.stopPropagation(); hasChildren && onToggleExpand(node.id); }}>
+        <div className="w-4 h-4 flex items-center justify-center" onClick={(e: React.MouseEvent<HTMLDivElement>) => { e.stopPropagation(); hasChildren && onToggleExpand(node.id); }}>
           {hasChildren ? (
             <svg 
               className={cx('w-3 h-3 text-slate-400 transition-transform', isExpanded && 'rotate-90')} 
@@ -539,7 +539,7 @@ function NodeTreeItem({
               <button 
                 title="添加子节点"
                 className="p-1 hover:text-green-600"
-                onClick={(e) => { e.stopPropagation(); onEdit(node); }}
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); onEdit(node); }}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16">
                   <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -548,7 +548,7 @@ function NodeTreeItem({
               <button 
                 title="编辑"
                 className="p-1 hover:text-blue-600"
-                onClick={(e) => { e.stopPropagation(); onEdit(node); }}
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); onEdit(node); }}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16">
                   <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -557,7 +557,7 @@ function NodeTreeItem({
               <button 
                 title="删除"
                 className="p-1 hover:text-red-600"
-                onClick={(e) => { e.stopPropagation(); onDelete(node); }}
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); onDelete(node); }}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16">
                   <path d="M2 4h12M5.5 4V3a1 1 0 011-1h3a1 1 0 011 1v1M6 7v5M10 7v5M3.5 4l.5 9a1 1 0 001 1h6a1 1 0 001-1l.5-9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1530,7 +1530,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   </span>
                   <button 
                     className={cx('p-1 rounded hover:bg-white/20', selectedTypeId === item.id ? 'text-white' : 'text-slate-400')}
-                    onClick={(e) => { e.stopPropagation(); void handleCopyType(item); }}
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); void handleCopyType(item); }}
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12">
                       <rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.2"/>
@@ -1730,10 +1730,10 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex gap-1.5">
-                          <TaskRuleBadge active={task.needCheck} label="验收" icon={<CheckCircleIcon />} />
-                          <TaskRuleBadge active={task.needAudit} label="审核" icon={<InfoIcon />} />
-                          <TaskRuleBadge active={task.needFile} label="附件" icon={<FileTextIcon />} />
-                          <TaskRuleBadge active={task.needSettle} label="结算" icon={<CreditCardIcon />} />
+                          <TaskRuleBadge active={Boolean(task.needCheck)} label="验收" icon={<CheckCircleIcon />} />
+                          <TaskRuleBadge active={Boolean(task.needAudit)} label="审核" icon={<InfoIcon />} />
+                          <TaskRuleBadge active={Boolean(task.needFile)} label="附件" icon={<FileTextIcon />} />
+                          <TaskRuleBadge active={Boolean(task.needSettle)} label="结算" icon={<CreditCardIcon />} />
                         </div>
                       </td>
                       <td className="px-4 py-4 text-right">

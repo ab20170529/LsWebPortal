@@ -1,8 +1,8 @@
 export type PlatformTone = 'brand' | 'success' | 'neutral';
 
-export type PlatformSystemId = 'app' | 'designer' | 'erp' | 'mes' | 'project';
+export type PlatformSystemId = 'app' | 'bi' | 'designer' | 'erp' | 'mes' | 'project';
 
-export type PlatformId = 'systems' | 'designer' | 'erp' | 'project' | 'settings';
+export type PlatformId = 'systems' | 'bi' | 'designer' | 'erp' | 'project' | 'settings';
 
 export type PortalNavKind = 'shell' | 'system';
 
@@ -161,6 +161,14 @@ export type PlatformPageSchema = {
 
 export const platformSystemEntries: PlatformSystemEntry[] = [
   {
+    description: 'BI workspace, runtime dashboards, and share access.',
+    id: 'bi',
+    route: '/bi',
+    shortLabel: 'BI',
+    title: 'BI 分析平台',
+    tone: 'brand',
+  },
+  {
     description: '负责元数据设计、页面预览和平台契约治理。',
     id: 'designer',
     route: '/designer',
@@ -200,6 +208,17 @@ export const portalNavItems: PortalNavItem[] = [
     title: '系统选择',
     to: '/systems',
     tone: 'neutral',
+  },
+  {
+    description: 'BI workspace, runtime dashboards, and share access.',
+    id: 'bi',
+    kind: 'system',
+    requiresAuth: true,
+    shortLabel: 'BI',
+    systemId: 'bi',
+    title: 'BI 分析平台',
+    to: '/bi',
+    tone: 'brand',
   },
   {
     description: '负责元数据设计、页面预览和平台契约治理。',

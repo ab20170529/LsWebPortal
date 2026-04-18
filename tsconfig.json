@@ -21,6 +21,7 @@
     "baseUrl": ".",
     "paths": {
       "@lserp/auth": ["packages/platform/auth/src/index.tsx"],
+      "@lserp/bi": ["packages/products/bi/src/index.tsx"],
       "@lserp/contracts": ["packages/schema/contracts/src/index.ts"],
       "@lserp/designer": ["packages/studio/designer/src/index.tsx"],
       "@lserp/erp": ["packages/products/erp/src/index.tsx"],

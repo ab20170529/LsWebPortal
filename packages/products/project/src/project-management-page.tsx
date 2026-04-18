@@ -95,6 +95,8 @@ export type ProjectManagementProjectDetail = {
 };
 
 export type ProjectManagementPageProps = {
+  canCreateProject: boolean;
+  canManageProject: (project: ProjectManagementProjectItem) => boolean;
   detailLoading: boolean;
   keyword: string;
   listError: string | null;
@@ -315,6 +317,8 @@ function Drawer({
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export function ProjectManagementPage({
+  canCreateProject,
+  canManageProject,
   detailLoading,
   keyword,
   listError,
@@ -389,6 +393,10 @@ export function ProjectManagementPage({
   }
 
   function openCreate() {
+    if (!canCreateProject) {
+      setFeedback({ message: '当前账号没有新建项目权限。', tone: 'danger' });
+      return;
+    }
     setDrawerMode('create');
     setEditingProjectId(null);
     setFeedback(null);
@@ -396,6 +404,10 @@ export function ProjectManagementPage({
   }
 
   function openEdit(project: ProjectManagementProjectItem) {
+    if (!canManageProject(project)) {
+      setFeedback({ message: '当前账号没有维护该项目的权限。', tone: 'danger' });
+      return;
+    }
     setDrawerMode('edit');
     setEditingProjectId(project.id);
     setFeedback(null);
@@ -411,6 +423,19 @@ export function ProjectManagementPage({
   }
 
   async function submit() {
+    if (drawerMode === 'create' && !canCreateProject) {
+      setFeedback({ message: '当前账号没有新建项目权限。', tone: 'danger' });
+      return;
+    }
+
+    if (drawerMode === 'edit' && editingProjectId !== null) {
+      const editingProject = projects.find((project) => project.id === editingProjectId);
+      if (!editingProject || !canManageProject(editingProject)) {
+        setFeedback({ message: '当前账号没有维护该项目的权限。', tone: 'danger' });
+        return;
+      }
+    }
+
     if (!draft.projectName.trim() || !draft.projectCode.trim())
       return setFeedback({ message: '请填写项目名称和项目编码。', tone: 'danger' });
     if (!draft.projectTypeId)
@@ -446,6 +471,10 @@ export function ProjectManagementPage({
 
   async function remove(projectId: number) {
     const target = projects.find((project) => project.id === projectId);
+    if (!target || !canManageProject(target)) {
+      setFeedback({ message: '当前账号没有删除该项目的权限。', tone: 'danger' });
+      return;
+    }
     if (!window.confirm(`确认删除项目"${target?.projectName ?? projectId}"吗？`)) return;
     setSubmitting(true);
     setFeedback(null);
@@ -462,6 +491,22 @@ export function ProjectManagementPage({
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────────
+  const currentEditingProject =
+    drawerMode === 'edit' && editingProjectId !== null
+      ? projects.find((project) => project.id === editingProjectId) ?? {
+          id: editingProjectId,
+          managerId: draft.managerId || null,
+          projectCode: draft.projectCode,
+          projectName: draft.projectName,
+        }
+      : null;
+
+  const canSubmitCurrentDrawer =
+    drawerMode === 'create'
+      ? canCreateProject
+      : currentEditingProject
+        ? canManageProject(currentEditingProject)
+        : false;
 
   return (
     <div className="flex flex-col gap-6 h-full">
@@ -486,6 +531,7 @@ export function ProjectManagementPage({
           </button>
           <button
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg text-white hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm shadow-blue-200"
+            disabled={!canCreateProject}
             onClick={openCreate}
             type="button"
           >
@@ -589,6 +635,7 @@ export function ProjectManagementPage({
                   projects.map((project) => {
                     const isSelected = project.id === selectedProjectId;
                     const tone = getProjectStatusTone(project.status);
+                    const canManageCurrentProject = canManageProject(project);
                     return (
                       <tr
                         key={project.id}
@@ -633,9 +680,11 @@ export function ProjectManagementPage({
 
                         {/* Status */}
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <Badge tone={tone} className="font-semibold">
-                            {getProjectStatusLabel(project.status)}
-                          </Badge>
+                          <span className="font-semibold">
+                            <Badge tone={tone}>
+                              {getProjectStatusLabel(project.status)}
+                            </Badge>
+                          </span>
                         </td>
 
                         {/* Period */}
@@ -655,8 +704,9 @@ export function ProjectManagementPage({
                           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               title="编辑"
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                              onClick={(e) => { e.stopPropagation(); openEdit(project); }}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                              disabled={!canManageCurrentProject}
+                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); openEdit(project); }}
                               type="button"
                             >
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 16 16">
@@ -665,9 +715,9 @@ export function ProjectManagementPage({
                             </button>
                             <button
                               title="初始化节点"
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                              disabled={submitting}
-                              onClick={(e) => { e.stopPropagation(); void onInitByType(project.id).catch((error) => setFeedback({ message: errorMessage(error), tone: 'danger' })); }}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                              disabled={submitting || !canManageCurrentProject}
+                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); void onInitByType(project.id).catch((error) => setFeedback({ message: errorMessage(error), tone: 'danger' })); }}
                               type="button"
                             >
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 16 16">
@@ -676,9 +726,9 @@ export function ProjectManagementPage({
                             </button>
                             <button
                               title="删除"
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                              disabled={submitting}
-                              onClick={(e) => { e.stopPropagation(); void remove(project.id); }}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                              disabled={submitting || !canManageCurrentProject}
+                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); void remove(project.id); }}
                               type="button"
                             >
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 16 16">
@@ -938,7 +988,7 @@ export function ProjectManagementPage({
               {drawerMode === 'edit' && editingProjectId !== null && (
                 <button
                   className="flex h-10 items-center gap-2 rounded-2xl border border-sky-100 px-4 text-sm font-semibold text-sky-700 transition-all hover:border-sky-300 hover:bg-sky-50"
-                  disabled={submitting}
+                  disabled={submitting || !canSubmitCurrentDrawer}
                   onClick={() => { void onInitByType(editingProjectId).catch((error) => setFeedback({ message: errorMessage(error), tone: 'danger' })); }}
                   type="button"
                 >
@@ -954,7 +1004,7 @@ export function ProjectManagementPage({
               </button>
               <button
                 className="flex h-10 items-center gap-2 rounded-2xl bg-gradient-to-r from-[#2563eb] to-[#1d4ed8] px-5 text-sm font-semibold text-white shadow-[0_4px_14px_-4px_rgba(37,99,235,0.5)] transition-all hover:shadow-[0_6px_18px_-4px_rgba(37,99,235,0.65)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={submitting}
+                disabled={submitting || !canSubmitCurrentDrawer}
                 onClick={() => { void submit(); }}
                 type="button"
               >

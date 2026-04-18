@@ -126,6 +126,13 @@ function getWorkspaceIcon(itemId: string) {
     return StackIcon;
   }
 
+  if (
+    itemId === 'project-user-permission-management' ||
+    itemId === 'project-role-permission-management'
+  ) {
+    return SettingsIcon;
+  }
+
   return GridIcon;
 }
 

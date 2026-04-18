@@ -10,6 +10,9 @@ export default defineConfig({
       '@lserp/auth': fileURLToPath(
         new URL('../../packages/platform/auth/src/index.tsx', import.meta.url),
       ),
+      '@lserp/bi': fileURLToPath(
+        new URL('../../packages/products/bi/src/index.tsx', import.meta.url),
+      ),
       '@lserp/contracts': fileURLToPath(
         new URL('../../packages/schema/contracts/src/index.ts', import.meta.url),
       ),

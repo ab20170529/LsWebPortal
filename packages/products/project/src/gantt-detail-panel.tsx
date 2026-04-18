@@ -1,6 +1,8 @@
-import React, { useRef, useState, type ChangeEvent } from 'react';
+import React, { useState, type ChangeEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 
+import { downloadProjectAttachment } from './project-attachments';
+import { getFileCategoryLabel } from './project-display';
 import type {
   AttachmentItem,
   BudgetItem,
@@ -15,6 +17,7 @@ import { formatDateInput } from './gantt-utils';
 import { SystemUserPicker } from './system-user-picker';
 import { useSystemUserOptions } from './system-user-directory';
 import type { SystemUserOption } from './system-user-directory';
+import { useProjectToast } from './project-toast';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -45,10 +48,13 @@ type AddBudgetPayload = {
 type GanttDetailPanelProps = {
   actionLoading: boolean;
   attachments: AttachmentItem[];
+  currentUserId: string;
+  currentUserName: string;
   budgets: BudgetItem[];
   detailEditState: DetailEditState | null;
   detailPanel: DetailPanelState;
   members: MemberItem[];
+  readOnly?: boolean;
   row: TimelineRow | null;
   selectedProjectBudgetAmount?: number | null;
   taskDependencies: TaskDependency[];
@@ -57,6 +63,18 @@ type GanttDetailPanelProps = {
   onDeleteBudget: (projectId: number, budgetId: number) => void;
   onDeleteMember: (projectId: number, memberId: number) => void;
   onDeleteAttachment: (projectId: number, attachmentId: number) => void;
+  onUploadAttachment: (
+    projectId: number,
+    payload: {
+      file: File;
+      fileCategory?: string | null;
+      projectNodeId?: number | null;
+      projectTaskId?: number | null;
+      remark?: string | null;
+      uploaderId: string;
+      uploaderName: string;
+    },
+  ) => Promise<void>;
   onAddMember: (projectId: number, member: AddMemberPayload) => void;
   onAddBudget: (projectId: number, budget: AddBudgetPayload) => void;
   onSave: () => void;
@@ -90,10 +108,13 @@ const DEP_TYPE_COLOR: Record<string, string> = {
 export function GanttDetailPanel({
   actionLoading,
   attachments,
+  currentUserId,
+  currentUserName,
   budgets,
   detailEditState,
   detailPanel,
   members,
+  readOnly = false,
   row,
   selectedProjectBudgetAmount,
   taskDependencies,
@@ -102,6 +123,7 @@ export function GanttDetailPanel({
   onDeleteBudget,
   onDeleteMember,
   onDeleteAttachment,
+  onUploadAttachment,
   onAddMember,
   onAddBudget,
   onSave,
@@ -227,8 +249,12 @@ export function GanttDetailPanel({
           {detailPanel.activeTab === 'attachments' && (
             <AttachmentsTab
               attachments={attachments}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
               projectId={projectId}
+              row={row}
               onDeleteAttachment={onDeleteAttachment}
+              onUploadAttachment={onUploadAttachment}
             />
           )}
         </div>
@@ -238,7 +264,7 @@ export function GanttDetailPanel({
           <div className="flex items-center gap-3">
             <button
               className="flex h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-100 hover:text-rose-700"
-              disabled={actionLoading}
+              disabled={actionLoading || readOnly}
               onClick={() => onDelete(row)}
               type="button"
             >
@@ -253,7 +279,7 @@ export function GanttDetailPanel({
             </button>
             <button
               className="group relative flex h-11 flex-1 items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-sm font-semibold text-white shadow-lg shadow-violet-200 transition-all hover:shadow-xl hover:shadow-violet-300 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={actionLoading}
+              disabled={actionLoading || readOnly}
               onClick={onSave}
               type="button"
             >
@@ -334,7 +360,7 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
                 ...p,
                 participantMembers: p.participantMembers.filter((item) => item.userId !== uid),
                 responsibleUserId: uid || null,
-                responsibleName: (member?.userName ?? uid) || null,
+                responsibleName: uid ? (member?.userName ?? uid) : '',
               } : p);
             }}
           >
@@ -663,7 +689,7 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
                 <input
                   type="text"
                   value={form.roleName}
-                  onChange={(e) => setForm((f) => ({ ...f, roleName: e.target.value }))}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, roleName: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
                   placeholder="如：开发工程师"
                 />
@@ -672,7 +698,7 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
                 <label className="mb-1 block text-xs font-medium text-slate-500">职责内容</label>
                 <textarea
                   value={form.dutyContent}
-                  onChange={(e) => setForm((f) => ({ ...f, dutyContent: e.target.value }))}
+                  onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setForm((f) => ({ ...f, dutyContent: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
                   placeholder="描述该成员的职责"
                   rows={2}
@@ -683,7 +709,7 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
                 <input
                   type="text"
                   value={form.remark}
-                  onChange={(e) => setForm((f) => ({ ...f, remark: e.target.value }))}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, remark: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
                   placeholder="备注信息"
                 />
@@ -693,7 +719,7 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
                   type="checkbox"
                   id="isManager"
                   checked={form.isManager}
-                  onChange={(e) => setForm((f) => ({ ...f, isManager: e.target.checked }))}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, isManager: e.target.checked }))}
                   className="h-4 w-4 rounded border-slate-300 text-violet-500 focus:ring-violet-300"
                 />
                 <label htmlFor="isManager" className="text-sm text-slate-600">设为项目负责人</label>
@@ -858,7 +884,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                   <input
                     type="text"
                     value={form.feeItem}
-                    onChange={(e) => setForm((f) => ({ ...f, feeItem: e.target.value }))}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, feeItem: e.target.value }))}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                     placeholder="如：设备采购"
                   />
@@ -868,7 +894,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                   <input
                     type="text"
                     value={form.feeType}
-                    onChange={(e) => setForm((f) => ({ ...f, feeType: e.target.value }))}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, feeType: e.target.value }))}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                     placeholder="如：采购"
                   />
@@ -880,7 +906,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                   <input
                     type="number"
                     value={form.planAmount}
-                    onChange={(e) => setForm((f) => ({ ...f, planAmount: e.target.value }))}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, planAmount: e.target.value }))}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                     placeholder="0.00"
                   />
@@ -890,7 +916,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                   <input
                     type="number"
                     value={form.actualAmount}
-                    onChange={(e) => setForm((f) => ({ ...f, actualAmount: e.target.value }))}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, actualAmount: e.target.value }))}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                     placeholder="0.00"
                   />
@@ -902,7 +928,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                   <input
                     type="text"
                     value={form.operatorName}
-                    onChange={(e) => setForm((f) => ({ ...f, operatorName: e.target.value }))}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, operatorName: e.target.value }))}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                     placeholder="操作人姓名"
                   />
@@ -912,7 +938,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                   <input
                     type="number"
                     value={form.overRate}
-                    onChange={(e) => setForm((f) => ({ ...f, overRate: e.target.value }))}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, overRate: e.target.value }))}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                     placeholder="0"
                   />
@@ -922,7 +948,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                 <label className="mb-1 block text-xs font-medium text-slate-500">费用说明</label>
                 <textarea
                   value={form.feeDesc}
-                  onChange={(e) => setForm((f) => ({ ...f, feeDesc: e.target.value }))}
+                  onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setForm((f) => ({ ...f, feeDesc: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                   placeholder="费用详细说明"
                   rows={2}
@@ -933,7 +959,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                 <input
                   type="text"
                   value={form.remark}
-                  onChange={(e) => setForm((f) => ({ ...f, remark: e.target.value }))}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, remark: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
                   placeholder="备注信息"
                 />
@@ -968,73 +994,214 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
 
 type AttachmentsTabProps = {
   attachments: AttachmentItem[];
+  currentUserId: string;
+  currentUserName: string;
   projectId: number;
+  row: TimelineRow;
   onDeleteAttachment: (projectId: number, attachmentId: number) => void;
-  onUploadAttachment?: (projectId: number, file: File, fileCategory: string) => void;
+  onUploadAttachment: (
+    projectId: number,
+    payload: {
+      file: File;
+      fileCategory?: string | null;
+      projectNodeId?: number | null;
+      projectTaskId?: number | null;
+      remark?: string | null;
+      uploaderId: string;
+      uploaderName: string;
+    },
+  ) => Promise<void>;
 };
 
-function AttachmentsTab({ attachments, projectId, onDeleteAttachment, onUploadAttachment }: AttachmentsTabProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+function AttachmentsTab({
+  attachments,
+  currentUserId,
+  currentUserName,
+  projectId,
+  row,
+  onDeleteAttachment,
+  onUploadAttachment,
+}: AttachmentsTabProps) {
+  const { pushToast } = useProjectToast();
+  const [fileInputRef] = useState<{ current: HTMLInputElement | null }>(() => ({ current: null }));
+  const [attachmentRemark, setAttachmentRemark] = useState('');
+  const [fileCategory, setFileCategory] = useState('OTHER');
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && onUploadAttachment) {
-      onUploadAttachment(projectId, file, 'OTHER');
+    if (file && (!currentUserId || !currentUserName)) {
+      pushToast({
+        message: '当前登录人信息不完整，暂时无法上传附件。',
+        tone: 'danger',
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
     }
-    // Reset input
+
+    if (file) {
+      void onUploadAttachment(projectId, {
+        file,
+        fileCategory,
+        projectNodeId: row.entityKind === 'node' ? row.entityId : row.parentNodeId ?? null,
+        projectTaskId: row.entityKind === 'task' ? row.entityId : null,
+        remark: attachmentRemark,
+        uploaderId: currentUserId,
+        uploaderName: currentUserName,
+      })
+        .then(() => {
+          setAttachmentRemark('');
+          setFileCategory('OTHER');
+          pushToast({ message: '附件已上传。', tone: 'success' });
+        })
+        .catch((error: unknown) => {
+          pushToast({
+            message: error instanceof Error ? error.message : '附件上传失败，请稍后重试。',
+            tone: 'danger',
+          });
+        });
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
+  const filteredAttachments = attachments.filter((attachment) => {
+    if (row.entityKind === 'task') {
+      return attachment.projectTaskId === row.entityId;
+    }
+    return attachment.projectNodeId === row.entityId && !attachment.projectTaskId;
+  });
+  const canUpload = Boolean(currentUserId && currentUserName);
+  const scopeLabel = row.entityKind === 'task' ? '当前任务附件' : '当前节点附件';
+  const scopeDescription =
+    row.entityKind === 'task'
+      ? '上传后的附件会绑定到当前任务，适合整理交付件、汇报材料和任务备注。'
+      : '上传后的附件会绑定到当前节点，适合沉淀阶段资料、合同和里程碑文档。';
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-slate-600">资料附件</div>
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={handleFileSelect}
-            accept="*/*"
-          />
-          <button
-            className="flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100"
-            onClick={() => fileInputRef.current?.click()}
-            type="button"
-          >
-            <Plus className="h-3 w-3" /> 上传文件
-          </button>
-        </div>
-      </div>
-      {attachments.length > 0 ? (
-        <div className="space-y-2">
-          {attachments.map((a) => (
-            <div key={a.id} className="group flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-colors hover:bg-slate-50">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-slate-600">{a.fileName}</div>
-                <div className="text-xs text-slate-400">
-                  {a.uploaderName || '未知'}{a.fileSize ? ` · ${(a.fileSize / 1024).toFixed(1)} KB` : ''}
-                </div>
-              </div>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-slate-700">{scopeLabel}</div>
+              <div className="mt-1 text-xs leading-6 text-slate-500">{scopeDescription}</div>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-50 px-1.5 text-blue-600">
+                {filteredAttachments.length}
+              </span>
+              已上传附件
+            </div>
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-[180px_minmax(0,1fr)_150px]">
+            <label className="block">
+              <div className="text-xs font-semibold text-slate-500">附件分类</div>
+              <select
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                onChange={(event: ChangeEvent<HTMLSelectElement>) => setFileCategory(event.target.value)}
+                value={fileCategory}
+              >
+                <option value="MILESTONE">里程碑</option>
+                <option value="DELIVERABLE">交付件</option>
+                <option value="CONTRACT">合同</option>
+                <option value="REPORT">报告</option>
+                <option value="OTHER">其他</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <div className="text-xs font-semibold text-slate-500">备注说明</div>
+              <textarea
+                className="mt-2 min-h-[92px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setAttachmentRemark(event.target.value)}
+                placeholder="补充说明附件用途、版本或交付背景"
+                rows={3}
+                value={attachmentRemark}
+              />
+            </label>
+
+            <div className="flex flex-col gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileSelect}
+                accept="*/*"
+              />
               <button
-                className="invisible flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-500 group-hover:visible"
-                onClick={() => {
-                  if (window.confirm(`确认删除附件"${a.fileName}"吗？`)) {
-                    onDeleteAttachment(projectId, a.id);
-                  }
-                }}
-                title="删除"
+                className="flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                disabled={!canUpload}
+                onClick={() => fileInputRef.current?.click()}
                 type="button"
               >
-                <X className="h-4 w-4" />
+                <Plus className="h-4 w-4" />
+                上传附件
               </button>
+              <div className="rounded-xl bg-white px-3 py-2 text-xs leading-5 text-slate-500">
+                {canUpload ? `上传人：${currentUserName}` : '当前登录人信息不完整，暂时无法上传附件。'}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {filteredAttachments.length > 0 ? (
+        <div className="space-y-2">
+          {filteredAttachments.map((a) => (
+            <div key={a.id} className="group rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-colors hover:bg-slate-50">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="truncate text-sm font-medium text-slate-700">{a.fileName}</div>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                      {getFileCategoryLabel(a.fileCategory)}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-slate-400">
+                    {a.uploaderName || '未知上传人'}
+                    {a.uploadTime ? ` / ${formatAttachmentTime(a.uploadTime)}` : ''}
+                    {a.fileSize ? ` / ${formatAttachmentSize(a.fileSize)}` : ''}
+                  </div>
+                  {a.remark ? <div className="mt-2 text-xs leading-5 text-slate-500">{a.remark}</div> : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-white hover:text-slate-800"
+                    onClick={() => {
+                      void downloadProjectAttachment(a, projectId).catch((error: unknown) => {
+                        pushToast({
+                          message: error instanceof Error ? error.message : '附件下载失败，请稍后重试。',
+                          tone: 'danger',
+                        });
+                      });
+                    }}
+                    type="button"
+                  >
+                    下载
+                  </button>
+                  <button
+                    className="invisible flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-500 group-hover:visible"
+                    onClick={() => {
+                      if (window.confirm(`确认删除附件“${a.fileName}”吗？`)) {
+                        onDeleteAttachment(projectId, a.id);
+                      }
+                    }}
+                    title="删除"
+                    type="button"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -1043,6 +1210,37 @@ function AttachmentsTab({ attachments, projectId, onDeleteAttachment, onUploadAt
       )}
     </div>
   );
+}
+
+function formatAttachmentSize(fileSize?: number | null) {
+  if (!fileSize || fileSize <= 0) {
+    return '未知大小';
+  }
+
+  if (fileSize >= 1024 * 1024) {
+    return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return `${(fileSize / 1024).toFixed(1)} KB`;
+}
+
+function formatAttachmentTime(value?: string | null) {
+  if (!value) {
+    return '时间未知';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString('zh-CN', {
+    hour12: false,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

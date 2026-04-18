@@ -5,7 +5,9 @@ export type WorkspaceMode =
   | 'plan-log'
   | 'delay-application'
   | 'milestone-template-management'
-  | 'project-analysis-dashboard';
+  | 'project-analysis-dashboard'
+  | 'project-user-permission-management'
+  | 'project-role-permission-management';
 
 export type ProjectWorkspaceItem = {
   description: string;
@@ -43,6 +45,14 @@ export const projectWorkspaceGroups: ProjectWorkspaceGroup[] = [
     itemIds: ['project-analysis-dashboard'],
     label: '分析中心',
   },
+  {
+    id: 'system',
+    itemIds: [
+      'project-user-permission-management',
+      'project-role-permission-management',
+    ],
+    label: '系统管理',
+  },
 ];
 
 export const projectWorkspaceItems: ProjectWorkspaceItem[] = [
@@ -65,7 +75,7 @@ export const projectWorkspaceItems: ProjectWorkspaceItem[] = [
     groupId: 'delivery',
     label: '任务填报',
     shortLabel: '填报',
-    description: '承接任务接收、完成说明和任务延期申请等成员侧执行填报。',
+    description: '承接任务接收、完成说明和任务延期申请等成员执行填报。',
   },
   {
     id: 'plan-log',
@@ -93,6 +103,20 @@ export const projectWorkspaceItems: ProjectWorkspaceItem[] = [
     groupId: 'analysis',
     label: '项目分析看板',
     shortLabel: '分析',
-    description: '建设上甘特、下图表的项目分析展示中心。',
+    description: '建设上半展示型甘特、下半图表分析的项目分析中心。',
+  },
+  {
+    id: 'project-user-permission-management',
+    groupId: 'system',
+    label: '用户权限',
+    shortLabel: '用户权限',
+    description: '以员工表格管理角色分配，可按用户直接设置角色。',
+  },
+  {
+    id: 'project-role-permission-management',
+    groupId: 'system',
+    label: '角色权限',
+    shortLabel: '角色权限',
+    description: '以角色表格维护角色信息，并在角色上配置菜单权限。',
   },
 ];

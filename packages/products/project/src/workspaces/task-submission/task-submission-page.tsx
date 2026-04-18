@@ -371,9 +371,11 @@ export function ProjectTaskSubmissionPage({
                             )}
                           </td>
                           <td className="px-4 py-4">
-                            <Badge tone={tone} className="font-semibold">
-                              {getProjectStatusLabel(task.status ?? 'NOT_STARTED')}
-                            </Badge>
+                            <span className="font-semibold">
+                              <Badge tone={tone}>
+                                {getProjectStatusLabel(task.status ?? 'NOT_STARTED')}
+                              </Badge>
+                            </span>
                           </td>
                           <td className="px-4 py-4">
                             <ProgressBar value={task.progressRate ?? 0} />

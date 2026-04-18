@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 
+import { createApiClient } from '@lserp/http';
 import { Badge, Button, Card } from '@lserp/ui';
 
 import type {
@@ -79,10 +80,26 @@ import {
   parseInputDate,
 } from './gantt-utils';
 import { GanttDetailPanel } from './gantt-detail-panel';
+import { ProjectTeamManager } from './project-team-manager';
+
+type CommonResult<T> = {
+  code: number;
+  data: T;
+  message?: string;
+};
+
+const projectGanttApiClient = createApiClient({
+  baseUrl:
+    (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
+    'http://127.0.0.1:8080',
+});
 
 type ProjectGanttWorkspacePageProps = {
   attachments: AttachmentItem[];
   budgets: BudgetItem[];
+  canManageProjectSchedule: boolean;
+  currentUserId: string;
+  currentUserName: string;
   members: MemberItem[];
   nodes: NodeItem[];
   taskDependencies?: TaskDependency[];
@@ -111,6 +128,18 @@ type ProjectGanttWorkspacePageProps = {
   onDeleteBudget: (projectId: number, budgetId: number) => Promise<void>;
   onDeleteMember: (projectId: number, memberId: number) => Promise<void>;
   onDeleteAttachment: (projectId: number, attachmentId: number) => Promise<void>;
+  onUploadAttachment: (
+    projectId: number,
+    payload: {
+      file: File;
+      fileCategory?: string | null;
+      projectNodeId?: number | null;
+      projectTaskId?: number | null;
+      remark?: string | null;
+      uploaderId: string;
+      uploaderName: string;
+    },
+  ) => Promise<void>;
   onCreateMember: (
     projectId: number,
     payload: {
@@ -312,6 +341,9 @@ function generateArrowMarker(id: string, color: string): string {
 export function ProjectGanttWorkspacePage({
   attachments,
   budgets,
+  canManageProjectSchedule,
+  currentUserId,
+  currentUserName,
   members,
   nodes,
   taskDependencies = [],
@@ -326,12 +358,14 @@ export function ProjectGanttWorkspacePage({
   onDeleteMember,
   onDeleteNode,
   onDeleteTask,
+  onUploadAttachment,
   onOpenProgressConfig,
   onOpenProjectManagement,
   onLoadTaskDetail,
   onSaveProjectBase,
   onUpdateNodeBasic,
   onUpdateNodeStatus,
+  onUpdateMember,
   onUpdateTaskAssignment,
   onUpdateTaskBasic,
   onUpdateTaskStatus,
@@ -359,6 +393,8 @@ export function ProjectGanttWorkspacePage({
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [optimisticScheduleMap, setOptimisticScheduleMap] = useState<OptimisticScheduleMap>({});
+  const [teamPanelVisible, setTeamPanelVisible] = useState(false);
+  const [taskParticipantCountMap, setTaskParticipantCountMap] = useState<Record<number, number>>({});
   const [hoveredDependencyId, setHoveredDependencyId] = useState<string | null>(null);
   const [dependencyMode, setDependencyMode] = useState<{ sourceTaskId: number; sourceRowId: string } | null>(null);
   const [dependencyModalState, setDependencyModalState] = useState<{
@@ -404,8 +440,87 @@ export function ProjectGanttWorkspacePage({
     status: string;
     progressRate: number;
   } | null>(null);
+  const [quickAssignState, setQuickAssignState] = useState<{
+    loading: boolean;
+    participantMembers: Array<{
+      userId: string;
+      userName: string;
+    }>;
+    responsibleName: string | null;
+    responsibleUserId: string | null;
+    taskId: number | null;
+    taskTitle: string;
+    visible: boolean;
+  }>({
+    loading: false,
+    participantMembers: [],
+    responsibleName: null,
+    responsibleUserId: null,
+    taskId: null,
+    taskTitle: '',
+    visible: false,
+  });
 
   const categories = buildTimelineCategories(nodes, tasks);
+  function showManageOnlyFeedback() {
+    setFeedback({
+      message: '当前账号在排期协同中为只读权限，请由项目负责人或项目管理员维护计划。',
+      tone: 'danger',
+    });
+  }
+
+  function ensureCanManageProjectSchedule() {
+    if (canManageProjectSchedule) {
+      return true;
+    }
+    showManageOnlyFeedback();
+    return false;
+  }
+
+  const memberMap = useMemo(
+    () =>
+      new Map(
+        members.map((member) => [
+          member.userId,
+          member,
+        ]),
+      ),
+    [members],
+  );
+  const nodeMap = useMemo(
+    () => new Map(nodes.map((node) => [node.id, node])),
+    [nodes],
+  );
+  const taskMap = useMemo(
+    () => new Map(tasks.map((task) => [task.id, task])),
+    [tasks],
+  );
+  const childNodeIdsByParent = useMemo(() => {
+    const next = new Map<number, number[]>();
+    nodes.forEach((node) => {
+      const parentId = Number(node.parentId ?? 0);
+      if (!parentId || !nodeMap.has(parentId)) {
+        return;
+      }
+      const current = next.get(parentId) ?? [];
+      current.push(node.id);
+      next.set(parentId, current);
+    });
+    return next;
+  }, [nodeMap, nodes]);
+  const taskIdsByNodeId = useMemo(() => {
+    const next = new Map<number, number[]>();
+    tasks.forEach((task) => {
+      const nodeId = Number(task.projectNodeId ?? 0);
+      if (!nodeId) {
+        return;
+      }
+      const current = next.get(nodeId) ?? [];
+      current.push(task.id);
+      next.set(nodeId, current);
+    });
+    return next;
+  }, [tasks]);
   const filterKeyword = searchKeyword.trim().toLowerCase();
   const visibleCategories = categories
     .map((category) => ({
@@ -460,6 +575,15 @@ export function ProjectGanttWorkspacePage({
       startDate: optimisticSchedule.startDate,
     };
   });
+  const nodeRowIdMap = useMemo(
+    () =>
+      new Map(
+        renderedRows
+          .filter((row) => row.entityKind === 'node' && row.entityId)
+          .map((row) => [row.entityId as number, row.id]),
+      ),
+    [renderedRows],
+  );
   // 使用 useMemo 缓存 timelineRange 和 timelineDays，避免无限循环
   const timelineRange = useMemo(
     () => buildTimelineRange(selectedProject, renderedRows),
@@ -574,6 +698,70 @@ export function ProjectGanttWorkspacePage({
     }
     return expandedMap[row.subCategoryId] ?? true;
   });
+
+  const getTaskDisplayMeta = (row: TimelineRow) => {
+    if (row.entityKind !== 'task' || !row.entityId) {
+      return {
+        assignmentToneClassName: null as string | null,
+        assignmentStatusLabel: null as string | null,
+        ownerRoleName: null as string | null,
+        participantCount: null as number | null,
+        participantLabel: null as string | null,
+      };
+    }
+
+    const task = tasks.find((item) => item.id === row.entityId);
+    const ownerRoleName =
+      task?.responsibleUserId && memberMap.has(task.responsibleUserId)
+        ? memberMap.get(task.responsibleUserId)?.roleName ?? null
+        : null;
+    const participantCount = taskParticipantCountMap[row.entityId] ?? null;
+    const hasOwner = Boolean(task?.responsibleUserId || row.owner);
+    const hasParticipants = (participantCount ?? 0) > 0;
+
+    let assignmentStatusLabel: string;
+    let assignmentToneClassName: string;
+    let assignmentDotClassName: string;
+    if (hasOwner && hasParticipants) {
+      assignmentStatusLabel = '多人协作';
+      assignmentToneClassName = 'bg-emerald-50 text-emerald-600';
+      assignmentDotClassName = 'bg-emerald-500';
+    } else if (hasOwner) {
+      assignmentStatusLabel = '已分配';
+      assignmentToneClassName = 'bg-sky-50 text-sky-600';
+      assignmentDotClassName = 'bg-sky-500';
+    } else {
+      assignmentStatusLabel = '未分配';
+      assignmentToneClassName = 'bg-amber-50 text-amber-600';
+      assignmentDotClassName = 'bg-amber-500';
+    }
+
+    const assignmentTooltip = [
+      `任务：${row.title}`,
+      row.startDate && row.endDate
+        ? `计划时间：${formatShortMonthDay(row.startDate)}-${formatShortMonthDay(row.endDate)}`
+        : null,
+      `分配状态：${assignmentStatusLabel}`,
+      row.owner ? `负责人：${row.owner}` : '负责人：未分配',
+      ownerRoleName ? `角色：${ownerRoleName}` : null,
+      participantCount !== null ? `参与人数：${participantCount}` : null,
+      `进度：${normalizeProgress(row.progress)}%`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    return {
+      assignmentDotClassName,
+      assignmentStatusLabel,
+      assignmentToneClassName,
+      assignmentTooltip,
+      ownerRoleName,
+      participantCount,
+      participantLabel:
+        participantCount !== null ? `${participantCount} 人参与` : null,
+    };
+  };
+
   const currentLineIndex = (() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -625,6 +813,188 @@ export function ProjectGanttWorkspacePage({
     return renderedRows.find((row) => row.entityId === entityId) ?? null;
   }
 
+  function getStoredTaskRange(
+    taskId: number,
+    override?: {
+      endDate: Date | null;
+      startDate: Date | null;
+      taskId: number;
+    },
+  ) {
+    if (override?.taskId === taskId) {
+      return {
+        endDate: override.endDate,
+        startDate: override.startDate,
+      };
+    }
+
+    const optimistic = optimisticScheduleMap[`task-${taskId}`];
+    if (optimistic) {
+      return optimistic;
+    }
+
+    const task = taskMap.get(taskId);
+    return {
+      endDate: parseDateValue(task?.planEndTime) ?? parseDateValue(task?.actualEndTime),
+      startDate: parseDateValue(task?.planStartTime) ?? parseDateValue(task?.actualStartTime),
+    };
+  }
+
+  function getStoredNodeRange(nodeId: number) {
+    const rowId = nodeRowIdMap.get(nodeId);
+    if (rowId) {
+      const optimistic = optimisticScheduleMap[rowId];
+      if (optimistic) {
+        return optimistic;
+      }
+    }
+
+    const node = nodeMap.get(nodeId);
+    return {
+      endDate: parseDateValue(node?.planEndTime) ?? parseDateValue(node?.actualEndTime),
+      startDate: parseDateValue(node?.planStartTime) ?? parseDateValue(node?.actualStartTime),
+    };
+  }
+
+  function computeNodeAggregateRange(
+    nodeId: number,
+    override?: {
+      endDate: Date | null;
+      startDate: Date | null;
+      taskId: number;
+    },
+    visited = new Set<number>(),
+  ): {
+    endDate: Date | null;
+    startDate: Date | null;
+  } {
+    if (visited.has(nodeId)) {
+      return {
+        endDate: null,
+        startDate: null,
+      };
+    }
+
+    visited.add(nodeId);
+
+    const collectedRanges: Array<{
+      endDate: Date;
+      startDate: Date;
+    }> = [];
+
+    (taskIdsByNodeId.get(nodeId) ?? []).forEach((taskId) => {
+      const range = getStoredTaskRange(taskId, override);
+      if (range.startDate && range.endDate) {
+        collectedRanges.push({
+          endDate: range.endDate,
+          startDate: range.startDate,
+        });
+      }
+    });
+
+    (childNodeIdsByParent.get(nodeId) ?? []).forEach((childNodeId) => {
+      const childRange = computeNodeAggregateRange(childNodeId, override, visited);
+      if (childRange.startDate && childRange.endDate) {
+        collectedRanges.push({
+          endDate: childRange.endDate,
+          startDate: childRange.startDate,
+        });
+      }
+    });
+
+    if (!collectedRanges.length) {
+      return getStoredNodeRange(nodeId);
+    }
+
+    return {
+      endDate: new Date(Math.max(...collectedRanges.map((item) => item.endDate.getTime()))),
+      startDate: new Date(Math.min(...collectedRanges.map((item) => item.startDate.getTime()))),
+    };
+  }
+
+  function buildAncestorNodeScheduleUpdates(
+    taskId: number,
+    startDate: Date | null,
+    endDate: Date | null,
+  ) {
+    const task = taskMap.get(taskId);
+    const updates: Array<{
+      endDate: Date | null;
+      nodeId: number;
+      rowId: string;
+      startDate: Date | null;
+    }> = [];
+
+    let currentNodeId = Number(task?.projectNodeId ?? 0);
+    const visited = new Set<number>();
+
+    while (currentNodeId && !visited.has(currentNodeId)) {
+      visited.add(currentNodeId);
+
+      const rowId = nodeRowIdMap.get(currentNodeId);
+      const node = nodeMap.get(currentNodeId);
+      if (!rowId || !node) {
+        currentNodeId = Number(node?.parentId ?? 0);
+        continue;
+      }
+
+      const nextRange = computeNodeAggregateRange(
+        currentNodeId,
+        {
+          endDate,
+          startDate,
+          taskId,
+        },
+      );
+      const currentRange = getStoredNodeRange(currentNodeId);
+
+      if (
+        !areDatesEqual(currentRange.startDate, nextRange.startDate) ||
+        !areDatesEqual(currentRange.endDate, nextRange.endDate)
+      ) {
+        updates.push({
+          endDate: nextRange.endDate,
+          nodeId: currentNodeId,
+          rowId,
+          startDate: nextRange.startDate,
+        });
+      }
+
+      currentNodeId = Number(node.parentId ?? 0);
+    }
+
+    return updates;
+  }
+
+  async function persistAncestorNodeScheduleUpdates(
+    updates: Array<{
+      endDate: Date | null;
+      nodeId: number;
+      startDate: Date | null;
+    }>,
+  ) {
+    if (!selectedProjectId) {
+      return;
+    }
+
+    for (const update of updates) {
+      const node = nodeMap.get(update.nodeId);
+      if (!node) {
+        continue;
+      }
+
+      await onUpdateNodeStatus(selectedProjectId, update.nodeId, {
+        actualEndTime: node.actualEndTime ?? null,
+        actualStartTime: node.actualStartTime ?? null,
+        planEndTime: formatDateTimeForApi(update.endDate, 'end'),
+        planStartTime: formatDateTimeForApi(update.startDate, 'start'),
+        progressRate: node.progressRate ?? null,
+        remark: node.remark ?? null,
+        status: node.status ?? null,
+      });
+    }
+  }
+
   function getValidNodeId(row: TimelineRow | null) {
     if (!row) {
       return null;
@@ -639,6 +1009,9 @@ export function ProjectGanttWorkspacePage({
   }
 
   function openCreateDialog(mode: 'node' | 'task', row: TimelineRow | null, root = false) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!selectedProjectId) {
       setFeedback({
         message: '请先选择项目。',
@@ -669,6 +1042,9 @@ export function ProjectGanttWorkspacePage({
   }
 
   async function handleSaveCreateDraft() {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!selectedProjectId || !createDraft) {
       return;
     }
@@ -735,18 +1111,36 @@ export function ProjectGanttWorkspacePage({
   }
 
   async function saveRowSchedule(row: TimelineRow, startDate: Date | null, endDate: Date | null) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!selectedProjectId || !row.entityId || !row.entityKind) {
       return;
     }
+
+    const optimisticUpdates: OptimisticScheduleMap = {
+      [row.id]: {
+        endDate,
+        startDate,
+      },
+    };
+    const ancestorUpdates =
+      row.entityKind === 'task'
+        ? buildAncestorNodeScheduleUpdates(row.entityId, startDate, endDate)
+        : [];
+
+    ancestorUpdates.forEach((update) => {
+      optimisticUpdates[update.rowId] = {
+        endDate: update.endDate,
+        startDate: update.startDate,
+      };
+    });
 
     setActionLoading(true);
     setFeedback(null);
     setOptimisticScheduleMap((current) => ({
       ...current,
-      [row.id]: {
-        endDate,
-        startDate,
-      },
+      ...optimisticUpdates,
     }));
     try {
       if (row.entityKind === 'node') {
@@ -780,6 +1174,14 @@ export function ProjectGanttWorkspacePage({
           remark: task.remark ?? null,
           status: task.status ?? null,
         });
+
+        await persistAncestorNodeScheduleUpdates(
+          ancestorUpdates.map((update) => ({
+            endDate: update.endDate,
+            nodeId: update.nodeId,
+            startDate: update.startDate,
+          })),
+        );
       }
 
       setFeedback({
@@ -788,11 +1190,14 @@ export function ProjectGanttWorkspacePage({
       });
     } catch (error) {
       setOptimisticScheduleMap((current) => {
-        if (!(row.id in current)) {
+        const rollbackKeys = Object.keys(optimisticUpdates);
+        if (!rollbackKeys.some((key) => key in current)) {
           return current;
         }
         const next = { ...current };
-        delete next[row.id];
+        rollbackKeys.forEach((key) => {
+          delete next[key];
+        });
         return next;
       });
       setFeedback({
@@ -822,6 +1227,7 @@ export function ProjectGanttWorkspacePage({
    * 打开任务详情侧边栏
    */
   function openDetailPanel(row: TimelineRow) {
+    setTeamPanelVisible(false);
     setSelectedRowId(row.id);
     detailRowIdRef.current = row.id;
     // 初始化编辑状态
@@ -847,11 +1253,16 @@ export function ProjectGanttWorkspacePage({
 
     if (row.entityKind === 'task' && row.entityId && selectedProjectId) {
       const taskRowId = row.id;
+      const taskId = row.entityId;
       void onLoadTaskDetail(selectedProjectId, row.entityId)
         .then((detail) => {
           if (detailRowIdRef.current !== taskRowId) {
             return;
           }
+          setTaskParticipantCountMap((current) => ({
+            ...current,
+            [taskId]: detail.participantMembers.length,
+          }));
           setDetailEditState((current) => current ? {
             ...current,
             participantMembers: detail.participantMembers.map((member) => ({
@@ -881,10 +1292,132 @@ export function ProjectGanttWorkspacePage({
     setDetailEditState(null);
   }
 
+  function openTeamPanel() {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
+    closeDetailPanel();
+    setTeamPanelVisible(true);
+  }
+
+  function closeTeamPanel() {
+    setTeamPanelVisible(false);
+  }
+
+  function closeQuickAssign() {
+    setQuickAssignState({
+      loading: false,
+      participantMembers: [],
+      responsibleName: null,
+      responsibleUserId: null,
+      taskId: null,
+      taskTitle: '',
+      visible: false,
+    });
+  }
+
+  async function openQuickAssign(row: TimelineRow) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
+    if (row.entityKind !== 'task' || !row.entityId || !selectedProjectId) {
+      return;
+    }
+    setTeamPanelVisible(false);
+    const task = tasks.find((item) => item.id === row.entityId);
+    const taskId = row.entityId;
+    setSelectedRowId(row.id);
+    setQuickAssignState({
+      loading: true,
+      participantMembers: [],
+      responsibleName: task?.responsibleName ?? null,
+      responsibleUserId: task?.responsibleUserId ?? null,
+      taskId: row.entityId,
+      taskTitle: row.title,
+      visible: true,
+    });
+    try {
+      const detail = await onLoadTaskDetail(selectedProjectId, row.entityId);
+      setTaskParticipantCountMap((current) => ({
+        ...current,
+        [taskId]: detail.participantMembers.length,
+      }));
+      setQuickAssignState((current) => {
+        if (!current.visible || current.taskId !== row.entityId) {
+          return current;
+        }
+        return {
+          ...current,
+          loading: false,
+          participantMembers: detail.participantMembers.map((member) => ({
+            userId: member.userId,
+            userName: member.userName,
+          })),
+        };
+      });
+    } catch (error) {
+      setFeedback({
+        message: buildFeedbackMessage(error),
+        tone: 'danger',
+      });
+      setQuickAssignState((current) => ({
+        ...current,
+        loading: false,
+      }));
+    }
+  }
+
+  async function handleSaveQuickAssign() {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
+    if (!selectedProjectId || !quickAssignState.taskId) {
+      return;
+    }
+    setQuickAssignState((current) => ({ ...current, loading: true }));
+    try {
+      const taskId = quickAssignState.taskId;
+      await onUpdateTaskAssignment(selectedProjectId, quickAssignState.taskId, {
+        participantMembers: quickAssignState.participantMembers,
+        responsibleName: quickAssignState.responsibleName,
+        responsibleUserId: quickAssignState.responsibleUserId,
+      });
+      setTaskParticipantCountMap((current) => ({
+        ...current,
+        [taskId]: quickAssignState.participantMembers.length,
+      }));
+      setDetailEditState((current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          participantMembers: quickAssignState.participantMembers,
+          responsibleName: quickAssignState.responsibleName ?? '',
+          responsibleUserId: quickAssignState.responsibleUserId,
+        };
+      });
+      setFeedback({
+        message: '任务人员分配已保存。',
+        tone: 'success',
+      });
+      closeQuickAssign();
+    } catch (error) {
+      setFeedback({
+        message: buildFeedbackMessage(error),
+        tone: 'danger',
+      });
+      setQuickAssignState((current) => ({ ...current, loading: false }));
+    }
+  }
+
   /**
    * 保存任务详情
    */
   async function handleSaveDetailPanel() {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!selectedProjectId || !detailPanel.rowId || !detailEditState) {
       return;
     }
@@ -894,14 +1427,47 @@ export function ProjectGanttWorkspacePage({
     }
 
     setActionLoading(true);
+    let taskOptimisticKeys: string[] = [];
     try {
         if (row.entityKind === 'task') {
+          const taskId = row.entityId;
+          const nextTaskStartDate = parseInputDate(detailEditState.planStartTime ?? '');
+          const nextTaskEndDate = parseInputDate(detailEditState.planEndTime ?? '');
+          const ancestorUpdates = buildAncestorNodeScheduleUpdates(
+            taskId,
+            nextTaskStartDate,
+            nextTaskEndDate,
+          );
+          const optimisticUpdates: OptimisticScheduleMap = {
+            [row.id]: {
+              endDate: nextTaskEndDate,
+              startDate: nextTaskStartDate,
+            },
+          };
+
+          ancestorUpdates.forEach((update) => {
+            optimisticUpdates[update.rowId] = {
+              endDate: update.endDate,
+              startDate: update.startDate,
+            };
+          });
+          taskOptimisticKeys = Object.keys(optimisticUpdates);
+
+          setOptimisticScheduleMap((current) => ({
+            ...current,
+            ...optimisticUpdates,
+          }));
+
           // 保存责任人分配
           await onUpdateTaskAssignment(selectedProjectId, row.entityId, {
             participantMembers: detailEditState.participantMembers,
             responsibleUserId: detailEditState.responsibleUserId,
             responsibleName: detailEditState.responsibleName,
           });
+          setTaskParticipantCountMap((current) => ({
+            ...current,
+            [taskId]: detailEditState.participantMembers.length,
+          }));
         // 保存基本信息
         await onUpdateTaskBasic(selectedProjectId, row.entityId, {
           taskTitle: detailEditState.taskTitle || null,
@@ -909,7 +1475,7 @@ export function ProjectGanttWorkspacePage({
           remark: detailEditState.taskRemark || null,
         });
         // 保存状态和进度
-        await onUpdateTaskStatus(selectedProjectId, row.entityId, {
+          await onUpdateTaskStatus(selectedProjectId, row.entityId, {
           planStartTime: detailEditState.planStartTime,
           planEndTime: detailEditState.planEndTime,
           progressRate: detailEditState.progressRate,
@@ -921,6 +1487,13 @@ export function ProjectGanttWorkspacePage({
           finishDesc: null,
           remark: null,
         });
+        await persistAncestorNodeScheduleUpdates(
+          ancestorUpdates.map((update) => ({
+            endDate: update.endDate,
+            nodeId: update.nodeId,
+            startDate: update.startDate,
+          })),
+        );
       } else if (row.entityKind === 'node') {
         await onUpdateNodeBasic(selectedProjectId, row.entityId, {
           nodeName: detailEditState.taskTitle || null,
@@ -939,6 +1512,15 @@ export function ProjectGanttWorkspacePage({
       setFeedback({ message: '保存成功', tone: 'success' });
       closeDetailPanel();
     } catch (error) {
+      if (row.entityKind === 'task') {
+        setOptimisticScheduleMap((current) => {
+          const next = { ...current };
+          taskOptimisticKeys.forEach((key) => {
+            delete next[key];
+          });
+          return next;
+        });
+      }
       setFeedback({ message: buildFeedbackMessage(error), tone: 'danger' });
     } finally {
       setActionLoading(false);
@@ -946,6 +1528,9 @@ export function ProjectGanttWorkspacePage({
   }
 
   async function handleDeleteRow(row: TimelineRow) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!selectedProjectId || !row.entityKind || !row.entityId) {
       return;
     }
@@ -1085,6 +1670,9 @@ export function ProjectGanttWorkspacePage({
     row: TimelineRow,
     mode: DragState['mode'],
   ) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!row.entityKind) {
       return;
     }
@@ -1148,6 +1736,9 @@ export function ProjectGanttWorkspacePage({
    * 创建依赖关系
    */
   async function handleCreateDependency() {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!selectedProjectId || !dependencyModalState?.taskId || !newDependency.targetTaskId) {
       setFeedback({
         message: '请选择后继任务',
@@ -1191,6 +1782,9 @@ export function ProjectGanttWorkspacePage({
    * 删除依赖关系
    */
   async function handleDeleteDependency(dependencyId: number) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!selectedProjectId || !onDeleteDependency) return;
 
     setActionLoading(true);
@@ -1230,20 +1824,18 @@ export function ProjectGanttWorkspacePage({
     if (!selectedProjectId) return null;
 
     try {
-      const response = await fetch(
+      const result = await projectGanttApiClient.request<CommonResult<CascadeUpdateResult>>(
         `/api/project/projects/${selectedProjectId}/dependencies/cascade/preview`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             taskId,
             newPlanStartTime,
             newPlanEndTime,
             apply: false,
-          }),
+          },
         }
       );
-      const result = await response.json();
       if (result.code === 0) {
         return result.data;
       }
@@ -1265,20 +1857,18 @@ export function ProjectGanttWorkspacePage({
     if (!selectedProjectId) return null;
 
     try {
-      const response = await fetch(
+      const result = await projectGanttApiClient.request<CommonResult<CascadeUpdateResult>>(
         `/api/project/projects/${selectedProjectId}/dependencies/cascade/apply`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             taskId,
             newPlanStartTime,
             newPlanEndTime,
             apply: true,
-          }),
+          },
         }
       );
-      const result = await response.json();
       if (result.code === 0) {
         return result.data;
       }
@@ -1342,6 +1932,9 @@ export function ProjectGanttWorkspacePage({
     startDate: Date | null,
     endDate: Date | null
   ) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!row.entityId || row.entityKind !== 'task') {
       setShowCascadeConfirm(false);
       setCascadePreview(null);
@@ -1385,12 +1978,18 @@ export function ProjectGanttWorkspacePage({
     startDate: Date | null,
     endDate: Date | null
   ) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     setShowCascadeConfirm(false);
     setCascadePreview(null);
     await saveRowSchedule(row, startDate, endDate);
   }
 
   async function handleEditorSave() {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!editorState) {
       return;
     }
@@ -1421,6 +2020,9 @@ export function ProjectGanttWorkspacePage({
   }
 
   async function handleEditorDelete() {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     if (!editorState) {
       return;
     }
@@ -1433,6 +2035,9 @@ export function ProjectGanttWorkspacePage({
   }
 
   async function handleQuickDelete(row: TimelineRow) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     await saveRowSchedule(row, null, null);
     if (selectedRowId === row.id) {
       setSelectedRowId(null);
@@ -1440,6 +2045,9 @@ export function ProjectGanttWorkspacePage({
   }
 
   function handleQuickCreate(row: TimelineRow) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
     const defaultStart = parseDateValue(selectedProject?.planStartTime) ?? timelineRange.start;
     const defaultEnd = row.startDate ?? addDays(defaultStart, 2);
     openEditor(row, row.startDate ?? defaultStart, row.endDate ?? defaultEnd);
@@ -1479,7 +2087,7 @@ export function ProjectGanttWorkspacePage({
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col">
       {/* 主内容区域 */}
-      <div className={`relative flex min-h-0 flex-1 transition-all duration-300 ${detailPanel.visible ? 'mr-[420px]' : ''}`}>
+      <div className={`relative flex min-h-0 flex-1 transition-all duration-300 ${(detailPanel.visible || teamPanelVisible) ? 'mr-[420px]' : ''}`}>
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 shadow-none">
         <div className="flex min-h-[104px] border-b border-[#d9e7f7] bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)]">
           <div
@@ -1580,6 +2188,16 @@ export function ProjectGanttWorkspacePage({
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                disabled={!canManageProjectSchedule}
+                onClick={openTeamPanel}
+                tone="ghost"
+              >
+                项目团队
+                <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                  {members.length}
+                </span>
+              </Button>
               <Button onClick={onOpenProgressConfig} tone="ghost">
                 里程碑模板
               </Button>
@@ -1681,6 +2299,19 @@ export function ProjectGanttWorkspacePage({
                 axisRef.current = element;
               }}
             >
+              <div className="pointer-events-none absolute left-0 top-0 z-0" style={{ width: timelineWidth, height: 56 }}>
+                {timelineDays.map((day, index) => {
+                  const dayOfWeek = getDayOfWeek(new Date(day.date));
+                  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                  return isWeekend ? (
+                    <div
+                      key={`header-weekend-${day.id}`}
+                      className="absolute top-0 h-full border-r border-amber-100 bg-[linear-gradient(180deg,rgba(255,244,214,0.85)_0%,rgba(255,248,234,0.72)_100%)]"
+                      style={{ left: index * DAY_COLUMN_WIDTH, width: DAY_COLUMN_WIDTH }}
+                    />
+                  ) : null;
+                })}
+              </div>
               {hoverIndex !== null ? (
                 <div
                   className="pointer-events-none absolute left-0 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-700 shadow-sm"
@@ -1697,7 +2328,7 @@ export function ProjectGanttWorkspacePage({
                 </div>
               ) : null}
 
-              <div className="flex h-full flex-col" style={{ width: timelineWidth }}>
+              <div className="relative z-10 flex h-full flex-col" style={{ width: timelineWidth }}>
                 <div
                   className="grid h-7 border-b border-[#d9e7f7]"
                   style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${DAY_COLUMN_WIDTH}px)` }}
@@ -1718,18 +2349,29 @@ export function ProjectGanttWorkspacePage({
                   className="grid h-7"
                   style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${DAY_COLUMN_WIDTH}px)` }}
                 >
-                  {timelineDays.map((day) => (
-                    <div
-                      key={day.id}
-                      className={`theme-text-soft border-r border-[#d9e7f7] text-center text-xs leading-7 ${
-                        currentDayId === day.id
-                          ? 'bg-[#cfe3ff] font-bold text-sky-700 shadow-[inset_0_-1px_0_0_#93c5fd]'
-                          : ''
-                      }`}
-                    >
-                      {day.label}
-                    </div>
-                  ))}
+                  {timelineDays.map((day) => {
+                    const dayOfWeek = getDayOfWeek(new Date(day.date));
+                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                    return (
+                      <div
+                        key={day.id}
+                        className={`relative border-r border-[#d9e7f7] text-center text-xs leading-7 ${
+                          currentDayId === day.id
+                            ? 'bg-[#cfe3ff] font-bold text-sky-700 shadow-[inset_0_-1px_0_0_#93c5fd]'
+                            : isWeekend
+                              ? 'bg-amber-50/75 font-semibold text-amber-600'
+                              : 'theme-text-soft'
+                        }`}
+                      >
+                        {isWeekend ? (
+                          <span className="absolute left-1 top-1 rounded-full bg-amber-100 px-1 py-0 text-[9px] leading-none text-amber-600">
+                            休
+                          </span>
+                        ) : null}
+                        {day.label}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1769,10 +2411,11 @@ export function ProjectGanttWorkspacePage({
                 />
                 <button
                   className="flex h-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[#d6e4f4] bg-white px-3.5 text-xs font-semibold text-sky-600 shadow-[0_6px_16px_-12px_rgba(15,23,42,0.45)] transition-colors hover:border-sky-200 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-45"
-                  disabled={!selectedProjectId || actionLoading}
+                  disabled={!selectedProjectId || actionLoading || !canManageProjectSchedule}
                   onClick={() => {
                     openCreateDialog('node', null, true);
                   }}
+                  title={canManageProjectSchedule ? '新增一级节点' : '当前账号在排期协同中为只读'}
                   type="button"
                 >
                   新增一级节点
@@ -1933,7 +2576,7 @@ export function ProjectGanttWorkspacePage({
                 return (
                   <button
                     key={row.id}
-                    className={`group relative flex w-full items-center gap-3 border-b border-[#e9eff8] px-4 pl-10 text-left transition-colors ${
+                    className={`group relative flex w-full items-center gap-3 border-b border-[#e9eff8] px-4 pl-10 pr-14 text-left transition-colors ${
                       isSelected
                         ? 'bg-[#f6f1ff] shadow-[inset_3px_0_0_0_#8b5cf6]'
                         : 'bg-[#fbfdff] hover:bg-[#f7faff]'
@@ -1944,26 +2587,52 @@ export function ProjectGanttWorkspacePage({
                     style={{ height: TASK_ROW_HEIGHT }}
                     type="button"
                   >
-                    <span className="absolute left-4 top-0 h-full w-px bg-[#e4ecf8]" />
-                    <span className="absolute left-4 top-1/2 h-px w-4 -translate-y-1/2 bg-[#e4ecf8]" />
-                    <TaskMark active={isSelected} />
-                    <span className="min-w-0 flex-1 truncate pr-2 text-xs text-slate-600">{row.title}</span>
-                    <span className={`flex items-center gap-1 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                      <Plus
-                        className="h-3.5 w-3.5 text-slate-400"
-                        onClick={(event: React.MouseEvent<SVGSVGElement>) => {
-                          event.stopPropagation();
-                          handleQuickCreate(row);
-                        }}
-                      />
-                      <Trash2
-                        className="h-3.5 w-3.5 text-rose-400"
-                        onClick={(event: React.MouseEvent<SVGSVGElement>) => {
-                          event.stopPropagation();
-                          void handleDeleteRow(row);
-                        }}
-                      />
-                    </span>
+                    {(() => {
+                      const taskDisplayMeta = getTaskDisplayMeta(row);
+                      const compactMeta = [
+                        taskDisplayMeta.assignmentStatusLabel,
+                        row.owner ? `负责人:${row.owner}` : null,
+                      ].filter(Boolean).join(' · ');
+                      return (
+                        <>
+                          <span className="absolute left-4 top-0 h-full w-px bg-[#e4ecf8]" />
+                          <span className="absolute left-4 top-1/2 h-px w-4 -translate-y-1/2 bg-[#e4ecf8]" />
+                          <TaskMark active={isSelected} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-medium text-slate-600">{row.title}</span>
+                            <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-slate-400">
+                              <span className={`shrink-0 rounded px-1.5 py-0.5 font-medium ${taskDisplayMeta.assignmentToneClassName}`}>
+                                {taskDisplayMeta.assignmentStatusLabel}
+                              </span>
+                              <span className="min-w-0 truncate">{compactMeta}</span>
+                            </span>
+                          </span>
+                          <span className={`absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-lg bg-white/92 px-1.5 py-1 shadow-sm transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                            <Hand
+                              className="h-3.5 w-3.5 text-sky-400"
+                              onClick={(event: React.MouseEvent<SVGSVGElement>) => {
+                                event.stopPropagation();
+                                void openQuickAssign(row);
+                              }}
+                            />
+                            <Plus
+                              className="h-3.5 w-3.5 text-slate-400"
+                              onClick={(event: React.MouseEvent<SVGSVGElement>) => {
+                                event.stopPropagation();
+                                handleQuickCreate(row);
+                              }}
+                            />
+                            <Trash2
+                              className="h-3.5 w-3.5 text-rose-400"
+                              onClick={(event: React.MouseEvent<SVGSVGElement>) => {
+                                event.stopPropagation();
+                                void handleDeleteRow(row);
+                              }}
+                            />
+                          </span>
+                        </>
+                      );
+                    })()}
                   </button>
                 );
               })}
@@ -2019,8 +2688,32 @@ export function ProjectGanttWorkspacePage({
                     preview.startDate && preview.endDate && hasBar
                       ? (daysBetween(preview.startDate, preview.endDate) + 1) * DAY_COLUMN_WIDTH
                       : 0;
-                  const showProgressBadge = width >= 108;
-                  const showDateRange = width >= 176;
+                  const taskDisplayMeta = getTaskDisplayMeta(row);
+                  const isMicroBar = width < 44;
+                  const showInlineTitle = width >= 64;
+                  const showStatusInline = row.entityKind === 'task' && width >= 118;
+                  const showProgressBadge = width >= 96;
+                  const showOwnerInline = Boolean(row.owner) && width >= 158;
+                  const showDateRange = width >= 202;
+                  const showRoleInline = Boolean(taskDisplayMeta.ownerRoleName) && width >= 246;
+                  const showParticipantInline = Boolean(taskDisplayMeta.participantLabel) && width >= 292;
+                  const showAssignAction = row.entityKind === 'task' && width >= 136;
+                  const overflowSegments = [
+                    !showInlineTitle ? row.title : null,
+                    row.entityKind === 'task' && !showStatusInline ? taskDisplayMeta.assignmentStatusLabel : null,
+                    !showOwnerInline && row.owner ? `负责人:${row.owner}` : null,
+                    !showRoleInline && taskDisplayMeta.ownerRoleName ? taskDisplayMeta.ownerRoleName : null,
+                    !showParticipantInline && taskDisplayMeta.participantLabel ? taskDisplayMeta.participantLabel : null,
+                    !showDateRange && preview.startDate && preview.endDate
+                      ? `${formatShortMonthDay(preview.startDate)}-${formatShortMonthDay(preview.endDate)}`
+                      : null,
+                  ].filter(Boolean) as string[];
+                  const showExternalLabel = overflowSegments.length > 0;
+                  const externalLabelWidth = Math.min(220, Math.max(96, overflowSegments.join(' · ').length * 7));
+                  const externalLabelLeft =
+                    left + width + externalLabelWidth + 8 <= timelineWidth
+                      ? left + width + 6
+                      : Math.max(4, left - externalLabelWidth - 6);
 
                   return (
                     <div
@@ -2071,8 +2764,11 @@ export function ProjectGanttWorkspacePage({
                       ) : null}
 
                       {hasBar ? (
+                        <>
                         <button
-                          className="group/task absolute top-1/2 z-10 h-6 -translate-y-1/2 overflow-hidden rounded-[6px] border border-l-[3px] px-2 text-left shadow-[0_6px_18px_rgba(15,23,42,0.08)] transition-[filter,box-shadow] hover:brightness-[1.03]"
+                          className={`group/task absolute top-1/2 z-10 h-6 -translate-y-1/2 overflow-hidden rounded-[6px] border border-l-[3px] text-left shadow-[0_6px_18px_rgba(15,23,42,0.08)] transition-[filter,box-shadow] hover:brightness-[1.03] ${
+                            isMicroBar ? 'px-1' : 'px-2'
+                          }`}
                           onDoubleClick={() => {
                             openDetailPanel(row);
                           }}
@@ -2092,6 +2788,7 @@ export function ProjectGanttWorkspacePage({
                             left,
                             width,
                           }}
+                          title={row.entityKind === 'task' ? taskDisplayMeta.assignmentTooltip : row.title}
                           type="button"
                         >
                           <span
@@ -2115,23 +2812,86 @@ export function ProjectGanttWorkspacePage({
                             }}
                           />
 
-                          <div className="relative z-10 flex items-center gap-1.5">
+                          <div
+                            className={`relative z-10 flex h-full min-w-0 flex-nowrap items-center overflow-hidden ${
+                              isMicroBar
+                                ? 'justify-center gap-1'
+                                : 'gap-1.5'
+                            }`}
+                          >
                             <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-white/80" />
-                            <span className="truncate text-[11px] font-medium tracking-wide text-slate-700">
-                              {row.title}
-                            </span>
+                            {row.entityKind === 'task' ? (
+                              <span className={`h-2 w-2 flex-shrink-0 rounded-full ${taskDisplayMeta.assignmentDotClassName}`} />
+                            ) : null}
+                            {showInlineTitle ? (
+                              <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[11px] font-medium tracking-wide text-slate-700">
+                                {row.title}
+                              </span>
+                            ) : null}
+                            {showStatusInline ? (
+                              <span className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium ${taskDisplayMeta.assignmentToneClassName}`}>
+                                {taskDisplayMeta.assignmentStatusLabel}
+                              </span>
+                            ) : null}
+                            {showOwnerInline ? (
+                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500 lg:inline">
+                                {row.owner}
+                              </span>
+                            ) : null}
+                            {showRoleInline ? (
+                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-indigo-50/90 px-1.5 py-0.5 text-[10px] text-indigo-600 xl:inline">
+                                {taskDisplayMeta.ownerRoleName}
+                              </span>
+                            ) : null}
+                            {showParticipantInline ? (
+                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-slate-100/90 px-1.5 py-0.5 text-[10px] text-slate-500 2xl:inline">
+                                {taskDisplayMeta.participantLabel}
+                              </span>
+                            ) : null}
+                            {showAssignAction ? (
+                              <span
+                                className="shrink-0 cursor-pointer whitespace-nowrap rounded bg-white/75 px-1.5 py-0.5 text-[10px] text-sky-600 opacity-0 transition-opacity group-hover/task:opacity-100"
+                                onMouseDown={(event: React.MouseEvent<HTMLSpanElement>) => {
+                                  event.stopPropagation();
+                                }}
+                                onClick={(event: React.MouseEvent<HTMLSpanElement>) => {
+                                  event.stopPropagation();
+                                  void openQuickAssign(row);
+                                }}
+                                role="button"
+                                tabIndex={0}
+                              >
+                                分配
+                              </span>
+                            ) : null}
                             {showProgressBadge ? (
-                              <span className={`rounded bg-white/70 px-1.5 py-0.5 text-[10px] ${palette.badge}`}>
+                              <span className={`shrink-0 whitespace-nowrap rounded bg-white/70 px-1.5 py-0.5 text-[10px] ${palette.badge}`}>
                                 {normalizeProgress(row.progress)}%
                               </span>
                             ) : null}
                             {showDateRange ? (
-                              <span className="hidden text-[10px] text-slate-500 md:inline">
+                              <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-slate-500 md:inline">
                                 {formatShortMonthDay(preview.startDate)}-{formatShortMonthDay(preview.endDate)}
                               </span>
                             ) : null}
                           </div>
                         </button>
+                        {showExternalLabel ? (
+                          <div
+                            className={`pointer-events-none absolute top-1/2 z-20 -translate-y-1/2 transition-opacity ${
+                              isSelected ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100'
+                            }`}
+                            style={{
+                              left: externalLabelLeft,
+                              maxWidth: externalLabelWidth,
+                            }}
+                          >
+                            <span className="block truncate rounded-md border border-slate-200 bg-white/95 px-2 py-1 text-[10px] font-medium text-slate-600 shadow-[0_8px_20px_-16px_rgba(15,23,42,0.45)]">
+                              {overflowSegments.join(' · ')}
+                            </span>
+                          </div>
+                        ) : null}
+                        </>
                       ) : row.entityKind ? (
                         <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-xs text-slate-300">
                           拖拽空白区域创建计划时间
@@ -2567,6 +3327,145 @@ export function ProjectGanttWorkspacePage({
               </div>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {quickAssignState.visible ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 backdrop-blur-sm"
+          onClick={() => {
+            if (!quickAssignState.loading) {
+              closeQuickAssign();
+            }
+          }}
+        >
+          <Card
+            className="w-full max-w-[440px] rounded-[28px] p-6"
+            onClick={(event: React.MouseEvent<HTMLDivElement>) => {
+              event.stopPropagation();
+            }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.18em]">任务人员分配</div>
+                <div className="theme-text-strong mt-2 text-2xl font-black tracking-tight">{quickAssignState.taskTitle}</div>
+              </div>
+              <button
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-black/8 text-slate-400 transition-colors hover:text-slate-900"
+                onClick={() => {
+                  closeQuickAssign();
+                }}
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-5">
+              <div>
+                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">负责人</div>
+                <select
+                  className="theme-input mt-2 h-11 w-full rounded-2xl px-4 text-sm"
+                  disabled={quickAssignState.loading || members.length === 0}
+                  onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                    const userId = event.target.value || null;
+                    const member = members.find((item) => item.userId === userId);
+                    setQuickAssignState((current) => ({
+                      ...current,
+                      participantMembers: current.participantMembers.filter((item) => item.userId !== userId),
+                      responsibleName: userId ? (member?.userName ?? userId) : null,
+                      responsibleUserId: userId,
+                    }));
+                  }}
+                  value={quickAssignState.responsibleUserId ?? ''}
+                >
+                  <option value="">未分配</option>
+                  {members.map((member) => (
+                    <option key={member.userId} value={member.userId}>
+                      {member.userName}{member.roleName ? `（${member.roleName}）` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">参与人</div>
+                <div className="mt-2 max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  {members.filter((member) => member.userId !== quickAssignState.responsibleUserId).length ? (
+                    members
+                      .filter((member) => member.userId !== quickAssignState.responsibleUserId)
+                      .map((member) => {
+                        const checked = quickAssignState.participantMembers.some((item) => item.userId === member.userId);
+                        return (
+                          <label
+                            key={member.userId}
+                            className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                              checked
+                                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{member.userName}</div>
+                              <div className="truncate text-xs text-slate-400">{member.roleName ?? member.dutyContent ?? '项目团队成员'}</div>
+                            </div>
+                            <input
+                              checked={checked}
+                              className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-300"
+                              onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                                setQuickAssignState((current) => ({
+                                  ...current,
+                                  participantMembers: event.target.checked
+                                    ? [...current.participantMembers, { userId: member.userId, userName: member.userName }]
+                                    : current.participantMembers.filter((item) => item.userId !== member.userId),
+                                }));
+                              }}
+                              type="checkbox"
+                            />
+                          </label>
+                        );
+                      })
+                  ) : (
+                    <div className="py-6 text-center text-sm text-slate-400">暂无可选参与人，请先补充项目团队成员。</div>
+                  )}
+                </div>
+              </div>
+
+              {quickAssignState.participantMembers.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {quickAssignState.participantMembers.map((member) => (
+                    <span key={member.userId} className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
+                      {member.userName}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400">当前未设置参与人</div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                className="rounded-xl px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-100"
+                onClick={() => {
+                  closeQuickAssign();
+                }}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-200 transition-all hover:shadow-xl hover:shadow-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={quickAssignState.loading}
+                onClick={() => {
+                  void handleSaveQuickAssign();
+                }}
+                type="button"
+              >
+                {quickAssignState.loading ? '保存中...' : '保存分配'}
+              </button>
+            </div>
+          </Card>
         </div>
       ) : null}
 
@@ -3019,34 +3918,68 @@ export function ProjectGanttWorkspacePage({
         </div>
       ) : null}
 
+      {teamPanelVisible && selectedProjectId ? (
+        <div className="fixed right-0 top-0 z-50 h-full w-[420px] shadow-[-20px_0_60px_rgba(0,0,0,0.15)]">
+          <div className="flex h-full flex-col bg-white">
+            <div className="relative border-b border-slate-100 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-6 py-5">
+              <div className="relative flex items-start justify-between">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-widest text-white/80">项目级管理</div>
+                  <h2 className="mt-1 text-lg font-bold text-white">项目团队</h2>
+                  <div className="mt-1 text-xs text-white/75">
+                    先维护项目团队，再在每一步任务上分配负责人和参与人。
+                  </div>
+                </div>
+                <button
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-all hover:bg-white/20 hover:text-white"
+                  onClick={closeTeamPanel}
+                  type="button"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <ProjectTeamManager
+                members={members}
+                projectId={selectedProjectId}
+                onAddMember={onCreateMember}
+                onDeleteMember={onDeleteMember}
+                onUpdateMember={onUpdateMember}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* 任务详情侧边栏 */}
-        <GanttDetailPanel
+      <GanttDetailPanel
         actionLoading={actionLoading}
         attachments={attachments}
         budgets={budgets}
+        currentUserId={currentUserId}
+        currentUserName={currentUserName}
         detailEditState={detailEditState}
         detailPanel={detailPanel}
         members={members}
         projectId={selectedProjectId ?? 0}
+        readOnly={!canManageProjectSchedule}
         row={detailPanel.rowId ? findRow(detailPanel.rowId) : null}
         selectedProjectBudgetAmount={selectedProject?.budgetAmount}
         taskDependencies={taskDependencies}
-          onClose={closeDetailPanel}
+        onClose={closeDetailPanel}
         onDelete={(row) => {
           void handleDeleteRow(row);
         }}
         onDeleteBudget={(projectId, budgetId) => {
           void onDeleteBudget(projectId, budgetId);
         }}
-        onDeleteMember={(projectId, memberId) => {
-          void onDeleteMember(projectId, memberId);
-        }}
+        onDeleteMember={onDeleteMember}
         onDeleteAttachment={(projectId, attachmentId) => {
           void onDeleteAttachment(projectId, attachmentId);
         }}
-        onAddMember={(projectId, member) => {
-          void onCreateMember(projectId, member);
-        }}
+        onUploadAttachment={onUploadAttachment}
+        onAddMember={onCreateMember}
         onAddBudget={(projectId, budget) => {
           void onCreateBudget(projectId, budget);
         }}

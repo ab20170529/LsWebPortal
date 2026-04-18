@@ -9,9 +9,9 @@ import { createApiClient } from '@lserp/http';
 import { Badge, Button, Card } from '@lserp/ui';
 
 import {
-  getCheckinResultLabel,
   getFileCategoryLabel,
 } from './project-display';
+import { uploadProjectAttachment } from './project-attachments';
 import { useProjectToast } from './project-toast';
 import { useSystemUserOptions } from './system-user-directory';
 import { SystemUserPicker } from './system-user-picker';
@@ -119,16 +119,6 @@ type ReportFormState = {
   userName: string;
 };
 
-type CheckInFormState = {
-  address: string;
-  checkInTime: string;
-  lat: string;
-  lng: string;
-  result: string;
-  userId: string;
-  userName: string;
-};
-
 type AttachmentFormState = {
   file: File | null;
   fileCategory: string;
@@ -163,7 +153,6 @@ type TaskAssignmentFormState = {
 
 const PLAN_TYPE_OPTIONS = ['MONTH', 'WEEK', 'DAY'];
 const REPORT_TYPE_OPTIONS = ['DAY', 'WEEK', 'MONTH'];
-const CHECKIN_RESULT_OPTIONS = ['NORMAL', 'LATE', 'ABSENT', 'FIELD'];
 const EXECUTION_STATUS_OPTIONS = ['NOT_STARTED', 'IN_PROGRESS', 'PAUSED', 'COMPLETED'];
 const REVIEW_STATUS_OPTIONS = ['PENDING', 'APPROVED', 'REJECTED'];
 const FILE_CATEGORY_OPTIONS = ['MILESTONE', 'DELIVERABLE', 'CONTRACT', 'REPORT', 'OTHER'];
@@ -215,16 +204,6 @@ const initialReportFormState: ReportFormState = {
   reportContent: '',
   reportDate: '',
   reportType: 'DAY',
-  userId: '',
-  userName: '',
-};
-
-const initialCheckInFormState: CheckInFormState = {
-  address: '',
-  checkInTime: '',
-  lat: '',
-  lng: '',
-  result: 'NORMAL',
   userId: '',
   userName: '',
 };
@@ -325,7 +304,6 @@ export function ActionConsole({
   const [budgetForm, setBudgetForm] = useState<BudgetFormState>(initialBudgetFormState);
   const [planForm, setPlanForm] = useState<PlanFormState>(initialPlanFormState);
   const [reportForm, setReportForm] = useState<ReportFormState>(initialReportFormState);
-  const [checkInForm, setCheckInForm] = useState<CheckInFormState>(initialCheckInFormState);
   const [attachmentForm, setAttachmentForm] = useState<AttachmentFormState>(initialAttachmentFormState);
   const [nodeActionForm, setNodeActionForm] = useState<NodeActionFormState>(initialNodeActionFormState);
   const [taskStatusForm, setTaskStatusForm] = useState<TaskStatusFormState>(initialTaskStatusFormState);
@@ -366,11 +344,6 @@ export function ActionConsole({
         managerName: current.managerName || manager.userName,
       }));
       setReportForm((current) => ({
-        ...current,
-        userId: current.userId || manager.userId,
-        userName: current.userName || manager.userName,
-      }));
-      setCheckInForm((current) => ({
         ...current,
         userId: current.userId || manager.userId,
         userName: current.userName || manager.userName,
@@ -928,66 +901,6 @@ export function ActionConsole({
             </div>
           </Card>
 
-          <Card className="rounded-[28px] p-6">
-            <div className="theme-text-strong text-lg font-black tracking-tight">
-              Check-In
-            </div>
-            <div className="mt-4 grid gap-4">
-              <FieldBlock label="User / Result">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <select className="theme-input h-11 rounded-2xl px-4" disabled={memberOptions.length === 0} onChange={(event: SelectChangeEvent) => { syncMemberFields(event.target.value, setCheckInForm); }} value={checkInForm.userId}>
-                    <option value="">{memberOptions.length ? 'Select user' : 'Add team members first'}</option>
-                    {memberOptions.map((member) => (
-                      <option key={member.id} value={member.userId}>
-                        {member.userName}
-                      </option>
-                    ))}
-                  </select>
-                  <select className="theme-input h-11 rounded-2xl px-4" onChange={(event: SelectChangeEvent) => { setCheckInForm((current) => ({ ...current, result: event.target.value })); }} value={checkInForm.result}>
-                    {CHECKIN_RESULT_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {getCheckinResultLabel(option)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </FieldBlock>
-              <FieldBlock label="Time / Address">
-                <div className="grid gap-3">
-                  <input className="theme-input h-11 rounded-2xl px-4" onChange={(event: TextInputChangeEvent) => { setCheckInForm((current) => ({ ...current, checkInTime: event.target.value })); }} type="datetime-local" value={checkInForm.checkInTime} />
-                  <input className="theme-input h-11 rounded-2xl px-4" onChange={(event: TextInputChangeEvent) => { setCheckInForm((current) => ({ ...current, address: event.target.value })); }} placeholder="Check-in address" value={checkInForm.address} />
-                </div>
-              </FieldBlock>
-              <FieldBlock label="Longitude / Latitude">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <input className="theme-input h-11 rounded-2xl px-4" onChange={(event: TextInputChangeEvent) => { setCheckInForm((current) => ({ ...current, lng: event.target.value })); }} placeholder="Longitude" type="number" value={checkInForm.lng} />
-                  <input className="theme-input h-11 rounded-2xl px-4" onChange={(event: TextInputChangeEvent) => { setCheckInForm((current) => ({ ...current, lat: event.target.value })); }} placeholder="Latitude" type="number" value={checkInForm.lat} />
-                </div>
-              </FieldBlock>
-              <Button
-                disabled={!selectedProjectId || memberOptions.length === 0 || actionLoading === 'create-checkin'}
-                onClick={() => {
-                  void runAction('create-checkin', async () => {
-                    const projectId = ensureSelectedProject();
-                    await mutateData(`/api/project/projects/${projectId}/checkins`, 'POST', {
-                      address: trimToNull(checkInForm.address),
-                      checkInTime: trimToNull(checkInForm.checkInTime),
-                      lat: numberToNull(checkInForm.lat),
-                      lng: numberToNull(checkInForm.lng),
-                      result: checkInForm.result,
-                      userId: checkInForm.userId,
-                      userName: checkInForm.userName,
-                    });
-                    startTransition(() => {
-                      setCheckInForm((current) => ({ ...initialCheckInFormState, userId: current.userId, userName: current.userName }));
-                    });
-                  });
-                }}
-              >
-                {actionLoading === 'create-checkin' ? 'Saving...' : 'Create check-in'}
-              </Button>
-            </div>
-          </Card>
         </div>
 
         <div className="space-y-6">
@@ -1058,19 +971,15 @@ export function ActionConsole({
                     if (!attachmentForm.file) {
                       throw new Error('Select a file to upload.');
                     }
-                    const formData = new FormData();
-                    formData.append('file', attachmentForm.file);
-                    formData.append('fileCategory', attachmentForm.fileCategory);
-                    formData.append('uploaderId', attachmentForm.uploaderId);
-                    formData.append('uploaderName', attachmentForm.uploaderName);
-                    formData.append('remark', attachmentForm.remark);
-                    if (trimToNull(attachmentForm.projectNodeId)) {
-                      formData.append('projectNodeId', attachmentForm.projectNodeId);
-                    }
-                    if (trimToNull(attachmentForm.projectTaskId)) {
-                      formData.append('projectTaskId', attachmentForm.projectTaskId);
-                    }
-                    await mutateData(`/api/project/projects/${projectId}/attachments/upload`, 'POST', formData);
+                    await uploadProjectAttachment(projectId, {
+                      file: attachmentForm.file,
+                      fileCategory: attachmentForm.fileCategory,
+                      projectNodeId: numberToNull(attachmentForm.projectNodeId),
+                      projectTaskId: numberToNull(attachmentForm.projectTaskId),
+                      remark: attachmentForm.remark,
+                      uploaderId: attachmentForm.uploaderId,
+                      uploaderName: attachmentForm.uploaderName,
+                    });
                     startTransition(() => {
                       setAttachmentForm((current) => ({ ...initialAttachmentFormState, uploaderId: current.uploaderId, uploaderName: current.uploaderName }));
                     });

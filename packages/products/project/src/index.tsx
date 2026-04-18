@@ -1,21 +1,23 @@
 ﻿import {
   startTransition,
   useEffect,
+  useMemo,
   useState,
   type ChangeEvent,
   type ReactNode,
 } from 'react';
+import { usePortalAuth } from '@lserp/auth';
 import { createApiClient } from '@lserp/http';
 import { Badge, Button, Card, cx } from '@lserp/ui';
 import { ActionConsole } from './action-console';
 import {
-  getCheckinResultLabel,
   getFileCategoryLabel,
   getProjectStatusLabel,
   getProjectStatusTone,
   getRowKindLabel,
 } from './project-display';
 import { ProjectGanttWorkspacePage } from './project-gantt-workspace-page';
+import type { TaskDependency } from './gantt-types';
 import {
   ProjectManagementPage,
   type ProjectManagementProjectDetail,
@@ -23,7 +25,16 @@ import {
   type ProjectManagementProjectType,
   type ProjectSavePayload,
 } from './project-management-page';
+import {
+  deleteProjectAttachment,
+  fetchProjectAttachments,
+  uploadProjectAttachment,
+  type ProjectAttachmentRecord,
+  type UploadProjectAttachmentInput,
+} from './project-attachments';
+import { ProjectRolePermissionManagementPage } from './project-role-permission-management-page';
 import { ProjectTypeManagementPage } from './project-type-management-page';
+import { ProjectUserPermissionManagementPage } from './project-user-permission-management-page';
 import { ProjectWorkspacePlaceholderPage } from './project-workspace-placeholder-page';
 import {
   projectWorkspaceGroups,
@@ -35,6 +46,20 @@ import { ProjectToastProvider } from './project-toast';
 import { ProjectDelayApplicationPage } from './workspaces/delay-application/delay-application-page';
 import { ProjectPlanLogPage } from './workspaces/plan-log/plan-log-page';
 import { ProjectTaskSubmissionPage } from './workspaces/task-submission/task-submission-page';
+import {
+  canAccessProjectByMembers,
+  canAccessProjectRecord,
+  canCreateProject,
+  canManageProjectRecord,
+  canManageProjectSchedule,
+  filterPlansByPermission,
+  filterProjectWorkspaceGroupsByPermission,
+  filterProjectWorkspaceItemsByPermission,
+  filterReportsByPermission,
+  filterTasksByPermission,
+  resolveProjectDefaultWorkspace,
+  resolveProjectPermissionContext,
+} from './project-permissions';
 
 type CommonResult<T> = {
   code: number;
@@ -164,6 +189,22 @@ type ProjectPlan = {
   status?: string | null;
 };
 
+type ProjectPlanItem = {
+  assigneeId?: string | null;
+  assigneeName?: string | null;
+  helpDept?: string | null;
+  id: number;
+  planContent: string;
+  planDate?: string | null;
+  planRequirement?: string | null;
+  projectId: number;
+  projectNodeId?: number | null;
+  projectPlanId: number;
+  projectTaskId?: number | null;
+  status?: string | null;
+  weekDay?: string | null;
+};
+
 type ProjectReport = {
   coordinationContent?: string | null;
   id: number;
@@ -182,22 +223,7 @@ type ProjectReport = {
   userName: string;
 };
 
-type ProjectCheckIn = {
-  id: number;
-  address?: string | null;
-  checkInTime?: string | null;
-  result?: string | null;
-  userName: string;
-};
-
-type ProjectAttachment = {
-  id: number;
-  fileCategory?: string | null;
-  fileName: string;
-  fileSize?: number | null;
-  uploadTime?: string | null;
-  uploaderName?: string | null;
-};
+type ProjectAttachment = ProjectAttachmentRecord;
 
 type GanttRow = {
   end: Date;
@@ -426,7 +452,35 @@ async function mutateData<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', bo
   return response.data;
 }
 
+async function requestPlanItemsByPlanId(projectId: number, plans: Array<{ id: number }>) {
+  if (!plans.length) {
+    return {} as Record<number, ProjectPlanItem[]>;
+  }
+
+  const entries = await Promise.all(
+    plans.map(async (plan) => {
+      const items = await requestData<ProjectPlanItem[]>(
+        `/api/project/projects/${projectId}/plans/${plan.id}/items`,
+      );
+      return [plan.id, items] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries) as Record<number, ProjectPlanItem[]>;
+}
+
 export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
+  const { session } = usePortalAuth();
+  const permission = useMemo(
+    () => resolveProjectPermissionContext(session),
+    [session],
+  );
+  const currentUserId = permission.employeeUserId;
+  const currentUserName =
+    session?.employeeName?.trim() ||
+    session?.displayName?.trim() ||
+    session?.username?.trim() ||
+    '管理员';
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('project-management');
   const needsWorkspaceResourceData =
     workspaceMode === 'project-gantt-workspace' ||
@@ -441,15 +495,39 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
   const [plans, setPlans] = useState<ProjectPlan[]>([]);
+  const [planItemsByPlanId, setPlanItemsByPlanId] = useState<Record<number, ProjectPlanItem[]>>({});
   const [reports, setReports] = useState<ProjectReport[]>([]);
-  const [checkIns, setCheckIns] = useState<ProjectCheckIn[]>([]);
   const [attachments, setAttachments] = useState<ProjectAttachment[]>([]);
+  const [taskDependencies, setTaskDependencies] = useState<TaskDependency[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const needsTaskDependencyData = workspaceMode === 'project-gantt-workspace';
+  const needsPlanItemData = workspaceMode === 'plan-log';
+  const visibleWorkspaceItems = useMemo(
+    () => filterProjectWorkspaceItemsByPermission(projectWorkspaceItems, permission),
+    [permission],
+  );
+  const visibleWorkspaceGroups = useMemo(
+    () =>
+      filterProjectWorkspaceGroupsByPermission(
+        projectWorkspaceGroups,
+        permission.visibleWorkspaceIds,
+      ),
+    [permission.visibleWorkspaceIds],
+  );
+
+  useEffect(() => {
+    const nextWorkspace = resolveProjectDefaultWorkspace(permission, workspaceMode);
+    if (nextWorkspace !== workspaceMode) {
+      startTransition(() => {
+        setWorkspaceMode(nextWorkspace);
+      });
+    }
+  }, [permission, workspaceMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -502,9 +580,49 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
       pageNumber: 1,
       pageSize: 12,
     })
-      .then((data) => {
+      .then(async (data) => {
         const items = getPagedItems(data);
 
+        if (
+          permission.isSuperAdmin ||
+          permission.canViewAllProjects ||
+          !permission.employeeUserId
+        ) {
+          return items;
+        }
+
+        const directItems = items.filter((item) =>
+          canAccessProjectRecord(item, permission),
+        );
+        const remainingItems = items.filter(
+          (item) => !directItems.some((directItem) => directItem.id === item.id),
+        );
+
+        if (!remainingItems.length) {
+          return directItems;
+        }
+
+        const scopedItems = await Promise.all(
+          remainingItems.map(async (item) => {
+            try {
+              const detail = await requestData<ProjectDetail>(
+                `/api/project/projects/${item.id}/detail`,
+              );
+              return canAccessProjectByMembers(detail.members, permission)
+                ? item
+                : null;
+            } catch {
+              return null;
+            }
+          }),
+        );
+
+        return [
+          ...directItems,
+          ...scopedItems.filter((item): item is ProjectItem => item !== null),
+        ];
+      })
+      .then((items) => {
         if (cancelled) {
           return;
         }
@@ -540,16 +658,17 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [reloadNonce, searchKeyword]);
+  }, [permission, reloadNonce, searchKeyword]);
 
   useEffect(() => {
     if (selectedProjectId === null) {
       setProjectDetail(null);
       setDetailError(null);
       setPlans([]);
+      setPlanItemsByPlanId({});
       setReports([]);
-      setCheckIns([]);
       setAttachments([]);
+      setTaskDependencies([]);
       setWorkspaceError(null);
       return;
     }
@@ -597,16 +716,38 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
     void Promise.all([
       requestData<ProjectPlan[]>(`/api/project/projects/${selectedProjectId}/plans`),
       requestData<ProjectReport[]>(`/api/project/projects/${selectedProjectId}/reports`),
-      requestData<ProjectCheckIn[]>(`/api/project/projects/${selectedProjectId}/checkins`),
-      requestData<ProjectAttachment[]>(`/api/project/projects/${selectedProjectId}/attachments`),
+      fetchProjectAttachments(selectedProjectId),
+      needsTaskDependencyData
+        ? requestData<TaskDependency[]>(`/api/project/projects/${selectedProjectId}/dependencies`)
+        : Promise.resolve([] as TaskDependency[]),
     ])
-      .then(([nextPlans, nextReports, nextCheckIns, nextAttachments]) => {
+      .then(async ([nextPlans, nextReports, nextAttachments, nextTaskDependencies]) => {
+        const nextPlanItemsByPlanId = needsPlanItemData
+          ? await requestPlanItemsByPlanId(selectedProjectId, nextPlans)
+          : {};
+
+        return {
+          nextAttachments,
+          nextPlanItemsByPlanId,
+          nextPlans,
+          nextReports,
+          nextTaskDependencies,
+        };
+      })
+      .then(({
+        nextAttachments,
+        nextPlanItemsByPlanId,
+        nextPlans,
+        nextReports,
+        nextTaskDependencies,
+      }) => {
         if (!cancelled) {
           startTransition(() => {
             setPlans(nextPlans);
+            setPlanItemsByPlanId(nextPlanItemsByPlanId);
             setReports(nextReports);
-            setCheckIns(nextCheckIns);
             setAttachments(nextAttachments);
+            setTaskDependencies(nextTaskDependencies);
           });
         }
       })
@@ -614,9 +755,10 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         if (!cancelled) {
           startTransition(() => {
             setPlans([]);
+            setPlanItemsByPlanId({});
             setReports([]);
-            setCheckIns([]);
             setAttachments([]);
+            setTaskDependencies([]);
             setWorkspaceError(normalizeErrorMessage(error));
           });
         }
@@ -630,7 +772,28 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [needsWorkspaceResourceData, reloadNonce, selectedProjectId]);
+  }, [needsPlanItemData, needsTaskDependencyData, needsWorkspaceResourceData, reloadNonce, selectedProjectId]);
+
+  const scopedTasks = useMemo(
+    () => filterTasksByPermission(projectDetail?.tasks ?? [], permission),
+    [permission, projectDetail?.tasks],
+  );
+  const scopedPlans = useMemo(
+    () => filterPlansByPermission(plans, permission),
+    [permission, plans],
+  );
+  const scopedReports = useMemo(
+    () => filterReportsByPermission(reports, permission),
+    [permission, reports],
+  );
+  const canManageCurrentProjectSchedule = useMemo(
+    () => canManageProjectSchedule(projectDetail?.members ?? [], permission),
+    [permission, projectDetail?.members],
+  );
+  const canCreateProjectEntry = useMemo(
+    () => canCreateProject(permission),
+    [permission],
+  );
 
   async function handleCreateProject(payload: ProjectSavePayload) {
     const created = await mutateData<ProjectItem>('/api/project/projects', 'POST', payload);
@@ -764,7 +927,51 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
   }
 
   async function handleDeleteAttachment(projectId: number, attachmentId: number) {
-    await mutateData(`/api/project/projects/${projectId}/attachments/${attachmentId}`, 'DELETE');
+    await deleteProjectAttachment(projectId, attachmentId);
+    startTransition(() => {
+      setSelectedProjectId(projectId);
+      setReloadNonce((current) => current + 1);
+    });
+  }
+
+  async function handleUploadAttachment(
+    projectId: number,
+    payload: UploadProjectAttachmentInput,
+  ) {
+    await uploadProjectAttachment(projectId, payload);
+    startTransition(() => {
+      setSelectedProjectId(projectId);
+      setReloadNonce((current) => current + 1);
+    });
+  }
+
+  async function handleCreateDependency(
+    projectId: number,
+    payload: {
+      predecessorTaskId: number;
+      successorTaskId: number;
+      dependencyType: 'FS' | 'FF' | 'SS' | 'SF';
+      lagDays?: number;
+      remark?: string | null;
+    },
+  ) {
+    const created = await mutateData<{ id: number }>(
+      `/api/project/projects/${projectId}/dependencies`,
+      'POST',
+      payload,
+    );
+    startTransition(() => {
+      setSelectedProjectId(projectId);
+      setReloadNonce((current) => current + 1);
+    });
+    return created;
+  }
+
+  async function handleDeleteDependency(projectId: number, dependencyId: number) {
+    await mutateData(
+      `/api/project/projects/${projectId}/dependencies/${dependencyId}`,
+      'DELETE',
+    );
     startTransition(() => {
       setSelectedProjectId(projectId);
       setReloadNonce((current) => current + 1);
@@ -961,6 +1168,61 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
     },
   ) {
     await mutateData(`/api/project/projects/${projectId}/plans/${planId}`, 'PUT', payload);
+    startTransition(() => {
+      setSelectedProjectId(projectId);
+      setReloadNonce((current) => current + 1);
+    });
+  }
+
+  async function handleCreatePlanItem(
+    projectId: number,
+    planId: number,
+    payload: {
+      assigneeId: string | null;
+      assigneeName: string | null;
+      helpDept: string | null;
+      planContent: string;
+      planDate: string | null;
+      planRequirement: string | null;
+      projectNodeId: number | null;
+      projectTaskId: number | null;
+      status: string | null;
+      weekDay: string | null;
+    },
+  ) {
+    await mutateData(
+      `/api/project/projects/${projectId}/plans/${planId}/items`,
+      'POST',
+      payload,
+    );
+    startTransition(() => {
+      setSelectedProjectId(projectId);
+      setReloadNonce((current) => current + 1);
+    });
+  }
+
+  async function handleUpdatePlanItem(
+    projectId: number,
+    planId: number,
+    itemId: number,
+    payload: {
+      assigneeId: string | null;
+      assigneeName: string | null;
+      helpDept: string | null;
+      planContent: string;
+      planDate: string | null;
+      planRequirement: string | null;
+      projectNodeId: number | null;
+      projectTaskId: number | null;
+      status: string | null;
+      weekDay: string | null;
+    },
+  ) {
+    await mutateData(
+      `/api/project/projects/${projectId}/plans/${planId}/items/${itemId}`,
+      'PUT',
+      payload,
+    );
     startTransition(() => {
       setSelectedProjectId(projectId);
       setReloadNonce((current) => current + 1);
@@ -1385,60 +1647,42 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
           <Card className="rounded-[32px] p-8">
             <div className="flex items-center justify-between gap-3">
               <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">
-                计划、汇报、打卡与附件
+                计划、汇报与附件
               </div>
               <Badge tone="neutral">协同区</Badge>
             </div>
 
             {workspaceLoading ? (
               <div className="theme-surface-subtle mt-5 rounded-[22px] p-4 text-sm">
-                正在加载计划、汇报、打卡和附件...
+                正在加载计划、汇报和附件...
               </div>
             ) : workspaceError ? (
               <div className="mt-5 rounded-[22px] border border-rose-100 bg-rose-50/80 p-4 text-sm text-rose-800">
                 {workspaceError}
               </div>
             ) : (
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="space-y-3">
-                  <div className="theme-text-strong text-sm font-black tracking-tight">打卡记录</div>
-                  {checkIns.length ? (
-                    checkIns.slice(0, 6).map((checkIn) => (
-                      <div key={checkIn.id} className="theme-surface-subtle rounded-[22px] p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="theme-text-strong text-sm font-semibold">{checkIn.userName}</div>
-                          <Badge tone="neutral">{getCheckinResultLabel(checkIn.result)}</Badge>
+              <div className="mt-5 space-y-3">
+                <div className="theme-text-strong text-sm font-black tracking-tight">附件资料</div>
+                {attachments.length ? (
+                  attachments.slice(0, 6).map((attachment) => (
+                    <div key={attachment.id} className="theme-surface-subtle rounded-[22px] p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="theme-text-strong text-sm font-semibold">
+                          {attachment.fileName}
                         </div>
-                        <div className="theme-text-muted mt-2 text-sm">{formatDateTime(checkIn.checkInTime)}</div>
-                        <div className="theme-text-muted mt-2 text-sm leading-6">{checkIn.address ?? '--'}</div>
+                        <Badge tone="neutral">{getFileCategoryLabel(attachment.fileCategory)}</Badge>
                       </div>
-                    ))
-                  ) : (
-                    <div className="theme-surface-subtle rounded-[22px] p-4 text-sm">暂无打卡记录</div>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <div className="theme-text-strong text-sm font-black tracking-tight">附件资料</div>
-                  {attachments.length ? (
-                    attachments.slice(0, 6).map((attachment) => (
-                      <div key={attachment.id} className="theme-surface-subtle rounded-[22px] p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="theme-text-strong text-sm font-semibold">{attachment.fileName}</div>
-                          <Badge tone="neutral">{getFileCategoryLabel(attachment.fileCategory)}</Badge>
-                        </div>
-                        <div className="theme-text-muted mt-2 text-sm">
-                          {attachment.uploaderName ?? '--'} / {formatDateTime(attachment.uploadTime)}
-                        </div>
-                        <div className="theme-text-muted mt-2 text-sm leading-6">
-                          文件大小 {formatAmount(attachment.fileSize)} bytes
-                        </div>
+                      <div className="theme-text-muted mt-2 text-sm">
+                        {attachment.uploaderName ?? '--'} / {formatDateTime(attachment.uploadTime)}
                       </div>
-                    ))
-                  ) : (
-                    <div className="theme-surface-subtle rounded-[22px] p-4 text-sm">暂无附件资料</div>
-                  )}
-                </div>
+                      <div className="theme-text-muted mt-2 text-sm leading-6">
+                        文件大小 {formatAmount(attachment.fileSize)} bytes
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="theme-surface-subtle rounded-[22px] p-4 text-sm">暂无附件资料</div>
+                )}
               </div>
             )}
           </Card>
@@ -1486,6 +1730,8 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
   if (workspaceMode === 'project-management') {
     workspaceContent = (
       <ProjectManagementPage
+        canCreateProject={canCreateProjectEntry}
+        canManageProject={(project) => canManageProjectRecord(project, permission)}
         detailLoading={detailLoading}
         keyword={keyword}
         listError={listError}
@@ -1519,28 +1765,34 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
     workspaceContent = <ProjectTypeManagementPage projectTypes={projectTypes} />;
   } else if (workspaceMode === 'project-gantt-workspace') {
     workspaceContent = (
-        <ProjectGanttWorkspacePage
-          attachments={attachments}
-          budgets={projectDetail?.budgets ?? []}
-          members={projectDetail?.members ?? []}
-          nodes={projectDetail?.nodes ?? []}
+      <ProjectGanttWorkspacePage
+        attachments={attachments}
+        budgets={projectDetail?.budgets ?? []}
+        canManageProjectSchedule={canManageCurrentProjectSchedule}
+        currentUserId={currentUserId}
+        currentUserName={currentUserName}
+        members={projectDetail?.members ?? []}
+        nodes={projectDetail?.nodes ?? []}
         onCreateBudget={handleCreateBudget}
+        onCreateDependency={handleCreateDependency}
         onCreateMember={handleCreateMember}
         onCreateNode={handleCreateNode}
         onDeleteBudget={handleDeleteBudget}
+        onDeleteDependency={handleDeleteDependency}
         onDeleteMember={handleDeleteMember}
         onDeleteAttachment={handleDeleteAttachment}
+        onUploadAttachment={handleUploadAttachment}
         onCreateTask={handleCreateTask}
         onDeleteNode={handleDeleteNode}
         onDeleteTask={handleDeleteTask}
-          onOpenProgressConfig={() => {
-            setWorkspaceMode('milestone-template-management');
-          }}
-          onOpenProjectManagement={() => {
-            setWorkspaceMode('project-management');
-          }}
-          onLoadTaskDetail={handleLoadTaskDetail}
-          onSaveProjectBase={handleUpdateProject}
+        onOpenProgressConfig={() => {
+          setWorkspaceMode('milestone-template-management');
+        }}
+        onOpenProjectManagement={() => {
+          setWorkspaceMode('project-management');
+        }}
+        onLoadTaskDetail={handleLoadTaskDetail}
+        onSaveProjectBase={handleUpdateProject}
         onUpdateNodeBasic={handleUpdateNodeBasic}
         onUpdateNodeStatus={handleUpdateNodeStatus}
         onUpdateTaskAssignment={handleUpdateTaskAssignment}
@@ -1554,6 +1806,7 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         selectedProjectId={selectedProjectId}
         selectedProject={selectedProject}
         statistics={statistics}
+        taskDependencies={taskDependencies}
         tasks={projectDetail?.tasks ?? []}
       />
     );
@@ -1563,22 +1816,31 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         detailLoading={detailLoading}
         onUpdateTaskStatus={handleUpdateTaskStatus}
         selectedProject={selectedProject}
-        tasks={projectDetail?.tasks ?? []}
+        tasks={scopedTasks}
       />
     );
   } else if (workspaceMode === 'plan-log') {
     workspaceContent = (
       <ProjectPlanLogPage
         attachments={attachments}
-        checkIns={checkIns}
+        currentUserId={currentUserId}
+        currentUserName={currentUserName}
         loading={workspaceLoading}
+        members={projectDetail?.members ?? []}
+        nodes={projectDetail?.nodes ?? []}
         onCreatePlan={handleCreatePlan}
+        onCreatePlanItem={handleCreatePlanItem}
         onCreateReport={handleCreateReport}
+        onDeleteAttachment={handleDeleteAttachment}
+        onUploadAttachment={handleUploadAttachment}
         onUpdatePlan={handleUpdatePlan}
+        onUpdatePlanItem={handleUpdatePlanItem}
         onUpdateReport={handleUpdateReport}
-        plans={plans}
-        reports={reports}
+        planItemsByPlanId={planItemsByPlanId}
+        plans={scopedPlans}
+        reports={scopedReports}
         selectedProject={selectedProject}
+        tasks={scopedTasks}
         workspaceError={workspaceError}
       />
     );
@@ -1589,14 +1851,22 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         nodes={projectDetail?.nodes ?? []}
         onCreateReport={handleCreateReport}
         onUpdateReport={handleUpdateReport}
-        reports={reports}
+        reports={scopedReports}
         selectedProject={selectedProject}
-        tasks={projectDetail?.tasks ?? []}
+        tasks={scopedTasks}
         workspaceError={workspaceError}
       />
     );
   } else if (workspaceMode === 'project-analysis-dashboard') {
     workspaceContent = analysisDashboardContent;
+  } else if (workspaceMode === 'project-user-permission-management') {
+    workspaceContent = (
+      <ProjectUserPermissionManagementPage currentUserName={currentUserName} />
+    );
+  } else if (workspaceMode === 'project-role-permission-management') {
+    workspaceContent = (
+      <ProjectRolePermissionManagementPage currentUserName={currentUserName} />
+    );
   }
 
   return (
@@ -1618,8 +1888,8 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         }}
         selectedProjectName={selectedProject?.projectName ?? '未选择项目'}
         workspaceContent={workspaceContent}
-        workspaceGroups={projectWorkspaceGroups}
-        workspaceItems={projectWorkspaceItems}
+        workspaceGroups={visibleWorkspaceGroups}
+        workspaceItems={visibleWorkspaceItems}
         workspaceMode={workspaceMode}
       />
     </ProjectToastProvider>
