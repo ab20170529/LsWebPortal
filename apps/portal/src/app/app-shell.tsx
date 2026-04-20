@@ -32,12 +32,41 @@ const idleNavStyle: CSSProperties = {
   backgroundColor: 'color-mix(in srgb, var(--portal-color-surface-panel) 82%, white)',
 };
 
-const userPillStyle: CSSProperties = {
+const pillStyle: CSSProperties = {
   border: '1px solid color-mix(in srgb, var(--portal-color-border-soft) 76%, white)',
-  background:
-    'color-mix(in srgb, var(--portal-color-surface-panel) 84%, transparent)',
+  background: 'color-mix(in srgb, var(--portal-color-surface-panel) 84%, transparent)',
   color: 'var(--portal-color-text-secondary)',
 };
+
+function resolveCompanySwitchTarget(pathname: string) {
+  if (typeof window === 'undefined') {
+    return '/systems';
+  }
+
+  const currentTarget = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const normalizedTarget = currentTarget.replace(/^\/design\b/, '/designer');
+  const isSystemTarget = normalizedTarget.startsWith('/designer')
+    || normalizedTarget.startsWith('/erp')
+    || normalizedTarget.startsWith('/project')
+    || normalizedTarget.startsWith('/bi');
+
+  if (isSystemTarget) {
+    return `/systems?redirect=${encodeURIComponent(normalizedTarget)}`;
+  }
+
+  const normalizedPathname = pathname.replace(/^\/design\b/, '/designer');
+  const fallbackTarget = normalizedPathname.startsWith('/designer')
+    ? '/designer'
+    : normalizedPathname.startsWith('/erp')
+      ? '/erp'
+      : normalizedPathname.startsWith('/project')
+        ? '/project'
+        : normalizedPathname.startsWith('/bi')
+          ? '/bi'
+          : null;
+
+  return fallbackTarget ? `/systems?redirect=${encodeURIComponent(fallbackTarget)}` : '/systems';
+}
 
 export function AppShell({ children, pathname }: AppShellProps) {
   const { isAuthenticated, session, signOut } = usePortalAuth();
@@ -64,19 +93,34 @@ export function AppShell({ children, pathname }: AppShellProps) {
         Portal Shell
       </div>
       <h1 className="theme-text-strong mt-2 text-3xl font-black tracking-tight">
-        登录、选系统、主题和布局统一归平台层管理
+        统一登录、业务库、系统入口与主题壳层
       </h1>
       <p className="theme-text-muted mt-3 max-w-3xl text-sm leading-7">
-        业务系统只挂接到门户壳层里，不再各自重复实现登录页和导航框架。这样主题切换、布局切换和入口治理都可以在运行时统一生效。
+        业务系统挂到同一个门户母壳上运行，登录态、系统授权、业务库切换与外层导航统一收口，业务域自身只关注自己的工作台。
       </p>
     </div>
   );
 
   const shellUserActions = (
     <div className="flex flex-wrap items-center gap-3">
-      <div className="rounded-full px-4 py-2 text-sm" style={userPillStyle}>
+      <div className="rounded-full px-4 py-2 text-sm" style={pillStyle}>
+        {session?.loginStage === 'company'
+          ? `业务库：${session.activeCompany?.title ?? session.companyTitle ?? '未命名业务库'}`
+          : '业务库：未选择'}
+      </div>
+      <div className="rounded-full px-4 py-2 text-sm" style={pillStyle}>
         {session ? `当前用户：${session.displayName}` : '当前用户：访客'}
       </div>
+      <Button
+        onClick={() => {
+          startTransition(() => {
+            navigate(resolveCompanySwitchTarget(pathname));
+          });
+        }}
+        tone="ghost"
+      >
+        切换业务库
+      </Button>
       <Button
         onClick={() => {
           startTransition(() => {
@@ -96,8 +140,7 @@ export function AppShell({ children, pathname }: AppShellProps) {
     <nav className="portal-shell__nav" data-layout={shellLayoutId}>
       <div className="portal-shell__nav-list">
         {visibleNavItems.map((item) => {
-          const isActive =
-            pathname === item.to || pathname.startsWith(`${item.to}/`);
+          const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
 
           return (
             <a
@@ -116,14 +159,10 @@ export function AppShell({ children, pathname }: AppShellProps) {
               style={isActive ? activeNavStyle : idleNavStyle}
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-strong text-sm font-bold">
-                  {item.title}
-                </div>
+                <div className="theme-text-strong text-sm font-bold">{item.title}</div>
                 <Badge tone={item.tone}>{item.shortLabel}</Badge>
               </div>
-              <p className="theme-text-muted mt-2 text-sm leading-6">
-                {item.description}
-              </p>
+              <p className="theme-text-muted mt-2 text-sm leading-6">{item.description}</p>
             </a>
           );
         })}
@@ -142,8 +181,7 @@ export function AppShell({ children, pathname }: AppShellProps) {
               <AppLogo subtitle="Unified Access Portal" title="LsERPPortal" />
 
               <p className="theme-text-muted max-w-xs text-sm leading-7">
-                平台母基座统一接管登录入口、系统网关、主题和布局能力，让
-                Designer、ERP、Project 在一个壳层下协同运行。
+                Portal 统一接管登录、系统入口和业务库上下文，让 ERP、Project、BI 在同一母壳下稳定运行。
               </p>
             </div>
 
@@ -162,16 +200,14 @@ export function AppShell({ children, pathname }: AppShellProps) {
                 <Badge tone="success">v1</Badge>
               </div>
               <p className="theme-text-muted mt-3 text-sm leading-7">
-                当前版本已经把系统权限展示收回到门户层，登录账号不同，系统入口会跟着变化。
+                系统可见性仍由门户授权控制，业务库则在系统门禁页统一选择并在全平台共享。
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Badge tone="neutral">
                   {isAuthenticated ? `系统数：${grantedSystemIds.length}` : '系统数：0'}
                 </Badge>
                 {isAuthenticated && accessibleSystemTitles ? (
-                  <div className="theme-text-muted text-sm leading-7">
-                    {accessibleSystemTitles}
-                  </div>
+                  <div className="theme-text-muted text-sm leading-7">{accessibleSystemTitles}</div>
                 ) : null}
               </div>
             </Card>
@@ -182,7 +218,7 @@ export function AppShell({ children, pathname }: AppShellProps) {
               <div className="space-y-4">
                 <AppLogo subtitle="Unified Access Portal" title="LsERPPortal" />
                 <p className="theme-text-muted max-w-3xl text-sm leading-7">
-                  统一壳层支持运行时布局切换。当前是顶栏布局，业务内容和路由逻辑不需要跟着改。
+                  当前是顶部导航布局，登录、系统授权与业务库切换保持统一，业务页自身布局不需要感知壳层差异。
                 </p>
               </div>
               {shellUserActions}
@@ -198,9 +234,7 @@ export function AppShell({ children, pathname }: AppShellProps) {
               {shellUserActions}
             </header>
           ) : (
-            <section className="glass-panel rounded-[32px] p-6">
-              {shellIntro}
-            </section>
+            <section className="glass-panel rounded-[32px] p-6">{shellIntro}</section>
           )}
 
           <section className="min-h-0 flex-1">{children}</section>

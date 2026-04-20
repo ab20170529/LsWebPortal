@@ -1,0 +1,174 @@
+import { buildDashboardConfigBridgeModuleSettingInput } from './dashboard-config-bridge-module-setting-input';
+import type { BuildDashboardConfigBridgeNodesInput } from './dashboard-config-bridge-nodes';
+
+type BuildDashboardConfigBridgeModuleSettingConfig = {
+  activeResize: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['activeResize'];
+  activeTab: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['activeTab'];
+  addTab: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['addTab'];
+  archiveMainTableBuilderNode: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['archiveMainTableBuilderNode'];
+  autoFitColumnWidth: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['autoFitColumnWidth'];
+  billDocumentWorkbenchNode: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['billDocumentWorkbenchNode'];
+  buildColumn: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['buildColumn'];
+  buildConditionField: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['buildConditionField'];
+  buildDocumentFilterRuntimeRules: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['buildDocumentFilterRuntimeRules'];
+  builderDetailTableBuilderNode: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['builderDetailTableBuilderNode'];
+  builderLeftTableBuilderNode: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['builderLeftTableBuilderNode'];
+  builderMainTableBuilderNode: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['builderMainTableBuilderNode'];
+  businessType: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['businessType'];
+  columnOperationPanel: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['columnOperationPanel'];
+  conditionPanelControlWidth: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['conditionPanelControlWidth'];
+  conditionPanelResizeMaxWidth: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['conditionPanelResizeMaxWidth'];
+  conditionPanelResizeMinWidth: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['conditionPanelResizeMinWidth'];
+  currentDetailFillType: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['currentDetailFillType'];
+  currentDetailFillTypeValue: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['currentDetailFillTypeValue'];
+  currentModuleName: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['currentModuleName'];
+  deleteSelectedColumns: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['deleteSelectedColumns'];
+  deleteSelectedConditions: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['deleteSelectedConditions'];
+  deleteTab: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['deleteTab'];
+  detailGridActionConfig: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['detailGridActionConfig'];
+  detailTabs: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['detailTabs'];
+  detailWebUrl: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['detailWebUrl'];
+  documentDetailTableBuilderNode: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['documentDetailTableBuilderNode'];
+  documentLeftPaneWidth: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['documentLeftPaneWidth'];
+  documentTreeTableBuilderNode: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['documentTreeTableBuilderNode'];
+  handlePasteColumns: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['handlePasteColumns'];
+  inspectorPaneWidth: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['inspectorPaneWidth'];
+  isConfigFullscreenActive: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['isConfigFullscreenActive'];
+  isDetailFillSelected: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['isDetailFillSelected'];
+  isDetailViewSelected: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['isDetailViewSelected'];
+  isSingleTableSyncing: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['isSingleTableSyncing'];
+  isTreePaneVisible: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['isTreePaneVisible'];
+  mainDocumentFilterRuntimeRules: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['mainDocumentFilterRuntimeRules'];
+  mainFilterFields: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['mainFilterFields'];
+  mainGridActionConfig: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['mainGridActionConfig'];
+  mainTableColumns: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['mainTableColumns'];
+  mainTableHiddenColumnsCount: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['mainTableHiddenColumnsCount'];
+  moduleSettingStageHeightClass: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['moduleSettingStageHeightClass'];
+  moduleSettingStageStyle: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['moduleSettingStageStyle'];
+  moduleSettingsSectionRef: BuildDashboardConfigBridgeNodesInput['moduleSetting']['container']['moduleSettingsSectionRef'];
+  onActivateCondition: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['onActivateCondition'];
+  onActivateDetailTab: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['onActivateDetailTab'];
+  onActivateTableConfig: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['onActivateTableConfig'];
+  onOpenMainHiddenColumnsModal: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['onOpenMainHiddenColumnsModal'];
+  onSelectDetailGridAction: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['onSelectDetailGridAction'];
+  onSelectMainGridAction: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['onSelectMainGridAction'];
+  onStartDocumentLeftResize: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['onStartDocumentLeftResize'];
+  onToggleFullscreen: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['onToggleFullscreen'];
+  renderFieldPreview: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['renderFieldPreview'];
+  selectedDetailForDelete: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['selectedDetailForDelete'];
+  selectedDetailGridAction: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['selectedDetailGridAction'];
+  selectedLeftForDelete: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['selectedLeftForDelete'];
+  selectedMainFilterId: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['selectedMainFilterId'];
+  selectedMainFiltersForDelete: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['selectedMainFiltersForDelete'];
+  selectedMainForDelete: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['selectedMainForDelete'];
+  selectedMainGridAction: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['selectedMainGridAction'];
+  setBuilderSelectionContextMenu: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['setBuilderSelectionContextMenu'];
+  setDetailTableColumns: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['setDetailTableColumns'];
+  setInspectorPanelTab: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['setInspectorPanelTab'];
+  setLeftTableColumns: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['setLeftTableColumns'];
+  setMainFilterFields: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['setMainFilterFields'];
+  setMainTableColumns: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['setMainTableColumns'];
+  setSelectedArchiveNodeId: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['setSelectedArchiveNodeId'];
+  setSelectedMainFiltersForDelete: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['setSelectedMainFiltersForDelete'];
+  showDetailGridActionBar: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['document']['showDetailGridActionBar'];
+  startResize: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['tree']['startResize'];
+  treeRelationColumn: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['treeRelationColumn'];
+  workspaceTheme: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['workspaceTheme'];
+  workspaceThemeStyles: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['workspaceThemeStyles'];
+  workspaceThemeVars: BuildDashboardConfigBridgeNodesInput['moduleSetting']['shell']['common']['workspaceThemeVars'];
+};
+
+export function buildDashboardConfigBridgeModuleSettingConfig(
+  input: BuildDashboardConfigBridgeModuleSettingConfig,
+) {
+  return buildDashboardConfigBridgeModuleSettingInput({
+    container: {
+      moduleSettingsSectionRef: input.moduleSettingsSectionRef,
+    },
+    commonState: {
+      activeResize: input.activeResize,
+      activeTab: input.activeTab,
+      businessType: input.businessType,
+      currentModuleName: input.currentModuleName,
+      currentDetailFillType: input.currentDetailFillType,
+      currentDetailFillTypeValue: input.currentDetailFillTypeValue,
+      detailTabs: input.detailTabs,
+      detailWebUrl: input.detailWebUrl,
+      inspectorPaneWidth: input.inspectorPaneWidth,
+      isConfigFullscreenActive: input.isConfigFullscreenActive,
+      isTreePaneVisible: input.isTreePaneVisible,
+      moduleSettingStageHeightClass: input.moduleSettingStageHeightClass,
+      moduleSettingStageStyle: input.moduleSettingStageStyle,
+      treeRelationColumn: input.treeRelationColumn,
+      workspaceTheme: input.workspaceTheme,
+      workspaceThemeStyles: input.workspaceThemeStyles,
+      workspaceThemeVars: input.workspaceThemeVars,
+    },
+    commonNodes: {
+      archiveMainTableBuilderNode: input.archiveMainTableBuilderNode,
+      billDocumentWorkbenchNode: input.billDocumentWorkbenchNode,
+      columnOperationPanel: input.columnOperationPanel,
+    },
+    commonActions: {
+      addTab: input.addTab,
+      onActivateDetailTab: input.onActivateDetailTab,
+      onActivateTableConfig: input.onActivateTableConfig,
+      onOpenMainHiddenColumnsModal: input.onOpenMainHiddenColumnsModal,
+      onToggleFullscreen: input.onToggleFullscreen,
+      setBuilderSelectionContextMenu: input.setBuilderSelectionContextMenu,
+      setInspectorPanelTab: input.setInspectorPanelTab,
+      setSelectedArchiveNodeId: input.setSelectedArchiveNodeId,
+    },
+    commonHelpers: {
+      renderFieldPreview: input.renderFieldPreview,
+    },
+    document: {
+      detailGridActionConfig: input.detailGridActionConfig,
+      documentDetailTableBuilderNode: input.documentDetailTableBuilderNode,
+      documentLeftPaneWidth: input.documentLeftPaneWidth,
+      documentTreeTableBuilderNode: input.documentTreeTableBuilderNode,
+      handlePasteColumns: input.handlePasteColumns,
+      mainGridActionConfig: input.mainGridActionConfig,
+      mainTableHiddenColumnsCount: input.mainTableHiddenColumnsCount,
+      onSelectDetailGridAction: input.onSelectDetailGridAction,
+      onSelectMainGridAction: input.onSelectMainGridAction,
+      onStartDocumentLeftResize: input.onStartDocumentLeftResize,
+      selectedDetailGridAction: input.selectedDetailGridAction,
+      selectedMainGridAction: input.selectedMainGridAction,
+      setDetailTableColumns: input.setDetailTableColumns,
+      setLeftTableColumns: input.setLeftTableColumns,
+      setMainTableColumns: input.setMainTableColumns,
+      showDetailGridActionBar: input.showDetailGridActionBar,
+    },
+    tree: {
+      autoFitColumnWidth: input.autoFitColumnWidth,
+      buildColumn: input.buildColumn,
+      buildConditionField: input.buildConditionField,
+      buildDocumentFilterRuntimeRules: input.buildDocumentFilterRuntimeRules,
+      builderDetailTableBuilderNode: input.builderDetailTableBuilderNode,
+      builderLeftTableBuilderNode: input.builderLeftTableBuilderNode,
+      builderMainTableBuilderNode: input.builderMainTableBuilderNode,
+      conditionPanelControlWidth: input.conditionPanelControlWidth,
+      conditionPanelResizeMaxWidth: input.conditionPanelResizeMaxWidth,
+      conditionPanelResizeMinWidth: input.conditionPanelResizeMinWidth,
+      deleteSelectedColumns: input.deleteSelectedColumns,
+      deleteSelectedConditions: input.deleteSelectedConditions,
+      deleteTab: input.deleteTab,
+      onActivateCondition: input.onActivateCondition,
+      isDetailFillSelected: input.isDetailFillSelected,
+      isDetailViewSelected: input.isDetailViewSelected,
+      isSingleTableSyncing: input.isSingleTableSyncing,
+      mainDocumentFilterRuntimeRules: input.mainDocumentFilterRuntimeRules,
+      mainFilterFields: input.mainFilterFields,
+      mainTableColumns: input.mainTableColumns,
+      selectedDetailForDelete: input.selectedDetailForDelete,
+      selectedLeftForDelete: input.selectedLeftForDelete,
+      selectedMainFilterId: input.selectedMainFilterId,
+      selectedMainFiltersForDelete: input.selectedMainFiltersForDelete,
+      selectedMainForDelete: input.selectedMainForDelete,
+      setMainFilterFields: input.setMainFilterFields,
+      setSelectedMainFiltersForDelete: input.setSelectedMainFiltersForDelete,
+      startResize: input.startResize,
+    },
+  });
+}

@@ -1,4 +1,5 @@
 import type {
+  AuthActiveCompany,
   AuthRoleAssignment,
   AuthSystemGrant,
   PortalAuthBootstrapPayload,
@@ -8,6 +9,22 @@ import { getPlatformSystemEntry, platformSystemEntries } from '@lserp/contracts'
 import { apiConfig } from '../../../config';
 import type { AuthSession } from '../types';
 import { ApiError, apiRequest } from './http-client';
+
+function deriveActiveCompany(session: AuthSession): AuthActiveCompany | null {
+  if (session.activeCompany?.companyKey) {
+    return session.activeCompany;
+  }
+
+  if (!session.companyKey && !session.datasourceCode && !session.companyTitle) {
+    return null;
+  }
+
+  return {
+    companyKey: session.companyKey ?? '',
+    datasourceCode: session.datasourceCode,
+    title: session.companyTitle,
+  };
+}
 
 function buildFallbackRoleAssignments(session: AuthSession): AuthRoleAssignment[] {
   if (session.admin) {
@@ -73,13 +90,15 @@ export function buildFallbackPortalBootstrapPayload(
     roleAssignments: buildFallbackRoleAssignments(session),
     sessionContext: {
       accessToken: session.accessToken,
-      admin: session.admin,
-      companyKey: session.companyKey,
-      companyTitle: session.companyTitle,
-      datasourceCode: session.datasourceCode,
+      activeCompany: deriveActiveCompany(session),
+      admin: session.admin ?? session.isAdmin,
+      companyKey: session.activeCompany?.companyKey ?? session.companyKey,
+      companyTitle: session.activeCompany?.title ?? session.companyTitle,
+      datasourceCode: session.activeCompany?.datasourceCode ?? session.datasourceCode,
       departmentId: session.departmentId,
       employeeName: session.employeeName,
       expiresAt: session.expiresAt,
+      loginStage: session.loginStage,
       tokenType: session.tokenType,
       tokenVersion: session.tokenVersion,
     },
@@ -117,13 +136,15 @@ export async function resolvePortalBootstrapPayload(
       ...payload,
       sessionContext: {
         accessToken: session.accessToken,
-        admin: session.admin,
-        companyKey: session.companyKey,
-        companyTitle: session.companyTitle,
-        datasourceCode: session.datasourceCode,
+        activeCompany: deriveActiveCompany(session),
+        admin: session.admin ?? session.isAdmin,
+        companyKey: session.activeCompany?.companyKey ?? session.companyKey,
+        companyTitle: session.activeCompany?.title ?? session.companyTitle,
+        datasourceCode: session.activeCompany?.datasourceCode ?? session.datasourceCode,
         departmentId: session.departmentId,
         employeeName: session.employeeName,
         expiresAt: session.expiresAt,
+        loginStage: session.loginStage,
         tokenType: session.tokenType,
         tokenVersion: session.tokenVersion,
         ...payload.sessionContext,

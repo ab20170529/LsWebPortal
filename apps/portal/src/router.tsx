@@ -1,8 +1,11 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
-import { hasSystemAccess, usePortalAuth } from '@lserp/auth';
-import { BiHomePage } from '@lserp/bi';
+import React, { useEffect, useState, type ChangeEvent } from 'react';
+import {
+  hasActiveCompanySession,
+  hasSystemAccess,
+  usePortalAuth,
+} from '@lserp/auth';
+import { BiDisplayHomePage, BiHomePage } from '@lserp/bi';
 import { getPlatformSystemEntry as getPlatformSystemEntryById } from '@lserp/contracts';
-import { DesignerHomePage } from '@lserp/designer';
 import { ErpHomePage } from '@lserp/erp';
 import { ProjectHomePage } from '@lserp/project';
 import { usePortalTheme } from '@lserp/tokens';
@@ -18,8 +21,15 @@ import { clearAuthSession } from './features/auth/services/storage-service';
 import { AccessDeniedPage, SystemAccessPage } from './pages/system-access-page';
 import { PortalSystemManagerPage } from './pages/portal-system-manager-page';
 
+const DesignerHomePage = React.lazy(() =>
+  import('@lserp/designer').then((module) => ({
+    default: module.DesignerHomePage,
+  })),
+);
+
 type RouteKey =
   | 'bi'
+  | 'bi-display'
   | 'designer'
   | 'erp'
   | 'login'
@@ -38,6 +48,12 @@ function normalizePathname(pathname: string) {
   return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
 }
 
+function replaceLocation(to: string) {
+  const nextPath = normalizePathname(to);
+  window.history.replaceState({}, '', nextPath);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
 export function navigate(to: string) {
   const nextPath = normalizePathname(to);
   window.history.pushState({}, '', nextPath);
@@ -47,8 +63,29 @@ export function navigate(to: string) {
 function resolveRoute(pathname: string): RouteKey {
   const normalizedPath = normalizePathname(pathname);
 
+  if (normalizedPath === '/bi-display' || normalizedPath.startsWith('/bi-display/')) {
+    return 'bi-display';
+  }
+
   if (normalizedPath === '/bi' || normalizedPath.startsWith('/bi/')) {
     return 'bi';
+  }
+
+  if (
+    normalizedPath === '/designer'
+    || normalizedPath.startsWith('/designer/')
+    || normalizedPath === '/design'
+    || normalizedPath.startsWith('/design/')
+  ) {
+    return 'designer';
+  }
+
+  if (normalizedPath === '/erp' || normalizedPath.startsWith('/erp/')) {
+    return 'erp';
+  }
+
+  if (normalizedPath === '/project' || normalizedPath.startsWith('/project/')) {
+    return 'project';
   }
 
   switch (normalizedPath) {
@@ -56,12 +93,6 @@ function resolveRoute(pathname: string): RouteKey {
       return 'login';
     case '/systems':
       return 'systems';
-    case '/designer':
-      return 'designer';
-    case '/erp':
-      return 'erp';
-    case '/project':
-      return 'project';
     case '/settings':
       return 'settings';
     case '/system-manager':
@@ -71,12 +102,68 @@ function resolveRoute(pathname: string): RouteKey {
   }
 }
 
-function isPlatformSystemRoute(route: RouteKey): route is 'bi' | 'designer' | 'erp' | 'project' {
-  return route === 'bi' || route === 'designer' || route === 'erp' || route === 'project';
+function isPlatformSystemRoute(
+  route: RouteKey,
+): route is 'bi' | 'bi-display' | 'designer' | 'erp' | 'project' {
+  return (
+    route === 'bi'
+    || route === 'bi-display'
+    || route === 'designer'
+    || route === 'erp'
+    || route === 'project'
+  );
 }
 
 function getPlatformSystemEntry(route: RouteKey) {
   return isPlatformSystemRoute(route) ? getPlatformSystemEntryById(route) : undefined;
+}
+
+function getCurrentRouteRedirectTarget() {
+  if (typeof window === 'undefined') {
+    return '/systems';
+  }
+
+  const currentTarget = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return currentTarget.replace(/^\/design\b/, '/designer');
+}
+
+function isSystemRedirectTarget(target: string) {
+  return (
+    target === '/systems'
+    || target === '/bi-display'
+    || target.startsWith('/bi-display/')
+    || target === '/designer'
+    || target.startsWith('/designer/')
+    || target === '/erp'
+    || target.startsWith('/erp/')
+    || target === '/project'
+    || target.startsWith('/project/')
+    || target === '/bi'
+    || target.startsWith('/bi/')
+  );
+}
+
+function resolveAuthenticatedLoginRedirectTarget(session: Parameters<typeof hasActiveCompanySession>[0]) {
+  if (typeof window === 'undefined') {
+    return '/systems';
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const requestedTarget = searchParams.get('redirect');
+  if (!requestedTarget?.startsWith('/')) {
+    return '/systems';
+  }
+
+  const normalizedTarget = requestedTarget.replace(/^\/design\b/, '/designer');
+  if (!isSystemRedirectTarget(normalizedTarget)) {
+    return normalizedTarget;
+  }
+
+  if (hasActiveCompanySession(session)) {
+    return normalizedTarget;
+  }
+
+  return `/systems?redirect=${encodeURIComponent(normalizedTarget)}`;
 }
 
 function usePathname() {
@@ -105,7 +192,7 @@ function NotFoundPage() {
         当前页面尚未接入门户路由
       </h1>
       <p className="theme-text-muted mt-3 max-w-2xl text-sm leading-7">
-        请通过门户统一路由挂接新的业务页面，避免各业务系统自行维护重复的外层壳结构。
+        请通过门户统一路由挂接新的业务页面，避免各业务系统重复维护外层壳结构。
       </p>
     </Card>
   );
@@ -141,7 +228,7 @@ function SettingsPage() {
           主题、布局与视图治理
         </h1>
         <p className="theme-text-muted mt-3 max-w-3xl text-sm leading-7">
-          主题切换、布局切换与 Token 覆盖都属于平台层能力。页面表现可以变化，但不应反向侵入业务逻辑和运行时协议。
+          主题切换、布局切换和 Token 覆盖都属于平台层能力。页面表现可以变化，但不应反向侵入业务逻辑和运行时协议。
         </p>
       </Card>
 
@@ -266,17 +353,57 @@ function SettingsPage() {
   );
 }
 
+function DesignerRouteLoadingState() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_32%),linear-gradient(180deg,#eef5ff_0%,#f8fbff_42%,#f2f6fb_100%)] px-6 py-10">
+      <Card className="w-full max-w-lg rounded-[32px] p-8 text-center">
+        <Badge tone="brand">Designer</Badge>
+        <h1 className="theme-text-strong mt-4 text-3xl font-black tracking-tight">
+          正在加载设计平台
+        </h1>
+        <p className="theme-text-muted mt-3 text-sm leading-7">
+          设计器资源和旧样式包会在进入
+          {' '}
+          `/designer`
+          {' '}
+          时按需加载，避免影响 Portal 其它页面。
+        </p>
+      </Card>
+    </div>
+  );
+}
+
 export function PortalRouter() {
   const { isAuthenticated, session, signOut } = usePortalAuth();
   const pathname = usePathname();
   const route = resolveRoute(pathname);
   const isPublicBiShareRoute = pathname === '/bi/share' || pathname.startsWith('/bi/share/');
+  const isLegacyDesignerRoute = pathname === '/design' || pathname.startsWith('/design/');
+
+  useEffect(() => {
+    if (isLegacyDesignerRoute) {
+      const nextPathname = window.location.pathname.replace(/^\/design\b/, '/designer');
+      window.history.replaceState({}, '', `${nextPathname}${window.location.search}${window.location.hash}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  }, [isLegacyDesignerRoute]);
 
   useEffect(() => {
     if (isAuthenticated && session && route === 'login') {
-      navigate('/systems');
+      navigate(resolveAuthenticatedLoginRedirectTarget(session));
     }
   }, [isAuthenticated, route, session]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !session || !isPlatformSystemRoute(route) || route === 'bi' && isPublicBiShareRoute) {
+      return;
+    }
+
+    if (!hasActiveCompanySession(session)) {
+      const redirectTarget = getCurrentRouteRedirectTarget();
+      replaceLocation(`/systems?redirect=${encodeURIComponent(redirectTarget)}`);
+    }
+  }, [isAuthenticated, isPublicBiShareRoute, route, session]);
 
   if (route === 'login') {
     return <PortalLoginPage />;
@@ -305,8 +432,11 @@ export function PortalRouter() {
     return <SystemAccessPage session={session} />;
   }
 
+  if (isPlatformSystemRoute(route) && !hasActiveCompanySession(session)) {
+    return <SystemAccessPage session={session} />;
+  }
+
   if (route === 'system-manager') {
-    // 检查是否有管理权限（管理员或张又文）
     const isAdmin = session.admin === true;
     const isZhangYouwen = (session.employeeName ?? session.displayName ?? '').trim() === '张又文';
     if (!isAdmin && !isZhangYouwen) {
@@ -351,19 +481,49 @@ export function PortalRouter() {
     return <BiHomePage />;
   }
 
-  let content = <NotFoundPage />;
-
-  if (route === 'designer' || route === 'erp') {
-    const targetLabel = getPlatformSystemEntry(route)?.title ?? route;
-
-    if (!hasSystemAccess(session, route)) {
-      content = <AccessDeniedPage session={session} targetLabel={targetLabel} />;
-    } else {
-      content = route === 'designer' ? <DesignerHomePage /> : <ErpHomePage />;
+  if (route === 'bi-display') {
+    if (!hasSystemAccess(session, 'bi-display')) {
+      return (
+        <AppShell pathname={pathname}>
+          <AccessDeniedPage session={session} targetLabel="BI 展示系统" />
+        </AppShell>
+      );
     }
-  } else if (route === 'settings') {
-    content = <SettingsPage />;
+
+    return <BiDisplayHomePage />;
   }
 
-  return <AppShell pathname={pathname}>{content}</AppShell>;
+  if (route === 'designer') {
+    if (!hasSystemAccess(session, 'designer')) {
+      return (
+        <AppShell pathname={pathname}>
+          <AccessDeniedPage session={session} targetLabel="设计平台" />
+        </AppShell>
+      );
+    }
+
+    return (
+      <React.Suspense fallback={<DesignerRouteLoadingState />}>
+        <DesignerHomePage />
+      </React.Suspense>
+    );
+  }
+
+  if (route === 'erp') {
+    if (!hasSystemAccess(session, 'erp')) {
+      return (
+        <AppShell pathname={pathname}>
+          <AccessDeniedPage session={session} targetLabel="ERP 系统" />
+        </AppShell>
+      );
+    }
+
+    return <AppShell pathname={pathname}><ErpHomePage /></AppShell>;
+  }
+
+  if (route === 'settings') {
+    return <AppShell pathname={pathname}><SettingsPage /></AppShell>;
+  }
+
+  return <AppShell pathname={pathname}><NotFoundPage /></AppShell>;
 }

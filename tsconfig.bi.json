@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "packages/products/bi/src/**/*.ts",
+    "packages/products/bi/src/**/*.tsx"
+  ],
+  "exclude": [
+    "**/dist/**",
+    "**/node_modules/**"
+  ]
+}

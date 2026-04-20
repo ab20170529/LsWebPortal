@@ -1,4 +1,3 @@
-import type { ServerOption, EmployeeOption, LoginPayload, AuthSession } from '../types';
 import { apiConfig } from '../../../config';
 
 export class ApiError extends Error {

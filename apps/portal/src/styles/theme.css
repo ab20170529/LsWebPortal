@@ -1,10 +1,14 @@
 @import "tailwindcss";
+@source "..";
 @source "../../../../packages";
 
 @theme {
   --font-sans: "Plus Jakarta Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-display: "Inter", "Plus Jakarta Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   
+  /* Keep legacy auth/system-gate utility classes working after the portal theme moved to brand-* tokens. */
+  --color-primary: #2563eb;
+  --color-erp-blue: #1d4ed8;
   --color-brand-50: #eff6ff;
   --color-brand-100: #dbeafe;
   --color-brand-200: #bfdbfe;

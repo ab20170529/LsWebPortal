@@ -48,8 +48,7 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
           return;
         }
 
-        const message =
-          loadError instanceof Error ? loadError.message : '加载 BI 大屏失败。';
+        const message = loadError instanceof Error ? loadError.message : '加载 BI 大屏失败。';
         setError(message);
       } finally {
         if (!cancelled) {
@@ -111,7 +110,7 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
           <Card className="rounded-[32px] p-8">
             <div className="theme-text-strong text-2xl font-black tracking-tight">外链 BI</div>
             <p className="theme-text-muted mt-3 text-sm leading-7">
-              当前页面配置为新窗口打开。点击下方按钮访问外部 BI。
+              当前页面配置为新窗口打开。点击下方按钮即可访问外部 BI。
             </p>
             <div className="mt-6">
               <Button

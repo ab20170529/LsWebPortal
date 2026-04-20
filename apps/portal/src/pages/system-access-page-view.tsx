@@ -1,16 +1,25 @@
-import { startTransition } from 'react';
-import { getGrantedSystemIds, type AuthSession } from '@lserp/auth';
+import { startTransition, useEffect, useState } from 'react';
+import {
+  getGrantedSystemIds,
+  type AuthSession,
+  usePortalAuth,
+} from '@lserp/auth';
 import { getPlatformSystemEntry } from '@lserp/contracts';
 import { Badge, Button, Card } from '@lserp/ui';
 
-import { navigateToDesigner } from '../features/auth/services/designer-navigation';
+import {
+  activateCompanySession,
+  fetchAccessibleCompanies,
+} from '../features/auth/services/auth-service';
+import { resolvePortalBootstrapPayload } from '../features/auth/services/portal-bootstrap-service';
+import {
+  clearAuthSession,
+  persistAuthSession,
+  shouldRememberAuthSession,
+} from '../features/auth/services/storage-service';
+import type { ServerOption } from '../features/auth/types';
 import { navigate } from '../router';
 
-/**
- * 判断当前用户是否有「系统管理」按钮的访问权限：
- * - admin 标志为 true（平台管理员）
- * - 或员工姓名为"张又文"
- */
 function canManageSystems(session: AuthSession): boolean {
   if (session.admin === true) return true;
   const name = (session.employeeName ?? session.displayName ?? '').trim();
@@ -26,28 +35,63 @@ type SystemAccessPageProps = {
   session: AuthSession;
 };
 
-const ACCESS_DENIED = '\u65e0\u6743\u9650';
-const RETURN_TO_SYSTEMS = '\u8fd4\u56de\u7cfb\u7edf\u9009\u62e9';
-const RETURN_TO_LOGIN = '\u8fd4\u56de\u767b\u5f55\u9875';
+const ACCESS_DENIED = '无权限';
+const RETURN_TO_SYSTEMS = '返回系统选择';
+const RETURN_TO_LOGIN = '返回登录页';
 const AVAILABLE_SYSTEMS = 'Available Systems';
-const EMPTY_ACCESS = '\u5f53\u524d\u8d26\u53f7\u6682\u672a\u914d\u7f6e\u53ef\u8bbf\u95ee\u7cfb\u7edf\u3002';
-const NO_SYSTEM_TITLE = '\u5f53\u524d\u8d26\u53f7\u6682\u65e0\u53ef\u8fdb\u5165\u7684\u7cfb\u7edf';
-const NO_SYSTEM_DESC = '\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458\u4e3a\u5f53\u524d\u8d26\u53f7\u914d\u7f6e\u7cfb\u7edf\u6388\u6743\u540e\u518d\u767b\u5f55\u3002';
+const EMPTY_ACCESS = '当前账号暂未配置可访问系统。';
+const NO_SYSTEM_TITLE = '当前账号暂无可进入的系统';
+const NO_SYSTEM_DESC = '请联系管理员为当前账号配置系统授权后再登录。';
+const COMPANY_PANEL_TITLE = '当前业务库';
+const COMPANY_REQUIRED_MESSAGE = '请先选择业务库后再进入系统。';
 
 function getAccessDeniedTitle(targetLabel: string) {
-  return `\u5f53\u524d\u8d26\u53f7\u672a\u5f00\u901a ${targetLabel}`;
+  return `当前账号未开通 ${targetLabel}`;
 }
 
 const ACCESS_DENIED_DESC =
-  '\u95e8\u6237\u4f1a\u6839\u636e\u5f53\u524d\u8d26\u53f7\u7684\u7cfb\u7edf\u6388\u6743\u63a7\u5236\u8bbf\u95ee\u8303\u56f4\u3002\u82e5\u8fd8\u672a\u5f00\u901a\u8be5\u7cfb\u7edf\uff0c\u8bf7\u5148\u8fd4\u56de\u7cfb\u7edf\u9009\u62e9\u9875\uff0c\u6216\u8054\u7cfb\u7ba1\u7406\u5458\u8865\u9f50\u6388\u6743\u540e\u518d\u8fdb\u5165\u3002';
+  '门户会根据当前账号的系统授权控制访问范围。若还未开通该系统，请先返回系统选择页，或联系管理员补齐授权后再进入。';
 
-function openSystemEntry(session: AuthSession, route: string, systemId: string) {
-  if (systemId === 'designer') {
-    navigateToDesigner(session, systemId);
-    return;
+function normalizeRedirectTarget(rawTarget: string | null) {
+  if (!rawTarget || !rawTarget.startsWith('/')) {
+    return null;
   }
 
+  const normalizedTarget = rawTarget.replace(/^\/design\b/, '/designer');
+
+  if (
+    normalizedTarget === '/bi-display'
+    || normalizedTarget.startsWith('/bi-display/')
+    || normalizedTarget === '/designer'
+    || normalizedTarget.startsWith('/designer/')
+    || normalizedTarget === '/erp'
+    || normalizedTarget.startsWith('/erp/')
+    || normalizedTarget === '/project'
+    || normalizedTarget.startsWith('/project/')
+    || normalizedTarget === '/bi'
+    || normalizedTarget.startsWith('/bi/')
+  ) {
+    return normalizedTarget;
+  }
+
+  return null;
+}
+
+function getRedirectTarget() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  return normalizeRedirectTarget(searchParams.get('redirect'));
+}
+
+function openSystemEntry(route: string) {
   navigate(route);
+}
+
+function getCurrentCompanyKey(session: AuthSession) {
+  return session.activeCompany?.companyKey ?? session.companyKey ?? '';
 }
 
 export function AccessDeniedPage({ session, targetLabel }: AccessDeniedPageProps) {
@@ -76,6 +120,7 @@ export function AccessDeniedPage({ session, targetLabel }: AccessDeniedPageProps
           <Button
             onClick={() => {
               startTransition(() => {
+                clearAuthSession();
                 navigate('/');
               });
             }}
@@ -111,26 +156,119 @@ export function AccessDeniedPage({ session, targetLabel }: AccessDeniedPageProps
 }
 
 export function SystemAccessPage({ session }: SystemAccessPageProps) {
+  const { applyAuthBootstrap } = usePortalAuth();
   const accessibleEntries = getGrantedSystemIds(session)
     .map((systemId) => getPlatformSystemEntry(systemId))
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-
+  const currentCompanyKey = getCurrentCompanyKey(session);
+  const redirectTarget = getRedirectTarget();
   const showManageButton = canManageSystems(session);
+  const hasActiveCompany = Boolean(currentCompanyKey && session.loginStage === 'company');
+
+  const [companies, setCompanies] = useState<ServerOption[]>([]);
+  const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
+  const [isActivatingCompanyKey, setIsActivatingCompanyKey] = useState<string | null>(null);
+  const [companyError, setCompanyError] = useState<string | null>(null);
+  const [gateMessage, setGateMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCompanies = async () => {
+      if (!session.accessToken) {
+        if (active) {
+          setCompanies([]);
+        }
+        return;
+      }
+
+      setIsLoadingCompanies(true);
+      setCompanyError(null);
+
+      try {
+        const nextCompanies = await fetchAccessibleCompanies(session.accessToken);
+        if (!active) {
+          return;
+        }
+
+        setCompanies(Array.isArray(nextCompanies) ? nextCompanies : []);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setCompanies([]);
+        setCompanyError(error instanceof Error ? error.message : '业务库加载失败，请稍后重试。');
+      } finally {
+        if (active) {
+          setIsLoadingCompanies(false);
+        }
+      }
+    };
+
+    void loadCompanies();
+
+    return () => {
+      active = false;
+    };
+  }, [session.accessToken]);
+
+  const activateCompany = async (company: ServerOption) => {
+    if (!session.accessToken) {
+      setCompanyError('当前会话缺少访问令牌，请重新登录。');
+      return;
+    }
+
+    setGateMessage(null);
+
+    if (company.companyKey === currentCompanyKey && hasActiveCompany) {
+      if (redirectTarget) {
+        window.location.assign(redirectTarget);
+      }
+      return;
+    }
+
+    setIsActivatingCompanyKey(company.companyKey);
+    setCompanyError(null);
+
+    try {
+      const nextSession = await activateCompanySession(session.accessToken, {
+        companyKey: company.companyKey,
+      });
+
+      persistAuthSession(nextSession, shouldRememberAuthSession());
+      const bootstrapPayload = await resolvePortalBootstrapPayload(nextSession);
+      applyAuthBootstrap(bootstrapPayload);
+
+      if (redirectTarget) {
+        window.location.assign(redirectTarget);
+        return;
+      }
+
+      setGateMessage(`已切换到 ${company.title}，现在可以进入系统。`);
+    } catch (error) {
+      setCompanyError(error instanceof Error ? error.message : '业务库切换失败，请稍后重试。');
+    } finally {
+      setIsActivatingCompanyKey(null);
+    }
+  };
 
   if (accessibleEntries.length === 0) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f4f6fb] px-6 py-12">
-        <Card className="w-full max-w-xl rounded-[28px] p-10 text-center">
+      <div className="portal-system-gate flex min-h-screen items-center justify-center bg-[#f4f6fb] px-6 py-12">
+        <Card className="portal-system-card w-full max-w-xl rounded-[28px] p-10 text-center">
           <div className="theme-text-strong text-xl font-black tracking-tight">{NO_SYSTEM_TITLE}</div>
           <p className="theme-text-muted mt-3 text-sm leading-7">{NO_SYSTEM_DESC}</p>
           {showManageButton && (
             <div className="mt-6 flex justify-center">
               <button
                 className="rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
-                onClick={() => { navigate('/system-manager'); }}
+                onClick={() => {
+                  navigate('/system-manager');
+                }}
                 type="button"
               >
-                ⚙ 系统管理
+                系统管理
               </button>
             </div>
           )}
@@ -140,61 +278,155 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f4f6fb] px-6 py-12">
-      <div
-        className={
-          accessibleEntries.length === 1
-            ? 'w-full max-w-md'
-            : accessibleEntries.length === 2
-              ? 'w-full max-w-3xl'
-              : 'w-full max-w-5xl'
-        }
-      >
-        {/* 系统管理按钮（右上角，仅管理员/张又文可见） */}
+    <div className="portal-system-gate flex min-h-screen items-center justify-center bg-[#f4f6fb] px-6 py-12">
+      <div className="portal-system-gate__frame w-full max-w-6xl">
         {showManageButton && (
           <div className="mb-6 flex justify-end">
             <button
               className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-all hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700 hover:shadow-md"
-              onClick={() => { navigate('/system-manager'); }}
+              onClick={() => {
+                navigate('/system-manager');
+              }}
               type="button"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
               系统管理
             </button>
           </div>
         )}
 
-        <div
-          className={
-            accessibleEntries.length === 1
-              ? 'grid justify-center'
-              : accessibleEntries.length === 2
-                ? 'grid gap-6 md:grid-cols-2'
-                : 'grid gap-6 md:grid-cols-2 xl:grid-cols-3'
-          }
-        >
-          {accessibleEntries.map((entry) => (
-            <button
-              key={entry.id}
-              className="group min-h-[220px] rounded-[28px] border border-slate-200 bg-white p-8 text-left shadow-[0_24px_60px_-42px_rgba(15,23,42,0.26)] transition-all duration-200 hover:-translate-y-1 hover:border-sky-200 hover:shadow-[0_28px_70px_-38px_rgba(37,99,235,0.24)]"
-              onClick={() => {
-                openSystemEntry(session, entry.route, entry.id);
-              }}
-              type="button"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <Badge tone={entry.tone}>{entry.shortLabel}</Badge>
-                <span className="text-xs font-bold uppercase tracking-[0.22em] text-slate-300 transition-colors group-hover:text-slate-500">
-                  Enter
-                </span>
+        <div className="portal-system-gate__grid grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+          <Card className="portal-system-card rounded-[28px] p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.24em]">
+                  {COMPANY_PANEL_TITLE}
+                </div>
+                <div className="theme-text-strong mt-3 text-2xl font-black tracking-tight">
+                  {hasActiveCompany
+                    ? session.activeCompany?.title ?? session.companyTitle ?? '已选业务库'
+                    : '尚未选择业务库'}
+                </div>
               </div>
-              <div className="mt-10 text-2xl font-black tracking-tight text-slate-900">{entry.title}</div>
-              <p className="mt-4 text-sm leading-7 text-slate-500">{entry.description}</p>
-            </button>
-          ))}
+              <Badge tone={hasActiveCompany ? 'success' : 'neutral'}>
+                {hasActiveCompany ? 'Ready' : 'Required'}
+              </Badge>
+            </div>
+
+            <p className="theme-text-muted mt-4 text-sm leading-7">
+              登录后先确定当前业务库，再进入 Designer、ERP、Project 或 BI。业务库切换会刷新平台会话，避免串库。
+            </p>
+
+            {companyError ? (
+              <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {companyError}
+              </div>
+            ) : null}
+
+            {gateMessage ? (
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {gateMessage}
+              </div>
+            ) : null}
+
+            {!hasActiveCompany ? (
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                {COMPANY_REQUIRED_MESSAGE}
+              </div>
+            ) : null}
+
+            <div className="portal-system-gate__side-list mt-6 space-y-3">
+              {isLoadingCompanies ? (
+                <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                  正在加载可用业务库...
+                </div>
+              ) : companies.length > 0 ? (
+                companies.map((company) => {
+                  const isActive = company.companyKey === currentCompanyKey;
+                  const isSwitching = isActivatingCompanyKey === company.companyKey;
+
+                  return (
+                    <button
+                      key={`${company.companyKey}:${company.basename}:${company.serverport}`}
+                      className={`portal-system-card w-full rounded-[22px] border px-5 py-4 text-left transition-all ${
+                        isActive
+                          ? 'border-sky-200 bg-sky-50 shadow-[0_18px_40px_-30px_rgba(37,99,235,0.24)]'
+                          : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-[0_18px_40px_-34px_rgba(15,23,42,0.22)]'
+                      }`}
+                      disabled={Boolean(isActivatingCompanyKey)}
+                      onClick={() => {
+                        void activateCompany(company);
+                      }}
+                      type="button"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-black tracking-tight text-slate-900">
+                            {company.title}
+                          </div>
+                          <div className="mt-2 text-xs text-slate-500">
+                            {company.basename} · {company.serverip}:{company.serverport}
+                          </div>
+                        </div>
+                        <Badge tone={isActive ? 'brand' : 'neutral'}>
+                          {isSwitching ? '切换中' : isActive ? '当前' : '使用'}
+                        </Badge>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                  当前账号没有可用业务库。
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <div
+            className={
+              accessibleEntries.length === 1
+                ? 'grid justify-center'
+                : accessibleEntries.length === 2
+                  ? 'grid gap-6 md:grid-cols-2'
+                  : 'grid gap-6 md:grid-cols-2 xl:grid-cols-2'
+            }
+          >
+            {accessibleEntries.map((entry) => {
+              const disabled = !hasActiveCompany;
+
+              return (
+                <button
+                  key={entry.id}
+                  className={`portal-system-card group min-h-[220px] rounded-[28px] border p-8 text-left shadow-[0_24px_60px_-42px_rgba(15,23,42,0.26)] transition-all duration-200 ${
+                    disabled
+                      ? 'cursor-not-allowed border-slate-200 bg-slate-100/80 opacity-70'
+                      : 'border-slate-200 bg-white hover:-translate-y-1 hover:border-sky-200 hover:shadow-[0_28px_70px_-38px_rgba(37,99,235,0.24)]'
+                  }`}
+                  onClick={() => {
+                    if (disabled) {
+                      setGateMessage(COMPANY_REQUIRED_MESSAGE);
+                      return;
+                    }
+
+                    openSystemEntry(entry.route);
+                  }}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <Badge tone={entry.tone}>{entry.shortLabel}</Badge>
+                    <span className="text-xs font-bold uppercase tracking-[0.22em] text-slate-300 transition-colors group-hover:text-slate-500">
+                      {disabled ? 'Locked' : 'Enter'}
+                    </span>
+                  </div>
+                  <div className="mt-10 text-2xl font-black tracking-tight text-slate-900">{entry.title}</div>
+                  <p className="mt-4 text-sm leading-7 text-slate-500">{entry.description}</p>
+                  {!disabled ? null : (
+                    <p className="mt-6 text-sm font-semibold text-amber-700">先选择业务库后开放入口</p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

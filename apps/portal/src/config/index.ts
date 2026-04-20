@@ -14,7 +14,10 @@ export const apiConfig = {
   baseUrl: env.apiBaseUrl,
   auth: {
     bootstrap: `${env.authEndpoint}/portal/bootstrap`,
+    companies: `${env.authEndpoint}/companies`,
+    companySession: `${env.authEndpoint}/company-session`,
     employees: `${env.authEndpoint}/employees`,
+    identityLogin: `${env.authEndpoint}/login/identity`,
     login: `${env.authEndpoint}/login`,
     logout: `${env.authEndpoint}/logout`,
     me: `${env.authEndpoint}/me`,

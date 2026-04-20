@@ -1,3 +1,11 @@
+export type AuthLoginStage = 'identity' | 'company';
+
+export interface AuthActiveCompany {
+  companyKey: string;
+  datasourceCode?: string;
+  title?: string;
+}
+
 export interface ServerOption {
   companyKey: string;
   title: string;
@@ -14,32 +22,36 @@ export interface EmployeeOption {
   py: string;
 }
 
-export interface LoginPayload {
-  basename: string;
+export interface IdentityLoginPayload {
   employeeId: number;
   password: string;
-  serverip: string;
-  serverport: number;
+}
+
+export interface CompanySessionPayload {
+  companyKey: string;
 }
 
 export interface AuthSession {
   accessToken: string;
+  activeCompany?: AuthActiveCompany | null;
   admin?: boolean;
-  companyKey: string;
-  companyTitle: string;
+  companyKey?: string;
+  companyTitle?: string;
   datasourceCode?: string;
-  departmentId: string;
+  departmentId?: string;
   employeeId: number;
   employeeName: string;
-  expiresAt: string;
-  tokenType: string;
-  tokenVersion: number;
+  expiresAt?: string;
+  isAdmin?: boolean;
+  loginStage: AuthLoginStage;
+  tokenType?: string;
+  tokenVersion?: number;
   username: string;
 }
 
 export interface RememberedLoginState {
   employeeId: number;
   employeeName: string;
-  organizationKey: string;
+  organizationKey?: string;
   password: string;
 }

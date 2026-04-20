@@ -2,7 +2,8 @@
 export type {
   ServerOption,
   EmployeeOption,
-  LoginPayload,
+  IdentityLoginPayload,
+  CompanySessionPayload,
   AuthSession,
   RememberedLoginState,
 } from './types';
@@ -17,6 +18,9 @@ export { RememberCredentials } from './components/remember-credentials';
 export {
   fetchEmployeeOptions,
   fetchServerOptions,
+  fetchAccessibleCompanies,
+  loginWithIdentity,
+  activateCompanySession,
   loginWithPassword,
 } from './services/auth-service';
 

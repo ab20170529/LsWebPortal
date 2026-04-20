@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortalAuth } from '@lserp/auth';
 
-import {
-  fetchEmployeeOptions,
-  fetchServerOptions,
-  loginWithPassword,
-} from '../services/auth-service';
+import { fetchEmployeeOptions, loginWithIdentity } from '../services/auth-service';
 import { resolvePortalBootstrapPayload } from '../services/portal-bootstrap-service';
 import {
   clearRememberedLoginState,
   getRememberedLoginState,
   persistAuthSession,
+  persistLegacyDesignerLoginContext,
   persistRememberedLoginState,
 } from '../services/storage-service';
-import type { AuthSession, EmployeeOption, ServerOption } from '../types';
+import type { AuthSession, EmployeeOption } from '../types';
 
 type UseLoginFormControllerOptions = {
   onSuccess: (session: AuthSession) => void;
@@ -22,7 +19,6 @@ type UseLoginFormControllerOptions = {
 type LoginFormState = {
   employeeId: number | null;
   employeeKeyword: string;
-  organizationKey: string;
   password: string;
   rememberCredentials: boolean;
   showPassword: boolean;
@@ -36,11 +32,11 @@ function normalizeErrorMessage(error: unknown): string {
   }
 
   if (
-    error &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof error.message === 'string' &&
-    error.message.trim()
+    error
+    && typeof error === 'object'
+    && 'message' in error
+    && typeof error.message === 'string'
+    && error.message.trim()
   ) {
     return error.message;
   }
@@ -48,9 +44,7 @@ function normalizeErrorMessage(error: unknown): string {
   return '请求失败，请稍后重试。';
 }
 
-export function useLoginFormController({
-  onSuccess,
-}: UseLoginFormControllerOptions) {
+export function useLoginFormController({ onSuccess }: UseLoginFormControllerOptions) {
   const { applyAuthBootstrap } = usePortalAuth();
   const [form, setForm] = useState<LoginFormState>(() => {
     const remembered = getRememberedLoginState();
@@ -58,17 +52,14 @@ export function useLoginFormController({
     return {
       employeeId: remembered?.employeeId ?? null,
       employeeKeyword: remembered?.employeeName ?? '',
-      organizationKey: remembered?.organizationKey ?? '',
       password: remembered?.password ?? '',
       rememberCredentials: Boolean(remembered),
       showPassword: false,
     };
   });
-  const [organizations, setOrganizations] = useState<ServerOption[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
-  const [isLoadingOrganizations, setIsLoadingOrganizations] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedEmployee = useMemo(() => {
@@ -78,18 +69,6 @@ export function useLoginFormController({
 
     return employees.find((employee) => employee.employeeId === form.employeeId) ?? null;
   }, [employees, form.employeeId]);
-
-  const selectedOrganization = useMemo(() => {
-    if (!form.organizationKey) {
-      return null;
-    }
-
-    return (
-      organizations.find(
-        (organization) => organization.companyKey === form.organizationKey,
-      ) ?? null
-    );
-  }, [form.organizationKey, organizations]);
 
   useEffect(() => {
     let active = true;
@@ -143,98 +122,15 @@ export function useLoginFormController({
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-
-    const loadOrganizations = async () => {
-      if (form.employeeId == null) {
-        setOrganizations([]);
-        setForm((current) => ({
-          ...current,
-          organizationKey: '',
-        }));
-        return;
-      }
-
-      setIsLoadingOrganizations(true);
-      setErrorMessage(null);
-
-      try {
-        const nextOrganizations = await fetchServerOptions(form.employeeId);
-        if (!active) {
-          return;
-        }
-
-        const normalizedOrganizations = Array.isArray(nextOrganizations)
-          ? nextOrganizations
-          : [];
-
-        setOrganizations(normalizedOrganizations);
-
-        setForm((current) => {
-          const hasCurrentSelection = normalizedOrganizations.some(
-            (organization) => organization.companyKey === current.organizationKey,
-          );
-
-          if (hasCurrentSelection) {
-            return current;
-          }
-
-          const remembered = getRememberedLoginState();
-          const rememberedKey =
-            remembered?.employeeId === current.employeeId
-              ? remembered.organizationKey
-              : '';
-          const fallbackOrganization =
-            normalizedOrganizations.find(
-              (organization) => organization.companyKey === rememberedKey,
-            ) ?? normalizedOrganizations[0];
-
-          return {
-            ...current,
-            organizationKey: fallbackOrganization?.companyKey ?? '',
-          };
-        });
-      } catch (error) {
-        if (active) {
-          setErrorMessage(normalizeErrorMessage(error));
-        }
-      } finally {
-        if (active) {
-          setIsLoadingOrganizations(false);
-        }
-      }
-    };
-
-    void loadOrganizations();
-
-    return () => {
-      active = false;
-    };
-  }, [form.employeeId]);
-
   const employeeHelperText = isLoadingEmployees
     ? '正在加载可登录人员...'
     : employees.length
       ? `当前可选 ${employees.length} 位人员，支持按姓名、账号或拼音搜索。`
       : '暂未获取到可登录人员。';
 
-  const organizationHelperText = isLoadingOrganizations
-    ? '正在加载可用账套...'
-    : selectedEmployee
-      ? organizations.length
-        ? `已按 ${selectedEmployee.employeeName} 的权限匹配到 ${organizations.length} 个账套。`
-        : '当前人员没有可登录的账套。'
-      : '请先选择登录人员。';
-
   const submit = useCallback(async () => {
     if (!selectedEmployee) {
       setErrorMessage('请选择登录人员。');
-      return;
-    }
-
-    if (!selectedOrganization) {
-      setErrorMessage('请选择登录账套。');
       return;
     }
 
@@ -247,18 +143,13 @@ export function useLoginFormController({
     setErrorMessage(null);
 
     try {
-      const session = await loginWithPassword({
-        basename: selectedOrganization.basename,
+      const session = await loginWithIdentity({
         employeeId: selectedEmployee.employeeId,
         password: form.password,
-        serverip: selectedOrganization.serverip,
-        serverport: selectedOrganization.serverport,
       });
 
       const normalizedSession: AuthSession = {
         ...session,
-        companyKey: selectedOrganization.companyKey,
-        companyTitle: selectedOrganization.title,
         departmentId: selectedEmployee.departmentId || session.departmentId,
         employeeId: selectedEmployee.employeeId,
         employeeName: selectedEmployee.employeeName || session.employeeName,
@@ -266,12 +157,17 @@ export function useLoginFormController({
       };
 
       persistAuthSession(normalizedSession, form.rememberCredentials);
+      persistLegacyDesignerLoginContext({
+        employeeId: selectedEmployee.employeeId,
+        employeeName: selectedEmployee.employeeName,
+        password: form.password,
+        remember: form.rememberCredentials,
+      });
 
       if (form.rememberCredentials) {
         persistRememberedLoginState({
           employeeId: selectedEmployee.employeeId,
           employeeName: selectedEmployee.employeeName,
-          organizationKey: selectedOrganization.companyKey,
           password: form.password,
         });
       } else {
@@ -292,7 +188,6 @@ export function useLoginFormController({
     form.rememberCredentials,
     onSuccess,
     selectedEmployee,
-    selectedOrganization,
   ]);
 
   const selectEmployee = useCallback((employeeId: number, employeeName: string) => {
@@ -300,7 +195,6 @@ export function useLoginFormController({
       ...current,
       employeeId,
       employeeKeyword: employeeName,
-      organizationKey: '',
     }));
     setErrorMessage(null);
   }, []);
@@ -310,14 +204,6 @@ export function useLoginFormController({
       ...current,
       employeeKeyword,
     }));
-  }, []);
-
-  const setOrganizationKey = useCallback((organizationKey: string) => {
-    setForm((current) => ({
-      ...current,
-      organizationKey,
-    }));
-    setErrorMessage(null);
   }, []);
 
   const setPassword = useCallback((password: string) => {
@@ -345,7 +231,6 @@ export function useLoginFormController({
     actions: {
       selectEmployee,
       setEmployeeKeyword,
-      setOrganizationKey,
       setPassword,
       submit,
       toggleRememberCredentials,
@@ -356,11 +241,7 @@ export function useLoginFormController({
     errorMessage,
     form,
     isLoadingEmployees,
-    isLoadingOrganizations,
     isSubmitting,
-    organizationHelperText,
-    organizations,
     selectedEmployee,
-    selectedOrganization,
   };
 }

@@ -30,6 +30,7 @@ export class ApiClientError extends Error {
 const AUTH_KEYS = [
   'lserp.portal.auth.v2',
   'lserp.portal.auth.session',
+  'ls-ai-tool-auth-session',
 ];
 
 function readStoredPortalAuthorizationHeader() {
@@ -92,8 +93,8 @@ function redirectToLogin() {
   // 获取当前路径，作为登录后的重定向目标
   const currentPath = window.location.pathname + window.location.search;
   const loginPath = currentPath
-    ? `/login?redirect=${encodeURIComponent(currentPath)}`
-    : '/login';
+    ? `/?redirect=${encodeURIComponent(currentPath)}`
+    : '/';
 
   window.location.href = loginPath;
 }

@@ -8,6 +8,6 @@ export default defineConfig({
     },
     environment: 'node',
     globals: true,
-    include: ['packages/**/*.test.ts'],
+    include: ['packages/**/*.test.ts', 'packages/**/*.test.tsx'],
   },
 });

@@ -5,8 +5,12 @@ import type {
   BiDataAssetField,
   BiDatasource,
   BiDirectoryNode,
+  BiGenerationTask,
+  BiPromptPreview,
+  BiPromptTemplate,
   BiRuntimeScreen,
   BiScreen,
+  BiScreenDesignRecord,
   BiScreenVersion,
   BiShareToken,
   CommonResult,
@@ -24,12 +28,18 @@ async function unwrap<T>(promise: Promise<CommonResult<T>>) {
 }
 
 export type DirectorySavePayload = {
+  canvasMeta?: Record<string, unknown>;
   nodeCode: string;
   nodeName: string;
   nodeType: string;
   orderNo?: number;
   parentId?: number | null;
   status?: string;
+};
+
+export type DirectoryCanvasLayoutItemPayload = {
+  canvasMeta?: Record<string, unknown>;
+  id: number;
 };
 
 export type DataAssetFieldSavePayload = {
@@ -53,6 +63,7 @@ export type DataAssetSavePayload = {
   sourceTables?: string[];
   sqlText?: string;
   status?: string;
+  syncMeta?: Record<string, unknown>;
   tableName?: string;
   tableSchema?: string;
 };
@@ -89,6 +100,49 @@ export type AiGeneratePayload = {
   prompt: string;
   screenCode?: string;
   screenName?: string;
+};
+
+export type GenerateDraftPayload = {
+  datasourceIds?: number[];
+  nodeId: number;
+  prompt: string;
+  providerCode?: string;
+  publishMode?: string;
+  screenCode?: string;
+  screenId?: number;
+  screenName?: string;
+  templateCode?: string;
+};
+
+export type RegenerateVersionPayload = {
+  datasourceIds?: number[];
+  prompt?: string;
+  providerCode?: string;
+  publishMode?: string;
+  templateCode?: string;
+};
+
+export type PromptPreviewPayload = {
+  datasourceIds?: number[];
+  nodeId: number;
+  prompt: string;
+  providerCode?: string;
+  screenId?: number;
+  templateCode?: string;
+};
+
+export type PromptTemplateSavePayload = {
+  defaultTemplate?: boolean;
+  description?: string;
+  id?: number;
+  modelName?: string;
+  providerCode?: string;
+  status?: string;
+  systemPrompt?: string;
+  templateCode: string;
+  templateName: string;
+  templateType: string;
+  userPrompt?: string;
 };
 
 export type ShareCreatePayload = {
@@ -145,6 +199,14 @@ export const biApi = {
       }),
     );
   },
+  generateDraft(payload: GenerateDraftPayload) {
+    return unwrap<BiGenerationTask>(
+      biApiClient.request('/api/bi/screens/generate-draft', {
+        body: payload,
+        method: 'POST',
+      }),
+    );
+  },
   generateScreen(payload: AiGeneratePayload) {
     return unwrap<BiScreen>(
       biApiClient.request('/api/bi/screens/ai-generate', {
@@ -152,6 +214,16 @@ export const biApi = {
         method: 'POST',
       }),
     );
+  },
+  generateBizComments(assetId: number) {
+    return unwrap<BiDataAssetField[]>(
+      biApiClient.request(`/api/bi/assets/${assetId}/generate-biz-comments`, {
+        method: 'POST',
+      }),
+    );
+  },
+  getGenerationTask(taskId: number) {
+    return unwrap<BiGenerationTask>(biApiClient.request(`/api/bi/generation-tasks/${taskId}`));
   },
   getRuntimeByNode(nodeCode: string) {
     return unwrap<BiRuntimeScreen>(biApiClient.request(`/api/bi/runtime/node/${nodeCode}`));
@@ -171,8 +243,20 @@ export const biApi = {
   listDatasources() {
     return unwrap<BiDatasource[]>(biApiClient.request('/api/bi/datasources'));
   },
+  listDesignRecords(screenId: number) {
+    return unwrap<BiScreenDesignRecord[]>(
+      biApiClient.request(`/api/bi/screens/${screenId}/design-records`),
+    );
+  },
   listDirectoryTree() {
     return unwrap<BiDirectoryNode[]>(biApiClient.request('/api/bi/directories/tree'));
+  },
+  listPromptTemplates(templateType?: string) {
+    return unwrap<BiPromptTemplate[]>(
+      biApiClient.request('/api/bi/prompts/templates', {
+        query: { templateType: templateType ?? undefined },
+      }),
+    );
   },
   listScreens(nodeId?: number | null) {
     return unwrap<BiScreen[]>(
@@ -185,6 +269,22 @@ export const biApi = {
     return unwrap<BiShareToken[]>(
       biApiClient.request('/api/bi/shares', {
         query: { screenId: screenId ?? undefined },
+      }),
+    );
+  },
+  previewPrompt(payload: PromptPreviewPayload) {
+    return unwrap<BiPromptPreview>(
+      biApiClient.request('/api/bi/prompts/preview', {
+        body: payload,
+        method: 'POST',
+      }),
+    );
+  },
+  publishGeneratedVersion(screenId: number, versionId?: number | null) {
+    return unwrap<BiScreen>(
+      biApiClient.request(`/api/bi/screens/${screenId}/publish-generated-version`, {
+        body: versionId ? { versionId } : {},
+        method: 'POST',
       }),
     );
   },
@@ -211,6 +311,14 @@ export const biApi = {
       }),
     );
   },
+  regenerateVersion(screenId: number, payload: RegenerateVersionPayload) {
+    return unwrap<BiGenerationTask>(
+      biApiClient.request(`/api/bi/screens/${screenId}/regenerate-version`, {
+        body: payload,
+        method: 'POST',
+      }),
+    );
+  },
   replaceAssetFields(assetId: number, fields: DataAssetFieldSavePayload[]) {
     return unwrap<BiDataAssetField[]>(
       biApiClient.request(`/api/bi/assets/${assetId}/fields`, {
@@ -226,6 +334,22 @@ export const biApi = {
       }),
     );
   },
+  saveCanvasLayout(items: DirectoryCanvasLayoutItemPayload[]) {
+    return unwrap<BiDirectoryNode[]>(
+      biApiClient.request('/api/bi/directories/canvas-layout', {
+        body: { items },
+        method: 'PUT',
+      }),
+    );
+  },
+  savePromptTemplate(payload: PromptTemplateSavePayload) {
+    return unwrap<BiPromptTemplate>(
+      biApiClient.request('/api/bi/prompts/templates', {
+        body: payload,
+        method: 'POST',
+      }),
+    );
+  },
   saveScreenVersion(screenId: number, payload: Record<string, unknown>) {
     return unwrap<BiScreenVersion>(
       biApiClient.request(`/api/bi/screens/${screenId}/versions`, {
@@ -237,6 +361,14 @@ export const biApi = {
   updateDatasourceAsset(datasourceId: number, assetId: number, payload: DataAssetSavePayload) {
     return unwrap<BiDataAsset>(
       biApiClient.request(`/api/bi/datasources/${datasourceId}/assets/${assetId}`, {
+        body: payload,
+        method: 'PUT',
+      }),
+    );
+  },
+  updateDirectory(id: number, payload: DirectorySavePayload) {
+    return unwrap<BiDirectoryNode>(
+      biApiClient.request(`/api/bi/directories/${id}`, {
         body: payload,
         method: 'PUT',
       }),
