@@ -3,6 +3,7 @@ import type {
   BiDataAssetField,
   BiDatasource,
   BiDirectoryNode,
+  BiNodeType,
   BiScreen,
   BiShareToken,
 } from '../types';
@@ -68,9 +69,12 @@ function mergeNode(nextNode: BiDirectoryNode, currentNode?: BiDirectoryNode): Bi
   return {
     ...currentNode,
     ...nextNode,
+    boundAssets: nextNode.boundAssets ?? currentNode?.boundAssets ?? [],
     canvasMeta: nextNode.canvasMeta ?? currentNode?.canvasMeta,
     children: nextNode.children?.length ? nextNode.children : currentNode?.children ?? [],
     datasourceIds: nextNode.datasourceIds ?? currentNode?.datasourceIds ?? [],
+    nodeTypeName: nextNode.nodeTypeName ?? currentNode?.nodeTypeName,
+    sourceAssetIds: nextNode.sourceAssetIds ?? currentNode?.sourceAssetIds ?? [],
   };
 }
 
@@ -101,6 +105,43 @@ export function updateDirectoryNode(
         return { ...item, children: nextChildren };
       }
       return item;
+    });
+
+    return changed ? nextItems : items;
+  };
+
+  const nextNodes = visit(nodes);
+  return changed ? nextNodes : nodes;
+}
+
+export function removeDirectoryNode(nodes: BiDirectoryNode[], nodeId: number): BiDirectoryNode[] {
+  let changed = false;
+
+  const visit = (items: BiDirectoryNode[]): BiDirectoryNode[] => {
+    const nextItems: BiDirectoryNode[] = [];
+
+    items.forEach((item) => {
+      if (item.id === nodeId) {
+        changed = true;
+        return;
+      }
+
+      if (item.children.length === 0) {
+        nextItems.push(item);
+        return;
+      }
+
+      const nextChildren = visit(item.children);
+      if (nextChildren !== item.children) {
+        changed = true;
+        nextItems.push({
+          ...item,
+          children: nextChildren,
+        });
+        return;
+      }
+
+      nextItems.push(item);
     });
 
     return changed ? nextItems : items;
@@ -198,4 +239,20 @@ export function upsertShareToken(tokens: BiShareToken[], nextToken: BiShareToken
     return [nextToken, ...tokens];
   }
   return tokens.map((token) => (token.id === nextToken.id ? nextToken : token));
+}
+
+export function upsertNodeType(nodeTypes: BiNodeType[], nextNodeType: BiNodeType): BiNodeType[] {
+  const index = nodeTypes.findIndex((nodeType) => nodeType.id === nextNodeType.id);
+  const nextList =
+    index === -1
+      ? [...nodeTypes, nextNodeType]
+      : nodeTypes.map((nodeType) => (nodeType.id === nextNodeType.id ? nextNodeType : nodeType));
+  return [...nextList].sort((left, right) => {
+    const leftSort = Number(left.sortNo ?? 0);
+    const rightSort = Number(right.sortNo ?? 0);
+    if (leftSort !== rightSort) {
+      return leftSort - rightSort;
+    }
+    return left.id - right.id;
+  });
 }

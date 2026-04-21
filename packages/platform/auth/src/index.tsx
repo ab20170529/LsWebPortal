@@ -315,13 +315,10 @@ export function getGrantedSystemIds(session: AuthSession | null) {
     return [] as PlatformSystemId[];
   }
 
-  const grantedIds = new Set<PlatformSystemId>();
-
-  session.systemGrants.forEach((grant) => {
-    grantedIds.add(grant.systemId);
-  });
-
-  return platformSystemEntries.map((entry) => entry.id).filter((systemId) => grantedIds.has(systemId));
+  // Portal system access is currently opened for every authenticated user.
+  // Keep the session grant payload for compatibility, but do not gate the
+  // secondary system-entry page or route access on it.
+  return platformSystemEntries.map((entry) => entry.id);
 }
 
 export function resolveDefaultSystemId(session: AuthSession | null) {

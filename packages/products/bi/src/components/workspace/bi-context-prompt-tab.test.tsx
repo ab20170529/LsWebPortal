@@ -6,12 +6,14 @@ import type { BiDatasource, BiDirectoryNode, BiScreen } from '../../types';
 import { BiContextPromptTab } from './bi-context-prompt-tab';
 
 const node: BiDirectoryNode = {
+  boundAssets: [],
   children: [],
   datasourceIds: [1],
   id: 11,
   nodeCode: 'sales_north',
-  nodeName: '华北销售',
+  nodeName: 'North Sales',
   nodeType: 'ANALYSIS_DIM',
+  sourceAssetIds: [],
   status: 'ACTIVE',
 };
 
@@ -19,7 +21,7 @@ const boundDatasources: BiDatasource[] = [
   {
     assets: [],
     id: 1,
-    name: '销售分析源',
+    name: 'Sales Source',
     sourceCode: 'sales_ds',
   },
 ];
@@ -28,7 +30,7 @@ const screens: BiScreen[] = [
   {
     biType: 'INTERNAL',
     id: 21,
-    name: '销售概览',
+    name: 'Sales Overview',
     nodeId: 11,
     screenCode: 'sales_overview',
     versions: [],
@@ -36,7 +38,7 @@ const screens: BiScreen[] = [
   {
     biType: 'INTERNAL',
     id: 22,
-    name: '区域排名',
+    name: 'Region Rank',
     nodeId: 11,
     screenCode: 'region_rank',
     versions: [],
@@ -67,10 +69,10 @@ describe('BiContextPromptTab', () => {
       />,
     );
 
-    await user.selectOptions(screen.getByLabelText('目标 BI 档案'), '22');
+    await user.selectOptions(screen.getByLabelText('Target archive'), '22');
 
     expect(onSelectScreen).toHaveBeenCalledWith(22);
-    expect((screen.getByLabelText('档案编码') as HTMLInputElement).value).toBe('region_rank');
-    expect((screen.getByLabelText('档案名称') as HTMLInputElement).value).toBe('区域排名');
+    expect((screen.getByLabelText('Archive code') as HTMLInputElement).value).toBe('region_rank');
+    expect((screen.getByLabelText('Archive name') as HTMLInputElement).value).toBe('Region Rank');
   });
 });

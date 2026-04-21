@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { BiDatasource, BiDirectoryNode, BiScreen } from '../types';
 import {
   replaceDatasourceAssetFields,
+  removeDirectoryNode,
   resolveScreenDraftSelection,
   resolveSelectedScreenIdForNode,
   updateDirectoryNode,
@@ -34,8 +35,10 @@ const screens: BiScreen[] = [
 
 const nodes: BiDirectoryNode[] = [
   {
+    boundAssets: [],
     children: [
       {
+        boundAssets: [],
         children: [],
         datasourceIds: [],
         id: 11,
@@ -43,6 +46,7 @@ const nodes: BiDirectoryNode[] = [
         nodeName: 'North Sales',
         nodeType: 'DEPARTMENT',
         parentId: 10,
+        sourceAssetIds: [],
         status: 'ACTIVE',
       },
     ],
@@ -52,6 +56,7 @@ const nodes: BiDirectoryNode[] = [
     nodeName: 'Company Root',
     nodeType: 'COMPANY',
     parentId: null,
+    sourceAssetIds: [],
     status: 'ACTIVE',
   },
 ];
@@ -90,6 +95,7 @@ describe('bi workspace state helpers', () => {
 
   it('upserts a new child node without replacing unrelated branches', () => {
     const nextNodes = upsertDirectoryNode(nodes, {
+      boundAssets: [],
       children: [],
       datasourceIds: [],
       id: 12,
@@ -97,6 +103,7 @@ describe('bi workspace state helpers', () => {
       nodeName: 'East Sales',
       nodeType: 'DEPARTMENT',
       parentId: 10,
+      sourceAssetIds: [],
       status: 'ACTIVE',
     });
 
@@ -114,6 +121,13 @@ describe('bi workspace state helpers', () => {
 
     expect(nextNodes[0]).not.toBe(nodes[0]);
     expect(nextNodes[0]!.children[0]!.datasourceIds).toEqual([1, 2]);
+  });
+
+  it('removes a node subtree without touching sibling branches', () => {
+    const nextNodes = removeDirectoryNode(nodes, 11);
+
+    expect(nextNodes[0]!.children).toHaveLength(0);
+    expect(removeDirectoryNode(nodes, 999)).toBe(nodes);
   });
 
   it('upserts datasource and assets without reloading the whole workspace', () => {

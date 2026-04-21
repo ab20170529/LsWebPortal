@@ -6,12 +6,14 @@ import type { BiCanvasMeta, BiDirectoryNode } from '../../types';
 import { BiDirectoryCanvas } from './bi-directory-canvas';
 
 const node: BiDirectoryNode = {
+  boundAssets: [],
   children: [],
   datasourceIds: [],
   id: 1,
   nodeCode: 'company_root',
   nodeName: '总部公司',
   nodeType: 'COMPANY',
+  sourceAssetIds: [],
   status: 'ACTIVE',
 };
 
@@ -32,8 +34,10 @@ describe('BiDirectoryCanvas', () => {
         maxLevel={1}
         nodes={[]}
         onAutoLayout={vi.fn()}
+        onDesignInternalArchive={vi.fn()}
         onQuickAddChild={vi.fn()}
         onQuickAddRoot={onQuickAddRoot}
+        onQuickCreateExternalArchive={vi.fn()}
         onSaveLayout={vi.fn()}
         onSelectNode={vi.fn()}
         onUpdateNodeLayout={vi.fn()}
@@ -58,8 +62,10 @@ describe('BiDirectoryCanvas', () => {
         maxLevel={1}
         nodes={[node]}
         onAutoLayout={vi.fn()}
+        onDesignInternalArchive={vi.fn()}
         onQuickAddChild={onQuickAddChild}
         onQuickAddRoot={vi.fn()}
+        onQuickCreateExternalArchive={vi.fn()}
         onSaveLayout={vi.fn()}
         onSelectNode={vi.fn()}
         onUpdateNodeLayout={vi.fn()}
@@ -67,7 +73,7 @@ describe('BiDirectoryCanvas', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: '新增子节点' }));
+    await user.click(screen.getAllByRole('button', { name: '新增子节点' })[0]!);
 
     expect(onQuickAddChild).toHaveBeenCalledWith(node);
   });

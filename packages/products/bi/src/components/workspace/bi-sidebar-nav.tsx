@@ -1,8 +1,7 @@
 import { cx } from '@lserp/ui';
 
-import { BotIcon, BoxIcon, FolderIcon, SettingsIcon } from './bi-icons';
-
-export type BiWorkspaceSection = 'ai' | 'assets' | 'canvas' | 'settings';
+import type { BiWorkspaceSection } from '../../utils/bi-workspace-view-state';
+import { BoxIcon, FolderIcon, SettingsIcon, ShareIcon } from './bi-icons';
 
 type BiSidebarNavProps = {
   activeSection: BiWorkspaceSection;
@@ -15,17 +14,17 @@ const ITEMS: Array<{
   label: string;
 }> = [
   { icon: FolderIcon, id: 'canvas', label: '目录画布' },
-  { icon: BoxIcon, id: 'assets', label: '数据资产' },
-  { icon: BotIcon, id: 'ai', label: 'AI 提示词' },
+  { icon: BoxIcon, id: 'sources', label: '分析源管理' },
+  { icon: ShareIcon, id: 'archives', label: 'BI档案管理' },
 ];
 
 export function BiSidebarNav({ activeSection, onChange }: BiSidebarNavProps) {
   return (
-    <aside className="bi-sidebar-nav" aria-label="BI design navigation">
+    <aside className="bi-sidebar-nav" aria-label="BI 工作台导航">
       <div className="bi-sidebar-nav-group">
         {ITEMS.map((item) => {
-          const active = item.id === activeSection;
           const Icon = item.icon;
+          const active = item.id === activeSection;
           return (
             <button
               key={item.id}

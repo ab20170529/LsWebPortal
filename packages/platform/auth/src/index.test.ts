@@ -43,8 +43,8 @@ const sessionFixture: AuthSession = {
 };
 
 describe('getGrantedSystemIds', () => {
-  it('deduplicates user and role grants into a stable system id list', () => {
-    expect(getGrantedSystemIds(sessionFixture)).toEqual(['designer', 'erp']);
+  it('returns all platform systems for authenticated sessions', () => {
+    expect(getGrantedSystemIds(sessionFixture)).toEqual(['bi', 'bi-display', 'designer', 'erp', 'project']);
   });
 
   it('returns an empty list for guest sessions', () => {
@@ -53,13 +53,14 @@ describe('getGrantedSystemIds', () => {
 });
 
 describe('hasSystemAccess', () => {
-  it('recognizes granted systems from merged user and role bindings', () => {
+  it('allows all platform systems for authenticated sessions', () => {
     expect(hasSystemAccess(sessionFixture, 'designer')).toBe(true);
     expect(hasSystemAccess(sessionFixture, 'erp')).toBe(true);
-    expect(hasSystemAccess(sessionFixture, 'bi-display')).toBe(false);
+    expect(hasSystemAccess(sessionFixture, 'bi-display')).toBe(true);
+    expect(hasSystemAccess(sessionFixture, 'project')).toBe(true);
   });
 
-  it('blocks systems that are not in the merged grant list', () => {
+  it('still blocks non-platform systems', () => {
     expect(hasSystemAccess(sessionFixture, 'mes')).toBe(false);
   });
 });
@@ -70,7 +71,7 @@ describe('normalizeAuthSession', () => {
 
     expect(session.displayName).toBe('Portal Demo Admin');
     expect(session.username).toBe('portal.demo');
-    expect(getGrantedSystemIds(session)).toEqual(['bi', 'bi-display', 'designer', 'erp']);
+    expect(getGrantedSystemIds(session)).toEqual(['bi', 'bi-display', 'designer', 'erp', 'project']);
   });
 
   it('falls back to the first granted system when the default is not granted', () => {

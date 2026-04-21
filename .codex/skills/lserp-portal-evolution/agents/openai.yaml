@@ -1,0 +1,4 @@
+interface:
+  display_name: "LsERP Portal Evolution"
+  short_description: "Write stable portal findings back into docs"
+  default_prompt: "Use $lserp-portal-evolution to turn confirmed LsERPPortal findings into durable docs and skill notes."

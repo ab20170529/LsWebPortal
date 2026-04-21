@@ -1,12 +1,13 @@
+import { useEffect } from 'react';
 import { Card } from '@lserp/ui';
 
-import { BiDisplayHomePage as BiDisplaySelectorPage } from './pages/bi-display-home-page';
+import { getDefaultBiDisplayPath } from './display/display-platform-registry';
 import { BiDisplayPlatformPage } from './pages/bi-display-platform-page';
 import { BiRuntimePage } from './pages/bi-runtime-page';
 import { BiWorkspacePage } from './pages/bi-workspace-page';
 import './styles/bi-display.css';
 import './styles/bi-workspace.css';
-import { resolveBiDisplayRoute } from './utils/bi-display-routes';
+import { replaceBiDisplay, resolveBiDisplayRoute } from './utils/bi-display-routes';
 import { resolveBiRoute } from './utils/bi-routes';
 
 export function BiHomePage() {
@@ -37,12 +38,16 @@ export function BiHomePage() {
 export function BiDisplayHomePage() {
   const route = resolveBiDisplayRoute(window.location.pathname);
 
-  if (route.kind === 'selector') {
-    return <BiDisplaySelectorPage />;
+  if (route.kind === 'home') {
+    return <BiDisplayRouteRedirect to={getDefaultBiDisplayPath()} />;
   }
 
   if (route.kind === 'platform') {
     return <BiDisplayPlatformPage platformCode={route.platformCode} />;
+  }
+
+  if (route.kind === 'node') {
+    return <BiDisplayPlatformPage nodeCode={route.nodeCode} platformCode={route.platformCode} />;
   }
 
   return (
@@ -50,9 +55,17 @@ export function BiDisplayHomePage() {
       <div className="bi-display-empty-state">
         <div className="bi-display-empty-title">{'BI \u5c55\u793a\u9875\u9762\u4e0d\u5b58\u5728'}</div>
         <div className="bi-display-empty-text">
-          {'\u8bf7\u901a\u8fc7\u5c55\u793a\u5e73\u53f0\u9009\u62e9\u9875\u8fdb\u5165\u5177\u4f53\u7684\u5e73\u53f0\u5927\u5c4f\u3002'}
+          {'\u8bf7\u901a\u8fc7\u5df2\u6ce8\u518c\u7684\u5c55\u793a\u5e73\u53f0\u8def\u7531\u8fdb\u5165\u5177\u4f53\u5927\u5c4f\u3002'}
         </div>
       </div>
     </div>
   );
+}
+
+function BiDisplayRouteRedirect({ to }: { to: string }) {
+  useEffect(() => {
+    replaceBiDisplay(to);
+  }, [to]);
+
+  return null;
 }

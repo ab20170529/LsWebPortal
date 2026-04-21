@@ -6,12 +6,14 @@ import type { BiDirectoryNode } from '../../types';
 import { BiNodeCard } from './bi-node-card';
 
 const node: BiDirectoryNode = {
+  boundAssets: [],
   children: [],
   datasourceIds: [1, 2],
   id: 9,
   nodeCode: 'sales_north',
   nodeName: 'North Sales Board',
   nodeType: 'ANALYSIS_DIM',
+  sourceAssetIds: [],
   status: 'ACTIVE',
 };
 
@@ -32,8 +34,10 @@ describe('BiNodeCard', () => {
         archiveCount={3}
         layout={layout}
         node={node}
+        onDesignInternalArchive={vi.fn()}
         onPointerDown={vi.fn()}
         onQuickAddChild={vi.fn()}
+        onQuickCreateExternalArchive={vi.fn()}
         onSelect={onSelect}
         selected={false}
       />,
@@ -49,22 +53,21 @@ describe('BiNodeCard', () => {
     const onQuickAddChild = vi.fn();
     const onSelect = vi.fn();
 
-    const { container } = render(
+    render(
       <BiNodeCard
         archiveCount={3}
         layout={layout}
         node={node}
+        onDesignInternalArchive={vi.fn()}
         onPointerDown={vi.fn()}
         onQuickAddChild={onQuickAddChild}
+        onQuickCreateExternalArchive={vi.fn()}
         onSelect={onSelect}
         selected
       />,
     );
 
-    const addChildButton = container.querySelector('.bi-node-card-action');
-    if (!(addChildButton instanceof HTMLButtonElement)) {
-      throw new Error('Expected quick add child button to render');
-    }
+    const addChildButton = screen.getByRole('button', { name: '新增子节点' });
 
     await user.click(addChildButton);
 

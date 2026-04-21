@@ -134,7 +134,10 @@ export function getNodeTone(nodeType: string) {
   }
 }
 
-export function getNodeTypeLabel(nodeType: string) {
+export function getNodeTypeLabel(nodeType: string, nodeTypeName?: string | null) {
+  if (nodeTypeName?.trim()) {
+    return nodeTypeName.trim();
+  }
   return NODE_TYPE_LABELS[nodeType] ?? nodeType;
 }
 

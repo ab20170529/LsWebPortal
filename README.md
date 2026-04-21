@@ -30,6 +30,23 @@ The most important architectural rule is:
 - `docs/development-standards.md`
 - `docs/react-platform-foundation.md`
 
+## Handover
+
+Start here when you are picking up this repo or re-entering the Portal mother project:
+
+- `AGENTS.md` - formal local entry for agents
+- `agent.md` - compatibility pointer for older agents
+- `docs/handover/README.md` - handover landing page
+- `docs/handover/portal-map.md` - shell, auth, route, and package map
+- `docs/handover/project-domain-map.md` - project product map and entry order
+
+## Repo-local Skills
+
+Use these when you need a durable, repo-specific operating guide:
+
+- `.codex/skills/lserp-portal-platform` - shell, auth bootstrap, system gate, routes, and package boundaries
+- `.codex/skills/lserp-portal-evolution` - stable doc backfill for confirmed Portal findings
+
 ## Current Baseline
 
 - React

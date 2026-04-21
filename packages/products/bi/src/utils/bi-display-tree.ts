@@ -86,3 +86,24 @@ export function findPreferredDisplayRoot(nodes: BiDirectoryNode[], preferredCode
 
   return nodes[0] ?? null;
 }
+
+export function findDisplayNodeForRoute(
+  nodes: BiDirectoryNode[],
+  preferredCode: string,
+  nodeCode?: string | null,
+) {
+  const rootNode = findPreferredDisplayRoot(nodes, preferredCode);
+
+  if (!rootNode) {
+    return { rootNode: null, selectedNode: null };
+  }
+
+  if (!nodeCode) {
+    return { rootNode, selectedNode: rootNode };
+  }
+
+  const selectedNode =
+    rootNode.nodeCode === nodeCode ? rootNode : findNodeByCode([rootNode], nodeCode);
+
+  return { rootNode, selectedNode };
+}

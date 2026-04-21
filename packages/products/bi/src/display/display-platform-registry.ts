@@ -10,6 +10,8 @@ export type BiDisplayPlatformDefinition = {
   title: string;
 };
 
+export const DEFAULT_BI_DISPLAY_PLATFORM_CODE = 'langsu';
+
 export const biDisplayPlatforms: BiDisplayPlatformDefinition[] = [
   {
     accent: '#00f0ff',
@@ -27,4 +29,8 @@ export const biDisplayPlatforms: BiDisplayPlatformDefinition[] = [
 
 export function getBiDisplayPlatform(platformCode: string) {
   return biDisplayPlatforms.find((platform) => platform.platformCode === platformCode) ?? null;
+}
+
+export function getDefaultBiDisplayPath() {
+  return `/bi-display/platform/${DEFAULT_BI_DISPLAY_PLATFORM_CODE}`;
 }

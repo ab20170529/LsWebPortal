@@ -1,25 +1,32 @@
 import { startTransition, useEffect, useMemo, useState } from 'react';
+import type React from 'react';
 
 import { biApi } from '../api/bi-api';
 import { BiDisplayRuntimeStage } from '../components/bi-display-runtime-stage';
 import { getBiDisplayPlatform } from '../display/display-platform-registry';
-import type { BiDirectoryNode, BiRuntimeScreen } from '../types';
+import type { BiDirectoryNode, BiRuntimeScreen, BiScreen } from '../types';
 import { buildNodePath } from '../utils/bi-directory';
-import { findNodeById, findPreferredDisplayRoot, pruneOrganizationForest } from '../utils/bi-display-tree';
+import {
+  buildDisplayNodeSummaries,
+  buildDisplayScreenMap,
+  formatDisplayRate,
+  getDisplayScreenMixSegments,
+  summarizeDisplayNode,
+  type BiDisplayNodeSummary,
+} from '../utils/bi-display-view-model';
+import { findDisplayNodeForRoute, pruneOrganizationForest } from '../utils/bi-display-tree';
+import {
+  getBiDisplayPlatformNodePath,
+  getBiDisplayPlatformPath,
+  navigateBiDisplay,
+} from '../utils/bi-display-routes';
 
 type BiDisplayPlatformPageProps = {
+  nodeCode?: string | null;
   platformCode: string;
 };
 
-const NODE_ACCENTS = ['#00f0ff', '#7000ff', '#3b82f6', '#10b981', '#ec4899', '#f59e0b'];
-
-function getNodeAccent(node: BiDirectoryNode) {
-  if (typeof node.canvasMeta?.accent === 'string' && node.canvasMeta.accent.trim()) {
-    return node.canvasMeta.accent;
-  }
-
-  return NODE_ACCENTS[node.id % NODE_ACCENTS.length];
-}
+const TOP_NAV_ITEMS = ['设备总览', '看板中心', '报警中心', '监控平台', '数据管理', '采集云平台'];
 
 async function loadRuntimeScreen(nodeCode: string) {
   const meta = await biApi.getRuntimeByNode(nodeCode);
@@ -30,61 +37,288 @@ async function loadRuntimeScreen(nodeCode: string) {
   return biApi.queryRuntimeByScreen(meta.screenCode);
 }
 
-function TreeNode({
-  activeNodeId,
-  node,
-  onSelect,
-}: {
-  activeNodeId: number | null;
-  node: BiDirectoryNode;
-  onSelect: (nodeId: number) => void;
-}) {
-  const isActive = node.id === activeNodeId;
-  const accent = getNodeAccent(node);
+function accentStyle(accent: string): React.CSSProperties {
+  return { '--bi-display-accent': accent } as React.CSSProperties;
+}
+
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function matchesSearch(summary: BiDisplayNodeSummary, searchKeyword: string) {
+  const keyword = normalizeSearch(searchKeyword);
+  if (!keyword) {
+    return true;
+  }
 
   return (
-    <div className="bi-display-tree-node">
-      <button
-        className={`bi-display-tree-card ${isActive ? 'is-active' : ''}`}
-        onClick={() => {
-          onSelect(node.id);
-        }}
-        type="button"
-      >
-        <span className="bi-display-tree-card-accent" style={{ backgroundColor: accent }} />
-        <div className="bi-display-tree-card-head">
-          <span className="bi-display-tree-card-type">{node.nodeType}</span>
-          <span className="bi-display-tree-card-status">{node.status ?? 'ACTIVE'}</span>
-        </div>
-        <div className="bi-display-tree-card-title">{node.nodeName}</div>
-        <div className="bi-display-tree-card-code">{node.nodeCode}</div>
-        <div className="bi-display-tree-card-metrics">
-          <span>子级 {node.children.length}</span>
-          <span>数据源 {node.datasourceIds.length}</span>
-        </div>
-      </button>
+    summary.node.nodeName.toLowerCase().includes(keyword) ||
+    summary.node.nodeCode.toLowerCase().includes(keyword)
+  );
+}
 
-      {node.children.length > 0 ? (
-        <div className="bi-display-tree-children">
-          {node.children.map((child) => (
-            <TreeNode key={child.id} activeNodeId={activeNodeId} node={child} onSelect={onSelect} />
-          ))}
-        </div>
+function buildDisplayTitle(node: BiDirectoryNode | null, isDetailRoute: boolean) {
+  if (!node) {
+    return '全厂设备运行总览';
+  }
+
+  return isDetailRoute ? `${node.nodeName} 运行总览` : '全厂设备运行总览';
+}
+
+function SearchIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" {...props}>
+      <path
+        d="m21 21-4.35-4.35M10.8 18a7.2 7.2 0 1 0 0-14.4 7.2 7.2 0 0 0 0 14.4Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function BellIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" {...props}>
+      <path
+        d="M6.3 9.5a5.7 5.7 0 1 1 11.4 0v3.1c0 .8.3 1.6.8 2.3l1 1.2H4.5l1-1.2c.5-.7.8-1.5.8-2.3V9.5Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M9.5 19.1a2.5 2.5 0 0 0 5 0"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" {...props}>
+      <path
+        d="m7 10 5 5 5-5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function DisplayState({
+  action,
+  actionLabel,
+  text,
+  title,
+}: {
+  action?: () => void;
+  actionLabel?: string;
+  text: string;
+  title: string;
+}) {
+  return (
+    <section className="bi-display-state">
+      <div className="bi-display-state-title">{title}</div>
+      <div className="bi-display-state-text">{text}</div>
+      {action && actionLabel ? (
+        <button className="bi-display-state-action" onClick={action} type="button">
+          {actionLabel}
+        </button>
       ) : null}
+    </section>
+  );
+}
+
+function DisplayTitleBanner({ title }: { title: string }) {
+  return (
+    <section className="bi-display-title-banner-wrap">
+      <div className="bi-display-title-banner">
+        <svg preserveAspectRatio="none" viewBox="0 0 1920 90">
+          <defs>
+            <linearGradient id="bi-display-header-bg" x1="0%" x2="0%" y1="0%" y2="100%">
+              <stop offset="0%" stopColor="#00f0ff" stopOpacity="0" />
+              <stop offset="100%" stopColor="#00f0ff" stopOpacity="0.3" />
+            </linearGradient>
+            <linearGradient id="bi-display-wing-left" x1="0%" x2="100%" y1="0%" y2="0%">
+              <stop offset="0%" stopColor="#00f0ff" stopOpacity="0" />
+              <stop offset="100%" stopColor="#00f0ff" stopOpacity="0.15" />
+            </linearGradient>
+            <linearGradient id="bi-display-wing-right" x1="0%" x2="100%" y1="0%" y2="0%">
+              <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#00f0ff" stopOpacity="0" />
+            </linearGradient>
+            <filter height="140%" id="bi-display-title-glow-filter" width="140%" x="-20%" y="-20%">
+              <feGaussianBlur result="blur" stdDeviation="6" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          <path
+            d="M 660 0 L 1260 0 L 1300 70 L 620 70 Z"
+            fill="url(#bi-display-header-bg)"
+            filter="url(#bi-display-title-glow-filter)"
+            stroke="#00f0ff"
+            strokeWidth="2"
+          />
+          <path
+            d="M 680 0 L 1240 0 L 1270 55 L 650 55 Z"
+            fill="rgba(0, 240, 255, 0.1)"
+            opacity="0.8"
+            stroke="#00f0ff"
+            strokeWidth="1"
+          />
+          <path
+            d="M 0 70 L 620 70"
+            filter="url(#bi-display-title-glow-filter)"
+            stroke="#00f0ff"
+            strokeWidth="2"
+          />
+          <path d="M 0 70 L 620 70 L 660 0 L 0 0 Z" fill="url(#bi-display-wing-left)" />
+          <path
+            d="M 1300 70 L 1920 70"
+            filter="url(#bi-display-title-glow-filter)"
+            stroke="#00f0ff"
+            strokeWidth="2"
+          />
+          <path d="M 1300 70 L 1920 70 L 1920 0 L 1260 0 Z" fill="url(#bi-display-wing-right)" />
+          <path d="M 0 55 L 600 55 L 630 0" fill="none" opacity="0.5" stroke="#00f0ff" strokeWidth="1" />
+          <path d="M 0 40 L 580 40 L 600 0" fill="none" opacity="0.3" stroke="#00f0ff" strokeWidth="1" />
+          <path d="M 1920 55 L 1320 55 L 1290 0" fill="none" opacity="0.5" stroke="#00f0ff" strokeWidth="1" />
+          <path d="M 1920 40 L 1340 40 L 1320 0" fill="none" opacity="0.3" stroke="#00f0ff" strokeWidth="1" />
+          <path
+            d="M 860 70 L 1060 70"
+            filter="url(#bi-display-title-glow-filter)"
+            stroke="#ffffff"
+            strokeWidth="4"
+          />
+          <path d="M 0 0 L 1920 0" opacity="0.5" stroke="#00f0ff" strokeWidth="1" />
+        </svg>
+      </div>
+
+      <div className="bi-display-title-heading-wrap">
+        <h1 aria-hidden="true" className="bi-display-title-glow">
+          {title}
+        </h1>
+        <h1 className="bi-display-title-heading">{title}</h1>
+      </div>
+    </section>
+  );
+}
+
+function DisplayRootCard({ summary }: { summary: BiDisplayNodeSummary }) {
+  return (
+    <div className="bi-display-root-card">
+      <h2 className="bi-display-root-title">{summary.node.nodeName}</h2>
+      <div className="bi-display-root-metrics">
+        <div className="bi-display-root-metric">
+          <span>组织节点</span>
+          <strong className="is-accent">{summary.totalNodes}</strong>
+        </div>
+        <div className="bi-display-root-metric">
+          <span>在线率</span>
+          <strong className="is-success">{formatDisplayRate(summary.activeRate)}</strong>
+        </div>
+      </div>
     </div>
   );
 }
 
-export function BiDisplayPlatformPage({ platformCode }: BiDisplayPlatformPageProps) {
+function getBadgeLabel(tone: BiDisplayNodeSummary['badge']['tone']) {
+  switch (tone) {
+    case 'danger':
+      return '异常';
+    case 'warning':
+      return '待完善';
+    case 'neutral':
+      return '待配置';
+    default:
+      return '正常';
+  }
+}
+
+function DisplayNodeCard({
+  onClick,
+  summary,
+}: {
+  onClick: () => void;
+  summary: BiDisplayNodeSummary;
+}) {
+  const screenMixSegments = getDisplayScreenMixSegments(summary);
+
+  return (
+    <button className="bi-display-node-card" onClick={onClick} style={accentStyle(summary.accent)} type="button">
+      <div className="bi-display-node-card-glow" />
+      <div className="bi-display-node-card-topline" />
+
+      <div className="bi-display-node-card-head">
+        <div className="bi-display-node-card-title">
+          <span className="bi-display-node-card-title-dot" />
+          <span>{summary.node.nodeName}</span>
+        </div>
+        <span className={`bi-display-node-card-badge is-${summary.badge.tone}`}>
+          {getBadgeLabel(summary.badge.tone)}
+        </span>
+      </div>
+
+      <div className="bi-display-node-card-grid">
+        <div className="bi-display-node-card-stat">
+          <span>组织节点</span>
+          <strong>{summary.totalNodes}</strong>
+        </div>
+        <div className="bi-display-node-card-stat">
+          <span>绑定大屏</span>
+          <strong>{summary.boundScreens}</strong>
+        </div>
+      </div>
+
+      <div className="bi-display-node-card-status">
+        <div className="bi-display-node-card-status-head">
+          <span>节点结构分布</span>
+          <span>{formatDisplayRate(summary.activeRate)} 在线</span>
+        </div>
+
+        <div className="bi-display-node-card-meter">
+          {screenMixSegments.map((segment) => (
+            <div key={segment.key} className={`is-${segment.key}`} style={{ width: `${segment.percentage}%` }} />
+          ))}
+        </div>
+
+        <div className="bi-display-node-card-legend">
+          {screenMixSegments.map((segment) => (
+            <span key={segment.key} className={`is-${segment.key}`}>
+              {segment.label} {segment.value}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="bi-display-node-card-corner" />
+    </button>
+  );
+}
+
+export function BiDisplayPlatformPage({
+  nodeCode = null,
+  platformCode,
+}: BiDisplayPlatformPageProps) {
   const platform = getBiDisplayPlatform(platformCode);
+  const [isLoadingTree, setIsLoadingTree] = useState(true);
+  const [isLoadingRuntime, setIsLoadingRuntime] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [nodes, setNodes] = useState<BiDirectoryNode[]>([]);
-  const [isLoadingTree, setIsLoadingTree] = useState(true);
-  const [activeHeaderId, setActiveHeaderId] = useState<number | null>(null);
-  const [focusNodeId, setFocusNodeId] = useState<number | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
-  const [isLoadingRuntime, setIsLoadingRuntime] = useState(false);
   const [runtimeScreen, setRuntimeScreen] = useState<BiRuntimeScreen | null>(null);
+  const [screens, setScreens] = useState<BiScreen[]>([]);
+  const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -94,20 +328,19 @@ export function BiDisplayPlatformPage({ platformCode }: BiDisplayPlatformPagePro
       setLoadError(null);
 
       try {
-        const tree = await biApi.listDirectoryTree();
+        const [tree, allScreens] = await Promise.all([biApi.listDirectoryTree(), biApi.listScreens()]);
         if (cancelled) {
           return;
         }
 
         startTransition(() => {
           setNodes(pruneOrganizationForest(tree));
+          setScreens(allScreens);
         });
       } catch (error) {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : '加载 BI 展示目录失败。');
         }
-
-        setLoadError(error instanceof Error ? error.message : '加载 BI 组织目录失败。');
       } finally {
         if (!cancelled) {
           setIsLoadingTree(false);
@@ -122,78 +355,74 @@ export function BiDisplayPlatformPage({ platformCode }: BiDisplayPlatformPagePro
     };
   }, []);
 
-  const rootNode = useMemo(() => {
-    if (!platform) {
-      return null;
-    }
-
-    return findPreferredDisplayRoot(nodes, platform.rootNodeCode);
-  }, [nodes, platform]);
-
-  const headerNodes = useMemo(() => {
-    if (!rootNode) {
-      return [] as BiDirectoryNode[];
-    }
-
-    return rootNode.children.length > 0 ? rootNode.children : [rootNode];
-  }, [rootNode]);
-
-  const activeHeader = useMemo(() => {
-    if (headerNodes.length === 0) {
-      return null;
-    }
-
-    return headerNodes.find((node) => node.id === activeHeaderId) ?? headerNodes[0];
-  }, [activeHeaderId, headerNodes]);
-
-  const focusNode = useMemo(() => {
-    if (!activeHeader) {
-      return null;
-    }
-
-    if (!focusNodeId) {
-      return activeHeader;
-    }
-
-    return findNodeById([activeHeader], focusNodeId) ?? activeHeader;
-  }, [activeHeader, focusNodeId]);
-
-  const focusPath = useMemo(() => {
-    if (!focusNode) {
-      return [] as BiDirectoryNode[];
-    }
-
-    return buildNodePath(focusNode, nodes);
-  }, [focusNode, nodes]);
-
   useEffect(() => {
-    if (!activeHeader) {
-      setActiveHeaderId(null);
-      setFocusNodeId(null);
-      return;
+    setSearchKeyword('');
+  }, [nodeCode, platformCode]);
+
+  const screenMap = useMemo(() => buildDisplayScreenMap(screens), [screens]);
+
+  const { rootNode, selectedNode } = useMemo(
+    () => findDisplayNodeForRoute(nodes, platform?.rootNodeCode ?? '', nodeCode),
+    [nodeCode, nodes, platform?.rootNodeCode],
+  );
+
+  const isDetailRoute = Boolean(nodeCode);
+  const focusNode = selectedNode ?? rootNode;
+  const selectedPath = useMemo(() => buildNodePath(selectedNode ?? null, nodes), [nodes, selectedNode]);
+
+  const focusSummary = useMemo(
+    () => (focusNode ? summarizeDisplayNode(focusNode, screenMap) : null),
+    [focusNode, screenMap],
+  );
+
+  const childSummaries = useMemo(() => {
+    if (!focusNode) {
+      return [] as BiDisplayNodeSummary[];
     }
 
-    startTransition(() => {
-      setActiveHeaderId(activeHeader.id);
-      setFocusNodeId((current) => {
-        if (!current) {
-          return activeHeader.id;
-        }
+    return buildDisplayNodeSummaries(focusNode.children, screenMap).filter((summary) =>
+      matchesSearch(summary, searchKeyword),
+    );
+  }, [focusNode, screenMap, searchKeyword]);
 
-        return findNodeById([activeHeader], current) ? current : activeHeader.id;
-      });
-    });
-  }, [activeHeader]);
+  const detailTopNode = useMemo(() => {
+    if (!rootNode || !selectedNode) {
+      return null;
+    }
+
+    return selectedPath[1] ?? selectedNode ?? rootNode;
+  }, [rootNode, selectedNode, selectedPath]);
+
+  const detailTopSummaries = useMemo(() => {
+    if (!rootNode) {
+      return [] as BiDisplayNodeSummary[];
+    }
+
+    const nodesForTabs = rootNode.children.length > 0 ? rootNode.children : [rootNode];
+    return buildDisplayNodeSummaries(nodesForTabs, screenMap);
+  }, [rootNode, screenMap]);
+
+  const detailLeftSummaries = useMemo(() => {
+    if (!detailTopNode) {
+      return [] as BiDisplayNodeSummary[];
+    }
+
+    const leftNodes =
+      detailTopNode.children.length > 0 ? [detailTopNode, ...detailTopNode.children] : [detailTopNode];
+
+    return buildDisplayNodeSummaries(leftNodes, screenMap).filter((summary) =>
+      matchesSearch(summary, searchKeyword),
+    );
+  }, [detailTopNode, screenMap, searchKeyword]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function hydrateRuntime() {
-      if (!focusNode) {
-        startTransition(() => {
-          setRuntimeScreen(null);
-          setRuntimeError(null);
-        });
+      if (!isDetailRoute || !selectedNode) {
+        setRuntimeScreen(null);
+        setRuntimeError(null);
+        setIsLoadingRuntime(false);
         return;
       }
 
@@ -201,24 +430,19 @@ export function BiDisplayPlatformPage({ platformCode }: BiDisplayPlatformPagePro
       setRuntimeError(null);
 
       try {
-        const runtime = await loadRuntimeScreen(focusNode.nodeCode);
-        if (cancelled) {
-          return;
+        const runtime = await loadRuntimeScreen(selectedNode.nodeCode);
+        if (!cancelled) {
+          startTransition(() => {
+            setRuntimeScreen(runtime);
+          });
         }
-
-        startTransition(() => {
-          setRuntimeScreen(runtime);
-        });
       } catch (error) {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          startTransition(() => {
+            setRuntimeScreen(null);
+            setRuntimeError(error instanceof Error ? error.message : '当前节点暂时没有可展示的大屏。');
+          });
         }
-
-        const message = error instanceof Error ? error.message : '当前节点尚未绑定可展示的大屏。';
-        startTransition(() => {
-          setRuntimeScreen(null);
-          setRuntimeError(message);
-        });
       } finally {
         if (!cancelled) {
           setIsLoadingRuntime(false);
@@ -231,188 +455,196 @@ export function BiDisplayPlatformPage({ platformCode }: BiDisplayPlatformPagePro
     return () => {
       cancelled = true;
     };
-  }, [focusNode]);
-
-  const summaryItems = useMemo(() => {
-    return [
-      {
-        label: '当前层级',
-        value: String(focusPath.length || '--'),
-      },
-      {
-        label: '直属子级',
-        value: String(focusNode?.children.length ?? 0),
-      },
-      {
-        label: '绑定数据源',
-        value: String(focusNode?.datasourceIds.length ?? 0),
-      },
-      {
-        label: '展示模块',
-        value: runtimeScreen ? String(runtimeScreen.modules.length) : '--',
-      },
-    ];
-  }, [focusNode, focusPath.length, runtimeScreen]);
+  }, [isDetailRoute, selectedNode]);
 
   if (!platform) {
     return (
       <div className="bi-display-app">
-        <div className="bi-display-empty-state">
-          <div className="bi-display-empty-title">未找到展示平台定义</div>
-          <div className="bi-display-empty-text">请确认平台编码是否已在前端展示平台注册表中配置。</div>
-        </div>
+        <DisplayState
+          text="请确认展示平台编码已经在前端平台注册表中完成配置。"
+          title="未找到展示平台定义"
+        />
       </div>
     );
   }
 
   return (
     <div className="bi-display-app">
-      <header className="bi-display-header">
-        <div className="bi-display-header-brand">
-          <div className="bi-display-header-logo">BI</div>
-          <div>
-            <div className="bi-display-header-title">{platform.title}</div>
-            <div className="bi-display-header-subtitle">{platform.subtitle}</div>
-          </div>
-        </div>
+      <header className="bi-display-topbar">
+        <div className="bi-display-topbar-left">
+          <button
+            className="bi-display-brand"
+            onClick={() => {
+              navigateBiDisplay(getBiDisplayPlatformPath(platformCode));
+            }}
+            type="button"
+          >
+            <img alt="Lumsoft" className="bi-display-brand-logo" src="/logo.png" />
+            <span className="bi-display-brand-mark">朗速BI</span>
+          </button>
 
-        <div className="bi-display-header-tabs">
-          {headerNodes.map((node) => (
-            <button
-              key={node.id}
-              className={`bi-display-header-tab ${node.id === activeHeader?.id ? 'is-active' : ''}`}
-              onClick={() => {
-                startTransition(() => {
-                  setActiveHeaderId(node.id);
-                  setFocusNodeId(node.id);
-                });
-              }}
-              type="button"
-            >
-              {node.nodeName}
-            </button>
-          ))}
-        </div>
-
-        <div className="bi-display-header-status">
-          <span className="bi-display-header-pill">Platform {platform.platformCode}</span>
-          <span className="bi-display-header-pill">{focusNode?.nodeType ?? 'NODE'}</span>
-        </div>
-      </header>
-
-      <main className="bi-display-main">
-        <section className="bi-display-branch-band">
-          <div className="bi-display-branch-topline">
-            <div>
-              <div className="bi-display-branch-title">
-                {activeHeader?.nodeName ?? rootNode?.nodeName ?? '组织架构'}
-              </div>
-              <div className="bi-display-branch-caption">
-                点击下方组织节点后，左侧子维度与中间大屏会同步切换。
-              </div>
-            </div>
-
-            <div className="bi-display-summary-grid">
-              {summaryItems.map((item) => (
-                <div key={item.label} className="bi-display-summary-card">
-                  <span className="bi-display-summary-label">{item.label}</span>
-                  <span className="bi-display-summary-value">{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {isLoadingTree ? (
-            <div className="bi-display-empty-text">正在同步组织架构...</div>
-          ) : loadError ? (
-            <div className="bi-display-error-banner">{loadError}</div>
-          ) : activeHeader ? (
-            <div className="bi-display-tree-wrap">
-              {activeHeader.children.length > 0 ? (
-                activeHeader.children.map((child) => (
-                  <TreeNode
-                    key={child.id}
-                    activeNodeId={focusNode?.id ?? null}
-                    node={child}
-                    onSelect={(nodeId) => {
-                      setFocusNodeId(nodeId);
-                    }}
-                  />
-                ))
-              ) : (
-                <div className="bi-display-empty-text">当前一级组织下暂无剩余组织节点。</div>
-              )}
-            </div>
-          ) : (
-            <div className="bi-display-empty-text">未找到可展示的组织根节点。</div>
-          )}
-        </section>
-
-        <section className="bi-display-workbench">
-          <aside className="bi-display-side-panel">
-            <div className="bi-display-side-panel-head">
-              <div className="bi-display-side-panel-title">主维度</div>
-              <div className="bi-display-side-panel-current">{focusNode?.nodeName ?? '--'}</div>
-              <div className="bi-display-side-panel-path">
-                {focusPath.map((node) => node.nodeName).join(' / ') || '未选择节点'}
-              </div>
-            </div>
-
-            <button
-              className={`bi-display-dimension-button ${focusNode?.id === activeHeader?.id ? 'is-active' : ''}`}
-              onClick={() => {
-                if (activeHeader) {
-                  setFocusNodeId(activeHeader.id);
-                }
-              }}
-              type="button"
-            >
-              <span>总览</span>
-              <span>{activeHeader?.children.length ?? 0}</span>
-            </button>
-
-            <div className="bi-display-dimension-list">
-              {focusNode?.children.length ? (
-                focusNode.children.map((child) => (
+          <nav className="bi-display-topbar-nav">
+            {isDetailRoute && detailTopSummaries.length > 0
+              ? detailTopSummaries.map((summary) => (
                   <button
-                    key={child.id}
-                    className={`bi-display-dimension-button ${focusNodeId === child.id ? 'is-active' : ''}`}
+                    key={summary.node.id}
+                    className={`bi-display-topbar-tab ${detailTopNode?.id === summary.node.id ? 'is-active' : ''}`}
                     onClick={() => {
-                      setFocusNodeId(child.id);
+                      navigateBiDisplay(getBiDisplayPlatformNodePath(platformCode, summary.node.nodeCode));
                     }}
                     type="button"
                   >
-                    <span>{child.nodeName}</span>
-                    <span>{child.children.length}</span>
+                    {summary.node.nodeName}
                   </button>
                 ))
-              ) : (
-                <div className="bi-display-side-empty">当前主维度下没有更多子维度。</div>
-              )}
-            </div>
-          </aside>
+              : TOP_NAV_ITEMS.map((label, index) => (
+                  <button
+                    key={label}
+                    className={`bi-display-topbar-tab ${index === 0 ? 'is-active' : ''}`}
+                    onClick={
+                      index === 0
+                        ? () => {
+                            navigateBiDisplay(getBiDisplayPlatformPath(platformCode));
+                          }
+                        : undefined
+                    }
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+          </nav>
+        </div>
 
-          <section className="bi-display-screen-panel">
-            <div className="bi-display-screen-panel-head">
-              <div>
-                <div className="bi-display-screen-panel-title">{focusNode?.nodeName ?? '当前节点'}</div>
-                <div className="bi-display-screen-panel-subtitle">
-                  {runtimeScreen?.screenName ?? runtimeScreen?.screenCode ?? focusNode?.nodeCode ?? ''}
-                </div>
-              </div>
-              <div className="bi-display-screen-panel-tags">
-                <span className="bi-display-screen-tag">{focusNode?.nodeType ?? 'NODE'}</span>
-                <span className="bi-display-screen-tag">{runtimeScreen?.publishStatus ?? 'READY'}</span>
-              </div>
-            </div>
+        <div className="bi-display-topbar-actions">
+          {isDetailRoute ? (
+            <button
+              className="bi-display-back-button"
+              onClick={() => {
+                navigateBiDisplay(getBiDisplayPlatformPath(platformCode));
+              }}
+              type="button"
+            >
+              ← 全厂总览
+            </button>
+          ) : null}
 
-            <BiDisplayRuntimeStage
-              error={runtimeError}
-              isLoading={isLoadingRuntime}
-              screen={runtimeScreen}
+          <label className="bi-display-topbar-search">
+            <SearchIcon />
+            <input
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                setSearchKeyword(event.target.value);
+              }}
+              placeholder="搜索指标、日志..."
+              type="text"
+              value={searchKeyword}
             />
+          </label>
+
+          <button className="bi-display-topbar-icon" type="button">
+            <BellIcon />
+          </button>
+
+          <button className="bi-display-topbar-user" type="button">
+            <span className="bi-display-topbar-avatar">JD</span>
+            <ChevronDownIcon />
+          </button>
+        </div>
+      </header>
+
+      <main className="bi-display-main-shell">
+        <div className="bi-display-ambient bi-display-ambient--cyan" />
+        <div className="bi-display-ambient bi-display-ambient--violet" />
+
+        {isLoadingTree ? (
+          <DisplayState text="正在同步 BI 组织结构与节点绑定数据。" title="正在加载展示平台" />
+        ) : loadError ? (
+          <DisplayState text={loadError} title="展示数据加载失败" />
+        ) : !rootNode ? (
+          <DisplayState text="当前平台下还没有可展示的组织根节点。" title="未找到组织根节点" />
+        ) : isDetailRoute && !selectedNode ? (
+          <DisplayState
+            action={() => {
+              navigateBiDisplay(getBiDisplayPlatformPath(platformCode));
+            }}
+            actionLabel="返回全厂总览"
+            text="当前节点不存在，或者不在当前展示平台配置的组织树范围内。"
+            title="未找到组织节点"
+          />
+        ) : isDetailRoute && focusSummary && focusNode && detailTopNode ? (
+          <section className="bi-display-detail-shell">
+            <aside className="bi-display-detail-aside">
+              <div className="bi-display-detail-aside-title">节点导航</div>
+              <div className="bi-display-detail-aside-subtitle">{detailTopNode.nodeName}</div>
+
+              <div className="bi-display-detail-nav">
+                {detailLeftSummaries.map((summary, index) => (
+                  <button
+                    key={summary.node.id}
+                    className={`bi-display-detail-nav-item ${summary.node.id === focusNode.id ? 'is-active' : ''}`}
+                    onClick={() => {
+                      navigateBiDisplay(getBiDisplayPlatformNodePath(platformCode, summary.node.nodeCode));
+                    }}
+                    type="button"
+                  >
+                    <span>{index === 0 ? `${detailTopNode.nodeName}总览` : summary.node.nodeName}</span>
+                    <span>{summary.childCount || summary.boundScreens}</span>
+                  </button>
+                ))}
+              </div>
+            </aside>
+
+            <section className="bi-display-detail-main">
+              <DisplayTitleBanner title={`${focusNode.nodeName} 数据汇总`} />
+
+              <div className="bi-display-detail-stage">
+                <BiDisplayRuntimeStage
+                  error={runtimeError}
+                  isLoading={isLoadingRuntime}
+                  screen={runtimeScreen}
+                />
+              </div>
+            </section>
           </section>
-        </section>
+        ) : focusSummary && focusNode ? (
+          <>
+            <DisplayTitleBanner title={buildDisplayTitle(focusNode, isDetailRoute)} />
+
+            <section className="bi-display-tree-stage">
+              <div className="bi-display-root-wrap">
+                <DisplayRootCard summary={focusSummary} />
+              </div>
+
+              {focusNode.children.length > 0 ? (
+                <>
+                  <div className="bi-display-tree-connector" />
+
+                  {childSummaries.length > 0 ? (
+                    <div className="bi-display-children-scroll">
+                      {childSummaries.length > 1 ? <div className="bi-display-children-rail" /> : null}
+
+                      {childSummaries.map((summary) => (
+                        <div key={summary.node.id} className="bi-display-child-slot">
+                          <div className="bi-display-child-line" />
+                          <DisplayNodeCard
+                            onClick={() => {
+                              navigateBiDisplay(
+                                getBiDisplayPlatformNodePath(platformCode, summary.node.nodeCode),
+                              );
+                            }}
+                            summary={summary}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bi-display-inline-hint">未找到匹配的组织节点。</div>
+                  )}
+                </>
+              ) : null}
+            </section>
+          </>
+        ) : null}
       </main>
     </div>
   );

@@ -39,6 +39,7 @@ type BiContextPromptTabProps = {
     prompt: string;
     providerCode?: string;
     screenId?: number;
+    sourceAssetIds?: number[];
     templateCode?: string;
   }) => Promise<unknown>;
   onPublishGeneratedVersion: (screenId: number, versionId?: number | null) => Promise<void>;
@@ -46,7 +47,7 @@ type BiContextPromptTabProps = {
 };
 
 const DEFAULT_PROMPT =
-  '请基于当前节点绑定的分析源与字段说明，生成一个适合企业管理层阅读的 BI 大屏草稿，突出核心指标、趋势变化、区域对比和异常提醒。';
+  'Generate a BI dashboard draft for management review based on the bound source assets, fields, key trends, exceptions, and regional comparison.';
 
 function slugifyCode(value: string) {
   return value
@@ -90,6 +91,10 @@ export function BiContextPromptTab({
     [screens, selectedScreenId],
   );
   const datasourceIds = useMemo(() => boundDatasources.map((datasource) => datasource.id), [boundDatasources]);
+  const sourceAssetIds = useMemo(
+    () => boundDatasources.flatMap((datasource) => datasource.assets.map((asset) => asset.id)),
+    [boundDatasources],
+  );
   const allowedTables = useMemo(() => collectAllowedTables(boundDatasources), [boundDatasources]);
   const fieldCoverage = useMemo(() => collectFieldCoverage(boundDatasources), [boundDatasources]);
   const generatedScreenCode = useMemo(() => {
@@ -114,7 +119,7 @@ export function BiContextPromptTab({
     }
     if (node) {
       setScreenCodeDraft(`${slugifyCode(node.nodeCode || node.nodeName) || 'bi_screen'}_ai`);
-      setScreenNameDraft(`${node.nodeName} AI 大屏`);
+      setScreenNameDraft(`${node.nodeName} AI screen`);
       return;
     }
     setScreenCodeDraft('');
@@ -125,7 +130,7 @@ export function BiContextPromptTab({
     return (
       <div className="bi-panel-scroll">
         <div className="bi-panel-empty">
-          先选择一个节点，再基于它绑定的分析源、字段资产和 BI 档案生成 AI 大屏草稿。
+          Select a node first, then generate an AI draft from the source assets bound to that node.
         </div>
       </div>
     );
@@ -135,9 +140,9 @@ export function BiContextPromptTab({
     <div className="bi-panel-scroll">
       <section className="bi-panel-section">
         <div className="bi-panel-section-header">
-          <div className="bi-panel-section-title">AI 设计上下文</div>
+          <div className="bi-panel-section-title">AI context</div>
           <div className="bi-panel-section-caption">
-            {selectedScreen ? getScreenDesignStatusLabel(selectedScreen.designStatus) : '尚未选择档案'}
+            {selectedScreen ? getScreenDesignStatusLabel(selectedScreen.designStatus) : 'No archive selected'}
           </div>
         </div>
 
@@ -147,31 +152,31 @@ export function BiContextPromptTab({
             <span className="bi-prompt-value">{node.nodeName}</span>
           </div>
           <div>
-            <span className="bi-prompt-key">DATASOURCE</span>
+            <span className="bi-prompt-key">ASSETS</span>
             <span className="bi-prompt-value">
-              {boundDatasources.map((datasource) => datasource.name).join('、') || '未挂载分析源'}
+              {boundDatasources.flatMap((datasource) => datasource.assets.map((asset) => asset.assetName)).join(', ') || 'No bound assets'}
             </span>
           </div>
           <div>
             <span className="bi-prompt-key">TABLES</span>
-            <span className="bi-prompt-value">{allowedTables.join('、') || '无可用表'}</span>
+            <span className="bi-prompt-value">{allowedTables.join(', ') || 'No allowed tables'}</span>
           </div>
           <div>
             <span className="bi-prompt-key">TARGET</span>
-            <span className="bi-prompt-value">{(selectedScreen?.name ?? screenNameDraft) || '新建档案'}</span>
+            <span className="bi-prompt-value">{(selectedScreen?.name ?? screenNameDraft) || 'New archive'}</span>
           </div>
         </div>
       </section>
 
       <section className="bi-panel-section">
         <div className="bi-panel-section-header">
-          <div className="bi-panel-section-title">生成控制</div>
-          <div className="bi-panel-section-caption">默认仅生成草稿，发布需要人工确认</div>
+          <div className="bi-panel-section-title">Generation</div>
+          <div className="bi-panel-section-caption">Draft first, publish after review.</div>
         </div>
 
         <div className="bi-panel-form">
           <label className="bi-panel-field">
-            <span className="bi-panel-label">提示词模板</span>
+            <span className="bi-panel-label">Prompt template</span>
             <select
               className="bi-panel-input"
               onChange={(event: ChangeEvent<HTMLSelectElement>) => setSelectedTemplateCode(event.target.value)}
@@ -186,7 +191,7 @@ export function BiContextPromptTab({
           </label>
 
           <label className="bi-panel-field">
-            <span className="bi-panel-label">目标 BI 档案</span>
+            <span className="bi-panel-label">Target archive</span>
             <select
               className="bi-panel-input"
               onChange={(event: ChangeEvent<HTMLSelectElement>) => {
@@ -197,7 +202,7 @@ export function BiContextPromptTab({
               }}
               value={selectedScreenId ?? ''}
             >
-              <option value="">新建档案</option>
+              <option value="">Create new archive</option>
               {screens.map((screen) => (
                 <option key={screen.id} value={screen.id}>
                   {screen.name}
@@ -207,7 +212,7 @@ export function BiContextPromptTab({
           </label>
 
           <label className="bi-panel-field">
-            <span className="bi-panel-label">档案编码</span>
+            <span className="bi-panel-label">Archive code</span>
             <input
               className="bi-panel-input"
               onChange={(event: ChangeEvent<HTMLInputElement>) => setScreenCodeDraft(event.target.value)}
@@ -216,7 +221,7 @@ export function BiContextPromptTab({
           </label>
 
           <label className="bi-panel-field">
-            <span className="bi-panel-label">档案名称</span>
+            <span className="bi-panel-label">Archive name</span>
             <input
               className="bi-panel-input"
               onChange={(event: ChangeEvent<HTMLInputElement>) => setScreenNameDraft(event.target.value)}
@@ -225,7 +230,7 @@ export function BiContextPromptTab({
           </label>
 
           <label className="bi-panel-field">
-            <span className="bi-panel-label">业务提示词</span>
+            <span className="bi-panel-label">Business prompt</span>
             <textarea
               className="bi-panel-textarea"
               onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setManualPrompt(event.target.value)}
@@ -234,12 +239,13 @@ export function BiContextPromptTab({
           </label>
 
           <div className="bi-panel-note">
-            当前上下文包含 {datasourceIds.length} 个分析源、{allowedTables.length} 张可访问表、{fieldCoverage.length} 个字段说明。
+            Context contains {sourceAssetIds.length} source assets, {allowedTables.length} allowed tables, and{' '}
+            {fieldCoverage.length} field descriptions.
           </div>
 
           <div className="bi-panel-inline-actions">
             <Button
-              disabled={isMutating || !manualPrompt.trim() || datasourceIds.length === 0}
+              disabled={isMutating || !manualPrompt.trim() || sourceAssetIds.length === 0}
               onClick={() =>
                 onPreviewPrompt({
                   datasourceIds,
@@ -247,15 +253,16 @@ export function BiContextPromptTab({
                   prompt: manualPrompt,
                   providerCode,
                   ...(selectedScreenId ? { screenId: selectedScreenId } : {}),
+                  sourceAssetIds,
                   ...(selectedTemplate ? { templateCode: selectedTemplate.templateCode } : {}),
                 })
               }
               tone="ghost"
             >
-              预览提示词
+              Preview prompt
             </Button>
             <Button
-              disabled={isMutating || !manualPrompt.trim() || datasourceIds.length === 0}
+              disabled={isMutating || !manualPrompt.trim() || sourceAssetIds.length === 0}
               onClick={() =>
                 onGenerateDraft({
                   datasourceIds,
@@ -266,14 +273,15 @@ export function BiContextPromptTab({
                   ...(screenCodeDraft ? { screenCode: screenCodeDraft } : {}),
                   ...(selectedScreenId ? { screenId: selectedScreenId } : {}),
                   ...(screenNameDraft ? { screenName: screenNameDraft } : {}),
+                  sourceAssetIds,
                   ...(selectedTemplate ? { templateCode: selectedTemplate.templateCode } : {}),
                 })
               }
             >
-              生成草稿
+              Generate draft
             </Button>
             <Button
-              disabled={!selectedScreenId || isMutating || datasourceIds.length === 0}
+              disabled={!selectedScreenId || isMutating || sourceAssetIds.length === 0}
               onClick={() =>
                 selectedScreenId
                   ? onRegenerateVersion(selectedScreenId, {
@@ -281,20 +289,21 @@ export function BiContextPromptTab({
                       prompt: manualPrompt,
                       providerCode,
                       publishMode: 'DRAFT',
+                      sourceAssetIds,
                       ...(selectedTemplate ? { templateCode: selectedTemplate.templateCode } : {}),
                     })
                   : Promise.resolve()
               }
               tone="ghost"
             >
-              重新生成
+              Regenerate
             </Button>
           </div>
         </div>
 
         {promptPreview ? (
           <div className="bi-panel-card">
-            <div className="bi-panel-card-title">提示词预览</div>
+            <div className="bi-panel-card-title">Prompt preview</div>
             <pre className="bi-code-box">{promptPreview.userPrompt ?? promptPreview.systemPrompt ?? ''}</pre>
           </div>
         ) : null}
@@ -302,7 +311,7 @@ export function BiContextPromptTab({
 
       <section className="bi-panel-section">
         <div className="bi-panel-section-header">
-          <div className="bi-panel-section-title">生成结果</div>
+          <div className="bi-panel-section-title">Generation result</div>
           <div className="bi-panel-section-caption">{getGenerationStatusLabel(generationTask?.status)}</div>
         </div>
 
@@ -310,7 +319,7 @@ export function BiContextPromptTab({
           <div className="bi-panel-card">
             <div className="bi-task-grid">
               <div className="bi-task-item">
-                <span className="bi-task-label">任务编号</span>
+                <span className="bi-task-label">Task</span>
                 <span className="bi-task-value">#{generationTask.id}</span>
               </div>
               <div className="bi-task-item">
@@ -318,11 +327,11 @@ export function BiContextPromptTab({
                 <span className="bi-task-value">{generationTask.providerCode ?? 'AUTO'}</span>
               </div>
               <div className="bi-task-item">
-                <span className="bi-task-label">模型</span>
+                <span className="bi-task-label">Model</span>
                 <span className="bi-task-value">{generationTask.modelName ?? '-'}</span>
               </div>
               <div className="bi-task-item">
-                <span className="bi-task-label">发布方式</span>
+                <span className="bi-task-label">Publish mode</span>
                 <span className="bi-task-value">{getPublishModeLabel(generationTask.publishMode)}</span>
               </div>
             </div>
@@ -341,26 +350,26 @@ export function BiContextPromptTab({
                     : Promise.resolve()
                 }
               >
-                发布本次版本
+                Publish this version
               </Button>
               {generationTask.screenId && generatedScreenCode ? (
                 <a className="bi-inline-link" href={`/bi/screen/${generatedScreenCode}`} rel="noreferrer" target="_blank">
-                  打开预览
+                  Open preview
                 </a>
               ) : null}
             </div>
           </div>
         ) : (
           <div className="bi-panel-empty bi-panel-empty-tight">
-            生成任务会在这里记录请求、校验结果、版本号和当前发布状态。
+            The task panel will show request context, validation, archive, and version result here.
           </div>
         )}
       </section>
 
       <section className="bi-panel-section">
         <div className="bi-panel-section-header">
-          <div className="bi-panel-section-title">历史设计记录</div>
-          <div className="bi-panel-section-caption">{designRecords.length} 条</div>
+          <div className="bi-panel-section-title">Design history</div>
+          <div className="bi-panel-section-caption">{designRecords.length} records</div>
         </div>
 
         {designRecords.length > 0 ? (
@@ -369,19 +378,19 @@ export function BiContextPromptTab({
               <div key={record.id} className="bi-history-card">
                 <div className="bi-side-card-header">
                   <div>
-                    <div className="bi-side-card-title">{record.templateCode ?? '未命名模板'}</div>
+                    <div className="bi-side-card-title">{record.templateCode ?? 'Unnamed template'}</div>
                     <div className="bi-side-card-subtitle">
                       {record.providerCode ?? 'AUTO'} / {formatDateTime(record.createTime)}
                     </div>
                   </div>
                   <Badge tone="neutral">{record.status ?? 'DRAFT_CREATED'}</Badge>
                 </div>
-                <div className="bi-history-summary">{record.resultSummary ?? '暂无摘要'}</div>
+                <div className="bi-history-summary">{record.resultSummary ?? 'No summary yet'}</div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="bi-panel-empty bi-panel-empty-tight">还没有 AI 设计记录。</div>
+          <div className="bi-panel-empty bi-panel-empty-tight">No AI design records yet.</div>
         )}
       </section>
     </div>

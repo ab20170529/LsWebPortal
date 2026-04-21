@@ -1,12 +1,14 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { Button } from '@lserp/ui';
 
-import type { BiDirectoryNode } from '../../types';
+import type { BiDirectoryNode, BiNodeType } from '../../types';
 import { getNodeTypeLabel, getStatusLabel } from '../../utils/bi-directory';
 
 type BiContextInfoTabProps = {
   isMutating: boolean;
   node: BiDirectoryNode | null;
+  nodeTypes: BiNodeType[];
+  onDeleteSelectedNode: (id: number) => Promise<void>;
   onSaveSelectedNode: (
     id: number,
     payload: {
@@ -24,6 +26,8 @@ type BiContextInfoTabProps = {
 export function BiContextInfoTab({
   isMutating,
   node,
+  nodeTypes,
+  onDeleteSelectedNode,
   onSaveSelectedNode,
 }: BiContextInfoTabProps) {
   const [form, setForm] = useState({
@@ -38,21 +42,23 @@ export function BiContextInfoTab({
     setForm({
       nodeCode: node?.nodeCode ?? '',
       nodeName: node?.nodeName ?? '',
-      nodeType: node?.nodeType ?? 'COMPANY',
+      nodeType: node?.nodeType ?? nodeTypes[0]?.typeCode ?? 'COMPANY',
       orderNo: Number(node?.orderNo ?? 0),
       status: node?.status ?? 'ACTIVE',
     });
-  }, [node]);
+  }, [node, nodeTypes]);
 
   if (!node) {
     return (
       <div className="bi-panel-scroll">
         <div className="bi-panel-empty">
-          在画布中选中一个节点后，这里会展示它的基础信息，并支持直接编辑节点编码、名称、类型和状态。
+          在画布中选中一个节点后，这里会显示它的基础信息，并支持直接编辑节点编码、名称、类型和状态。
         </div>
       </div>
     );
   }
+
+  const isPendingNode = node.id < 0;
 
   return (
     <div className="bi-panel-scroll">
@@ -69,11 +75,11 @@ export function BiContextInfoTab({
           </div>
           <div className="bi-info-item">
             <span className="bi-info-label">节点类型</span>
-            <span className="bi-info-value">{getNodeTypeLabel(node.nodeType)}</span>
+            <span className="bi-info-value">{getNodeTypeLabel(node.nodeType, node.nodeTypeName)}</span>
           </div>
           <div className="bi-info-item">
-            <span className="bi-info-label">分析源</span>
-            <span className="bi-info-value">{node.datasourceIds.length}</span>
+            <span className="bi-info-label">分析源资产</span>
+            <span className="bi-info-value">{node.sourceAssetIds.length}</span>
           </div>
           <div className="bi-info-item">
             <span className="bi-info-label">状态</span>
@@ -120,10 +126,15 @@ export function BiContextInfoTab({
               }
               value={form.nodeType}
             >
-              <option value="COMPANY">COMPANY</option>
-              <option value="DEPARTMENT">DEPARTMENT</option>
-              <option value="ANALYSIS_DIM">ANALYSIS_DIM</option>
-              <option value="SUB_DIM">SUB_DIM</option>
+              {nodeTypes.length > 0 ? (
+                nodeTypes.map((nodeType) => (
+                  <option key={nodeType.id} value={nodeType.typeCode}>
+                    {nodeType.typeCode} / {nodeType.typeName}
+                  </option>
+                ))
+              ) : (
+                <option value={form.nodeType}>{form.nodeType}</option>
+              )}
             </select>
           </label>
 
@@ -142,22 +153,36 @@ export function BiContextInfoTab({
             </select>
           </label>
 
-          <Button
-            disabled={isMutating || !form.nodeCode.trim() || !form.nodeName.trim()}
-            onClick={() =>
-              onSaveSelectedNode(node.id, {
-                canvasMeta: node.canvasMeta ?? undefined,
-                nodeCode: form.nodeCode.trim(),
-                nodeName: form.nodeName.trim(),
-                nodeType: form.nodeType,
-                orderNo: form.orderNo,
-                parentId: node.parentId ?? null,
-                status: form.status,
-              })
-            }
-          >
-            保存节点
-          </Button>
+          <div className="bi-panel-actions">
+            <Button
+              disabled={isMutating || isPendingNode || !form.nodeCode.trim() || !form.nodeName.trim()}
+              onClick={() =>
+                onSaveSelectedNode(node.id, {
+                  canvasMeta: node.canvasMeta ?? undefined,
+                  nodeCode: form.nodeCode.trim(),
+                  nodeName: form.nodeName.trim(),
+                  nodeType: form.nodeType,
+                  orderNo: form.orderNo,
+                  parentId: node.parentId ?? null,
+                  status: form.status,
+                })
+              }
+            >
+              保存节点
+            </Button>
+            <Button
+              disabled={isMutating || isPendingNode}
+              onClick={() => {
+                if (!window.confirm(`确认删除节点“${node.nodeName}”吗？`)) {
+                  return;
+                }
+                void onDeleteSelectedNode(node.id);
+              }}
+              tone="ghost"
+            >
+              删除节点
+            </Button>
+          </div>
         </div>
       </section>
     </div>

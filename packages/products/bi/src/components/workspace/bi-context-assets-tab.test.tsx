@@ -6,12 +6,14 @@ import type { BiDatasource, BiDirectoryNode } from '../../types';
 import { BiContextAssetsTab } from './bi-context-assets-tab';
 
 const node: BiDirectoryNode = {
+  boundAssets: [],
   children: [],
   datasourceIds: [1],
   id: 8,
   nodeCode: 'sales_north',
-  nodeName: '华北销售',
+  nodeName: 'North Sales',
   nodeType: 'ANALYSIS_DIM',
+  sourceAssetIds: [],
   status: 'ACTIVE',
 };
 
@@ -20,7 +22,7 @@ const boundDatasources: BiDatasource[] = [
     assets: [
       {
         assetCode: 'sales_table',
-        assetName: '销售事实表',
+        assetName: 'Sales Detail Table',
         assetType: 'TABLE',
         datasourceId: 1,
         fields: [],
@@ -31,7 +33,7 @@ const boundDatasources: BiDatasource[] = [
       },
     ],
     id: 1,
-    name: '销售分析源',
+    name: 'Sales Source',
     sourceCode: 'sales_ds',
   },
 ];
@@ -46,7 +48,7 @@ describe('BiContextAssetsTab', () => {
         datasources={boundDatasources}
         isMutating={false}
         node={node}
-        onBindSources={vi.fn()}
+        onBindSourceAssets={vi.fn()}
         onCreateDatasource={vi.fn()}
         onCreateScreen={vi.fn()}
         onCreateShareToken={vi.fn()}
@@ -61,12 +63,12 @@ describe('BiContextAssetsTab', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: '新建资产' }));
-    expect((screen.getByLabelText('资产名称') as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('表名') as HTMLInputElement).value).toBe('');
+    await user.click(screen.getByRole('button', { name: 'New asset' }));
+    expect((screen.getByLabelText('Asset name') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Table name') as HTMLInputElement).value).toBe('');
 
-    await user.click(screen.getByRole('button', { name: '编辑当前资产' }));
-    expect((screen.getByLabelText('资产名称') as HTMLInputElement).value).toBe('销售事实表');
-    expect((screen.getByLabelText('表名') as HTMLInputElement).value).toBe('dw_sales');
+    await user.click(screen.getByRole('button', { name: 'Edit current asset' }));
+    expect((screen.getByLabelText('Asset name') as HTMLInputElement).value).toBe('Sales Detail Table');
+    expect((screen.getByLabelText('Table name') as HTMLInputElement).value).toBe('dw_sales');
   });
 });

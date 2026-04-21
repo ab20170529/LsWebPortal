@@ -6,7 +6,7 @@ type BiTopToolbarProps = {
   canPublish: boolean;
   isMutating: boolean;
   nodePath: string[];
-  onOpenHistory: () => void;
+  onOpenDesign: () => void;
   onOpenPreview: () => void;
   onPublish: () => void;
   screenName?: string | null;
@@ -16,7 +16,7 @@ export function BiTopToolbar({
   canPublish,
   isMutating,
   nodePath,
-  onOpenHistory,
+  onOpenDesign,
   onOpenPreview,
   onPublish,
   screenName,
@@ -26,7 +26,7 @@ export function BiTopToolbar({
       <div className="bi-top-toolbar-brand">
         <div className="bi-top-toolbar-logo">BI</div>
         <div className="bi-top-toolbar-brand-text">
-          <div className="bi-top-toolbar-title">BI Architecture Designer</div>
+          <div className="bi-top-toolbar-title">BI 设计工作台</div>
           <div className="bi-top-toolbar-path">
             {nodePath.length > 0 ? (
               nodePath.map((item, index) => (
@@ -43,10 +43,10 @@ export function BiTopToolbar({
       </div>
 
       <div className="bi-top-toolbar-actions">
-        <Button disabled={isMutating} onClick={onOpenHistory} tone="ghost">
+        <Button disabled={isMutating} onClick={onOpenDesign} tone="ghost">
           <span className="bi-toolbar-button-content">
             <HistoryIcon className="bi-toolbar-button-icon" />
-            设计记录
+            设计与生成
           </span>
         </Button>
         <Button disabled={!screenName} onClick={onOpenPreview} tone="ghost">
@@ -62,7 +62,7 @@ export function BiTopToolbar({
         >
           <span className="bi-toolbar-button-content">
             <ShareIcon className="bi-toolbar-button-icon" />
-            {screenName ? `发布 ${screenName}` : '发布版本'}
+            {screenName ? `发布 ${screenName}` : '发布当前版本'}
           </span>
         </Button>
         <div className="bi-top-toolbar-avatar" aria-hidden="true">

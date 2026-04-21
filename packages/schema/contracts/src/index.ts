@@ -171,7 +171,7 @@ export const platformSystemEntries: PlatformSystemEntry[] = [
   {
     description: 'Organization-driven display screens powered by the existing BI runtime.',
     id: 'bi-display',
-    route: '/bi-display',
+    route: '/bi-display/platform/langsu',
     shortLabel: 'Display',
     title: 'BI \u5c55\u793a\u7cfb\u7edf',
     tone: 'brand',
@@ -236,7 +236,7 @@ export const portalNavItems: PortalNavItem[] = [
     shortLabel: 'Display',
     systemId: 'bi-display',
     title: 'BI \u5c55\u793a\u7cfb\u7edf',
-    to: '/bi-display',
+    to: '/bi-display/platform/langsu',
     tone: 'brand',
   },
   {

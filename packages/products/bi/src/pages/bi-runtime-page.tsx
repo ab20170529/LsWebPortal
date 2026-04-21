@@ -1,8 +1,8 @@
 import { startTransition, useEffect, useState } from 'react';
-import { Badge, Button, Card } from '@lserp/ui';
+import { Badge, Card } from '@lserp/ui';
 
 import { biApi } from '../api/bi-api';
-import { BiRuntimeModuleCard } from '../components/bi-runtime-module';
+import { BiRuntimeScreenSurface } from '../components/bi-runtime-screen-surface';
 import type { BiRoute, BiRuntimeScreen } from '../types';
 
 type BiRuntimePageProps = {
@@ -82,9 +82,6 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
     );
   }
 
-  const externalTargetUrl = String(screen.externalConfig?.targetUrl ?? '');
-  const externalOpenMode = String(screen.externalConfig?.openMode ?? 'iframe').toLowerCase();
-
   return (
     <div className="space-y-6">
       <Card className="rounded-[36px] p-8 lg:p-10">
@@ -105,42 +102,9 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
         </div>
       </Card>
 
-      {screen.biType === 'EXTERNAL' ? (
-        externalOpenMode === 'blank' ? (
-          <Card className="rounded-[32px] p-8">
-            <div className="theme-text-strong text-2xl font-black tracking-tight">外链 BI</div>
-            <p className="theme-text-muted mt-3 text-sm leading-7">
-              当前页面配置为新窗口打开。点击下方按钮即可访问外部 BI。
-            </p>
-            <div className="mt-6">
-              <Button
-                onClick={() => {
-                  window.open(externalTargetUrl, '_blank', 'noopener,noreferrer');
-                }}
-              >
-                打开外部 BI
-              </Button>
-            </div>
-          </Card>
-        ) : (
-          <Card className="rounded-[32px] p-4">
-            <iframe
-              allowFullScreen
-              className="min-h-[70vh] w-full rounded-[24px]"
-              src={externalTargetUrl}
-              title={screen.screenName}
-            />
-          </Card>
-        )
-      ) : null}
-
-      {screen.biType === 'INTERNAL' ? (
-        <div className="grid gap-6 xl:grid-cols-2">
-          {screen.modules.map((module) => (
-            <BiRuntimeModuleCard key={module.moduleId} module={module} />
-          ))}
-        </div>
-      ) : null}
+      <Card className="rounded-[32px] p-4 lg:p-6">
+        <BiRuntimeScreenSurface screen={screen} />
+      </Card>
     </div>
   );
 }

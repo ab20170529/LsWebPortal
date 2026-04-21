@@ -14,7 +14,22 @@ export type BiCanvasMeta = {
   [key: string]: unknown;
 };
 
+export type BiDirectoryBoundAsset = {
+  assetCode: string;
+  assetName: string;
+  assetType: string;
+  comment?: string | null;
+  datasourceCode?: string | null;
+  datasourceId?: number | null;
+  datasourceName?: string | null;
+  id: number;
+  sourceTables: string[];
+  tableName?: string | null;
+  tableSchema?: string | null;
+};
+
 export type BiDirectoryNode = {
+  boundAssets: BiDirectoryBoundAsset[];
   canvasMeta?: BiCanvasMeta | null;
   children: BiDirectoryNode[];
   datasourceIds: number[];
@@ -23,10 +38,23 @@ export type BiDirectoryNode = {
   nodeCode: string;
   nodeName: string;
   nodeType: string;
+  nodeTypeName?: string | null;
   orderNo?: number | null;
   parentId?: number | null;
+  sourceAssetIds: number[];
   status?: string | null;
   treePath?: string | null;
+};
+
+export type BiNodeType = {
+  allowedChildTypeCodes: string[];
+  description?: string | null;
+  id: number;
+  sortNo?: number | null;
+  status?: string | null;
+  systemDefault?: boolean | null;
+  typeCode: string;
+  typeName: string;
 };
 
 export type BiDataAssetField = {
@@ -219,6 +247,7 @@ export type BiRoute =
   | { kind: 'not-found' };
 
 export type BiDisplayRoute =
-  | { kind: 'selector' }
+  | { kind: 'home' }
   | { kind: 'platform'; platformCode: string }
+  | { kind: 'node'; nodeCode: string; platformCode: string }
   | { kind: 'not-found' };

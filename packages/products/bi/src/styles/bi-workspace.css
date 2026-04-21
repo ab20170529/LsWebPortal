@@ -10,7 +10,12 @@
   --bi-text-main: #0f172a;
   --bi-text-muted: #64748b;
   --bi-shadow: 0 24px 60px -34px rgba(15, 23, 42, 0.35);
-  min-height: calc(100vh - 84px);
+  display: flex;
+  min-width: 0;
+  min-height: 100%;
+  height: 100%;
+  flex-direction: column;
+  box-sizing: border-box;
   padding: 16px;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   color: var(--bi-text-main);
@@ -18,8 +23,11 @@
 
 .bi-workspace-shell {
   display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
   grid-template-columns: 72px minmax(0, 1fr) 388px;
-  height: calc(100vh - 116px);
+  height: 100%;
   overflow: hidden;
   border: 1px solid rgba(203, 213, 225, 0.92);
   border-radius: 22px;
@@ -30,7 +38,9 @@
 .bi-workspace-main {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.98));
 }
 
@@ -249,7 +259,100 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow: hidden;
   background: var(--bi-canvas-bg);
+}
+
+.bi-management-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.bi-management-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.84);
+  padding: 18px 20px 16px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.bi-management-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.bi-management-subtitle {
+  margin-top: 4px;
+  color: var(--bi-text-muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.bi-management-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.bi-management-node-chip {
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 8px 12px;
+  color: var(--bi-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bi-management-selector {
+  display: flex;
+  min-width: 220px;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--bi-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bi-management-layout {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: 280px 320px minmax(0, 1fr);
+  gap: 16px;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.bi-management-layout-wide {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+.bi-management-column {
+  min-height: 0;
+  overflow: auto;
+}
+
+.bi-binding-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.bi-binding-card {
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.98);
+  padding: 12px;
 }
 
 .bi-canvas-toolbar {
@@ -386,6 +489,8 @@
   left: 50%;
   top: -18px;
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   transform: translateX(-50%);
   opacity: 0;
   transition: opacity 160ms ease;
@@ -403,9 +508,9 @@
   border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.98);
-  padding: 6px 10px;
+  padding: 6px 9px;
   color: var(--bi-text-main);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   box-shadow: 0 12px 24px -20px rgba(15, 23, 42, 0.65);
 }
@@ -483,7 +588,9 @@
 .bi-context-panel {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   border-left: 1px solid rgba(226, 232, 240, 0.88);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
 }
@@ -513,6 +620,11 @@
   padding: 14px 18px 0;
 }
 
+.bi-context-tabs-wide {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0;
+}
+
 .bi-context-tab {
   border: 1px solid rgba(226, 232, 240, 0.94);
   border-radius: 12px;
@@ -534,8 +646,10 @@
 }
 
 .bi-context-body {
+  display: flex;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
   padding: 14px 18px 18px;
 }
 
@@ -581,6 +695,10 @@
   box-shadow: 0 16px 30px -30px rgba(15, 23, 42, 0.4);
 }
 
+.bi-panel-card-muted {
+  background: rgba(248, 250, 252, 0.96);
+}
+
 .bi-panel-card-header {
   display: flex;
   align-items: flex-start;
@@ -608,6 +726,24 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.bi-panel-form-spaced {
+  margin-top: 14px;
+}
+
+.bi-form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.bi-form-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bi-panel-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .bi-panel-field {
@@ -667,6 +803,15 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.bi-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--bi-text-muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .bi-panel-empty {
@@ -926,6 +1071,44 @@
   line-height: 1.6;
 }
 
+.bi-field-editor-grid {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: 1.1fr 1fr 0.8fr 1.1fr 1.1fr 0.9fr 0.55fr 0.45fr;
+  background: rgba(226, 232, 240, 0.92);
+}
+
+.bi-field-editor-grid-header {
+  background: rgba(248, 250, 252, 0.96);
+  padding: 10px 12px;
+  color: var(--bi-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.bi-field-editor-input {
+  border-radius: 0;
+  border: none;
+}
+
+.bi-field-editor-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: white;
+  padding: 10px 12px;
+  color: var(--bi-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bi-field-editor-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  border-radius: 0;
+}
+
 .bi-inline-icon {
   width: 16px;
   height: 16px;
@@ -991,9 +1174,26 @@
   line-height: 1.75;
 }
 
+.bi-settings-stage {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.bi-settings-stage .bi-context-panel {
+  min-height: 100%;
+  border-left: none;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 22px;
+}
+
 @media (max-width: 1440px) {
   .bi-workspace-shell {
     grid-template-columns: 72px minmax(0, 1fr) 360px;
+  }
+
+  .bi-management-layout {
+    grid-template-columns: 260px 280px minmax(0, 1fr);
   }
 }
 
@@ -1004,5 +1204,15 @@
 
   .bi-context-panel {
     display: none;
+  }
+
+  .bi-management-layout,
+  .bi-management-layout-wide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bi-form-grid-2,
+  .bi-field-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -23,7 +23,7 @@
       "@lserp/auth": ["packages/platform/auth/src/index.tsx"],
       "@lserp/bi": ["packages/products/bi/src/index.tsx"],
       "@lserp/contracts": ["packages/schema/contracts/src/index.ts"],
-      "@lserp/designer": ["packages/studio/designer/src/index.tsx"],
+      "@lserp/designer": ["packages/studio/designer/src/index.typecheck.d.ts"],
       "@lserp/erp": ["packages/products/erp/src/index.tsx"],
       "@lserp/http": ["packages/platform/http/src/index.ts"],
       "@lserp/project": ["packages/products/project/src/index.tsx"],
@@ -49,5 +49,11 @@
     "packages/**/*.tsx",
     "packages/**/*.d.ts"
   ],
-  "exclude": ["**/*.test.ts", "**/dist/**", "**/node_modules/**"]
+  "exclude": [
+    "**/*.test.ts",
+    "**/dist/**",
+    "**/node_modules/**",
+    "packages/studio/designer/src/index.tsx",
+    "packages/studio/designer/src/legacy/**"
+  ]
 }

@@ -1,4 +1,5 @@
-import { useMemo, useRef, type SVGProps } from 'react';
+import { useMemo } from 'react';
+import type React from 'react';
 import { Button } from '@lserp/ui';
 
 import type { BiCanvasMeta, BiDirectoryNode } from '../../types';
@@ -13,8 +14,10 @@ type BiDirectoryCanvasProps = {
   maxLevel: number;
   nodes: BiDirectoryNode[];
   onAutoLayout: () => void;
+  onDesignInternalArchive: (node: BiDirectoryNode) => void;
   onQuickAddChild: (node: BiDirectoryNode) => void;
   onQuickAddRoot: () => void;
+  onQuickCreateExternalArchive: (node: BiDirectoryNode) => void;
   onSaveLayout: () => void;
   onSelectNode: (nodeId: number) => void;
   onUpdateNodeLayout: (nodeId: number, patch: Partial<BiCanvasMeta>) => void;
@@ -29,7 +32,7 @@ type ConnectorLine = {
   toY: number;
 };
 
-function SaveStageIcon(props: SVGProps<SVGSVGElement>) {
+function SaveStageIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg fill="none" viewBox="0 0 24 24" {...props}>
       <path
@@ -49,15 +52,17 @@ export function BiDirectoryCanvas({
   maxLevel,
   nodes,
   onAutoLayout,
+  onDesignInternalArchive,
   onQuickAddChild,
   onQuickAddRoot,
+  onQuickCreateExternalArchive,
   onSaveLayout,
   onSelectNode,
   onUpdateNodeLayout,
   selectedNodeId,
 }: BiDirectoryCanvasProps) {
   const flatNodes = useMemo(() => flattenDirectoryNodes(nodes), [nodes]);
-  const dragFrameIdRef = useRef<number | null>(null);
+  const dragFrameIdState = useMemo(() => ({ current: null as number | null }), []);
   const selectedNode = useMemo(
     () => flatNodes.find((node) => node.id === selectedNodeId) ?? null,
     [flatNodes, selectedNodeId],
@@ -102,9 +107,9 @@ export function BiDirectoryCanvas({
     };
 
     const release = () => {
-      if (dragFrameIdRef.current !== null) {
-        window.cancelAnimationFrame(dragFrameIdRef.current);
-        dragFrameIdRef.current = null;
+      if (dragFrameIdState.current !== null) {
+        window.cancelAnimationFrame(dragFrameIdState.current);
+        dragFrameIdState.current = null;
         onUpdateNodeLayout(dragState.nodeId, {
           x: dragState.pendingX,
           y: dragState.pendingY,
@@ -117,11 +122,11 @@ export function BiDirectoryCanvas({
     const handlePointerMove = (moveEvent: PointerEvent) => {
       dragState.pendingX = Math.max(40, dragState.originX + moveEvent.clientX - dragState.pointerX);
       dragState.pendingY = Math.max(40, dragState.originY + moveEvent.clientY - dragState.pointerY);
-      if (dragFrameIdRef.current !== null) {
+      if (dragFrameIdState.current !== null) {
         return;
       }
-      dragFrameIdRef.current = window.requestAnimationFrame(() => {
-        dragFrameIdRef.current = null;
+      dragFrameIdState.current = window.requestAnimationFrame(() => {
+        dragFrameIdState.current = null;
         onUpdateNodeLayout(dragState.nodeId, {
           x: dragState.pendingX,
           y: dragState.pendingY,
@@ -158,7 +163,11 @@ export function BiDirectoryCanvas({
               新增根节点
             </span>
           </Button>
-          <Button disabled={!selectedNode} onClick={() => selectedNode && onQuickAddChild(selectedNode)} tone="ghost">
+          <Button
+            disabled={!selectedNode || selectedNode.id < 0}
+            onClick={() => selectedNode && selectedNode.id > 0 && onQuickAddChild(selectedNode)}
+            tone="ghost"
+          >
             <span className="bi-toolbar-button-content">
               <PlusIcon className="bi-toolbar-button-icon" />
               新增子节点
@@ -180,7 +189,7 @@ export function BiDirectoryCanvas({
 
         <div className="bi-canvas-toolbar-stats">
           <span className="bi-canvas-toolbar-stat">层级：{Math.max(1, maxLevel)} 级</span>
-          <span className="bi-canvas-toolbar-stat">资产数：{assetCount}</span>
+          <span className="bi-canvas-toolbar-stat">分析源资产：{assetCount}</span>
         </div>
       </div>
 
@@ -189,7 +198,7 @@ export function BiDirectoryCanvas({
           <div className="bi-canvas-empty">
             <div className="bi-canvas-empty-title">还没有任何目录节点</div>
             <div className="bi-canvas-empty-text">
-              先创建一个根节点，再继续挂接部门、分析维度、子维度和 BI 档案。
+              先创建一个根节点，再继续挂接部门、分析维度、子维度以及节点下的 BI 档案。
             </div>
             <Button onClick={onQuickAddRoot}>
               <span className="bi-toolbar-button-content">
@@ -231,8 +240,10 @@ export function BiDirectoryCanvas({
                 archiveCount={archiveCountByNodeId[node.id] ?? 0}
                 layout={getNodeCanvasMeta(node, layoutMap)}
                 node={node}
+                onDesignInternalArchive={onDesignInternalArchive}
                 onPointerDown={handlePointerDown}
                 onQuickAddChild={onQuickAddChild}
+                onQuickCreateExternalArchive={onQuickCreateExternalArchive}
                 onSelect={onSelectNode}
                 selected={node.id === selectedNodeId}
               />

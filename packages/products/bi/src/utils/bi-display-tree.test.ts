@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { BiDirectoryNode } from '../types';
 import {
+  findDisplayNodeForRoute,
   findNodeByCode,
   findPreferredDisplayRoot,
   pruneOrganizationForest,
@@ -9,10 +10,13 @@ import {
 
 const treeFixture: BiDirectoryNode[] = [
   {
+    boundAssets: [],
     children: [
       {
+        boundAssets: [],
         children: [
           {
+            boundAssets: [],
             children: [],
             datasourceIds: [],
             id: 3,
@@ -20,6 +24,7 @@ const treeFixture: BiDirectoryNode[] = [
             nodeName: 'Analysis West',
             nodeType: 'ANALYSIS_DIM',
             parentId: 2,
+            sourceAssetIds: [],
           },
         ],
         datasourceIds: [11],
@@ -28,6 +33,7 @@ const treeFixture: BiDirectoryNode[] = [
         nodeName: 'Dept West',
         nodeType: 'DEPARTMENT',
         parentId: 1,
+        sourceAssetIds: [],
       },
     ],
     datasourceIds: [],
@@ -36,6 +42,7 @@ const treeFixture: BiDirectoryNode[] = [
     nodeName: 'Root Company',
     nodeType: 'COMPANY',
     parentId: null,
+    sourceAssetIds: [],
   },
 ];
 
@@ -56,5 +63,35 @@ describe('bi display tree utils', () => {
     const pruned = pruneOrganizationForest(treeFixture);
 
     expect(findNodeByCode(pruned, 'dept-west')?.nodeName).toBe('Dept West');
+  });
+
+  it('resolves the department detail target inside the preferred root', () => {
+    const pruned = pruneOrganizationForest(treeFixture);
+
+    expect(findDisplayNodeForRoute(pruned, 'root', 'dept-west')).toEqual({
+      rootNode: pruned[0],
+      selectedNode: pruned[0]?.children[0],
+    });
+  });
+
+  it('returns null for a node route outside the preferred root', () => {
+    const treeWithOtherRoot: BiDirectoryNode[] = [
+      ...treeFixture,
+      {
+        boundAssets: [],
+        children: [],
+        datasourceIds: [],
+        id: 9,
+        nodeCode: 'outside-root',
+        nodeName: 'Outside Root',
+        nodeType: 'COMPANY',
+        parentId: null,
+        sourceAssetIds: [],
+      },
+    ];
+
+    const pruned = pruneOrganizationForest(treeWithOtherRoot);
+
+    expect(findDisplayNodeForRoute(pruned, 'root', 'outside-root').selectedNode).toBeNull();
   });
 });

@@ -3,13 +3,16 @@ import { startTransition, useEffect, useMemo, useState } from 'react';
 import {
   biApi,
   type DataAssetSavePayload,
+  type DataAssetFieldSavePayload,
   type DatasourceSavePayload,
   type DirectoryCanvasLayoutItemPayload,
   type DirectorySavePayload,
   type GenerateDraftPayload,
+  type NodeTypeSavePayload,
   type PromptPreviewPayload,
   type PromptTemplateSavePayload,
   type RegenerateVersionPayload,
+  type ScreenVersionSavePayload,
   type ScreenSavePayload,
   type ShareCreatePayload,
 } from '../api/bi-api';
@@ -18,6 +21,7 @@ import type {
   BiDatasource,
   BiDirectoryNode,
   BiGenerationTask,
+  BiNodeType,
   BiPromptPreview,
   BiPromptTemplate,
   BiScreen,
@@ -34,11 +38,13 @@ import {
 } from '../utils/bi-directory';
 import {
   replaceDatasourceAssetFields,
+  removeDirectoryNode,
   resolveSelectedScreenIdForNode,
   updateDirectoryNode,
   upsertDatasource,
   upsertDatasourceAsset,
   upsertDirectoryNode,
+  upsertNodeType,
   upsertScreen,
   upsertShareToken,
 } from '../utils/bi-workspace-state';
@@ -51,11 +57,17 @@ function mergeLayouts(nodes: BiDirectoryNode[]) {
   return nextLayout;
 }
 
-const WORKSPACE_ERROR = 'BI workspace action failed.';
-const WORKSPACE_LOAD_ERROR = 'Failed to load BI workspace.';
-const PROMPT_PREVIEW_ERROR = 'Failed to preview the prompt.';
+const WORKSPACE_ERROR = 'BI 工作台操作失败。';
+const WORKSPACE_LOAD_ERROR = 'BI 工作台加载失败。';
+const PROMPT_PREVIEW_ERROR = '提示词预览失败。';
 
-export function useBiWorkspace() {
+type BiWorkspaceOptions = {
+  initialSelectedNodeId?: number | null;
+  initialSelectedScreenId?: number | null;
+};
+
+export function useBiWorkspace(options?: BiWorkspaceOptions) {
+  const optimisticNodeIdState = useMemo(() => ({ current: -1 }), []);
   const [allScreens, setAllScreens] = useState<BiScreen[]>([]);
   const [datasources, setDatasources] = useState<BiDatasource[]>([]);
   const [designRecords, setDesignRecords] = useState<BiScreenDesignRecord[]>([]);
@@ -65,6 +77,7 @@ export function useBiWorkspace() {
   const [isMutating, setIsMutating] = useState(false);
   const [layoutMap, setLayoutMap] = useState<Record<number, BiCanvasMeta>>({});
   const [nodes, setNodes] = useState<BiDirectoryNode[]>([]);
+  const [nodeTypes, setNodeTypes] = useState<BiNodeType[]>([]);
   const [promptPreview, setPromptPreview] = useState<BiPromptPreview | null>(null);
   const [promptTemplates, setPromptTemplates] = useState<BiPromptTemplate[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
@@ -89,7 +102,24 @@ export function useBiWorkspace() {
       return [];
     }
     const datasourceIds = new Set(selectedNode.datasourceIds);
-    return datasources.filter((datasource) => datasourceIds.has(datasource.id));
+    const sourceAssetIds = new Set(selectedNode.sourceAssetIds);
+    return datasources
+      .map((datasource) => {
+        const assets =
+          sourceAssetIds.size > 0
+            ? datasource.assets.filter((asset) => sourceAssetIds.has(asset.id))
+            : datasourceIds.has(datasource.id)
+              ? datasource.assets
+              : [];
+        if (assets.length === 0 && !datasourceIds.has(datasource.id)) {
+          return null;
+        }
+        return {
+          ...datasource,
+          assets,
+        };
+      })
+      .filter((datasource): datasource is BiDatasource => Boolean(datasource));
   }, [datasources, selectedNode]);
   const metrics = useMemo(
     () => ({
@@ -103,10 +133,28 @@ export function useBiWorkspace() {
   );
   const selectedNodePath = useMemo(() => buildNodePath(selectedNode, nodes), [nodes, selectedNode]);
 
+  function nextOptimisticNodeId() {
+    const nextId = optimisticNodeIdState.current;
+    optimisticNodeIdState.current -= 1;
+    return nextId;
+  }
+
+  function removeLayoutEntries(
+    currentLayoutMap: Record<number, BiCanvasMeta>,
+    nodeIds: Iterable<number>,
+  ) {
+    const nextLayoutMap = { ...currentLayoutMap };
+    Array.from(nodeIds).forEach((nodeId) => {
+      delete nextLayoutMap[nodeId];
+    });
+    return nextLayoutMap;
+  }
+
   async function loadWorkspaceBase(preferredNodeId?: number | null, preferredScreenId?: number | null) {
-    const [nextNodes, nextDatasources, nextTemplates, nextAllScreens] = await Promise.all([
+    const [nextNodes, nextDatasources, nextNodeTypes, nextTemplates, nextAllScreens] = await Promise.all([
       biApi.listDirectoryTree(),
-      biApi.listDatasources(),
+      biApi.listAssetCatalog(),
+      biApi.listNodeTypes(),
       biApi.listPromptTemplates('SCREEN_GENERATION'),
       biApi.listScreens(),
     ]);
@@ -114,6 +162,7 @@ export function useBiWorkspace() {
     startTransition(() => {
       setNodes(nextNodes);
       setDatasources(nextDatasources);
+      setNodeTypes(nextNodeTypes);
       setPromptTemplates(nextTemplates);
       setAllScreens(nextAllScreens);
       setLayoutMap(mergeLayouts(nextNodes));
@@ -182,8 +231,8 @@ export function useBiWorkspace() {
   }
 
   useEffect(() => {
-    void hydrate(undefined, undefined, { showLoading: true });
-  }, []);
+    void hydrate(options?.initialSelectedNodeId, options?.initialSelectedScreenId, { showLoading: true });
+  }, [options?.initialSelectedNodeId, options?.initialSelectedScreenId]);
 
   useEffect(() => {
     if (isLoading) {
@@ -241,8 +290,79 @@ export function useBiWorkspace() {
   }
 
   async function saveDirectory(payload: DirectorySavePayload, id?: number) {
+    if (!id) {
+      const tempNodeId = nextOptimisticNodeId();
+      const parentNode =
+        payload.parentId != null ? flatNodes.find((node) => node.id === payload.parentId) ?? null : null;
+      const previousSelectedNodeId = selectedNodeId;
+      const optimisticNode: BiDirectoryNode = {
+        boundAssets: [],
+        canvasMeta: (payload.canvasMeta as BiCanvasMeta | undefined) ?? undefined,
+        children: [],
+        datasourceIds: [],
+        id: tempNodeId,
+        level: parentNode ? Number(parentNode.level ?? 1) + 1 : 1,
+        nodeCode: payload.nodeCode,
+        nodeName: payload.nodeName,
+        nodeType: payload.nodeType,
+        nodeTypeName:
+          nodeTypes.find((nodeType) => nodeType.typeCode === payload.nodeType)?.typeName ?? payload.nodeType,
+        orderNo: payload.orderNo ?? 0,
+        parentId: payload.parentId ?? null,
+        sourceAssetIds: [],
+        status: payload.status ?? 'ACTIVE',
+        treePath: parentNode
+          ? `${parentNode.treePath ?? `/${parentNode.nodeCode}`}/${payload.nodeCode}`
+          : `/${payload.nodeCode}`,
+      };
+
+      startTransition(() => {
+        setNodes((current) => upsertDirectoryNode(current, optimisticNode));
+        setLayoutMap((current) => ({
+          ...current,
+          [tempNodeId]: {
+            ...getNodeCanvasMeta(optimisticNode),
+            ...(payload.canvasMeta ?? {}),
+          },
+        }));
+        setSelectedNodeId(tempNodeId);
+      });
+
+      setIsMutating(true);
+      setError(null);
+      try {
+        const saved = await biApi.createDirectory(payload);
+        startTransition(() => {
+          setNodes((current) => upsertDirectoryNode(removeDirectoryNode(current, tempNodeId), saved));
+          setLayoutMap((current) => {
+            const optimisticLayout = current[tempNodeId];
+            return {
+              ...removeLayoutEntries(current, [tempNodeId]),
+              [saved.id]: {
+                ...getNodeCanvasMeta(saved),
+                ...(saved.canvasMeta ?? payload.canvasMeta ?? {}),
+                ...(optimisticLayout ?? {}),
+              },
+            };
+          });
+          setSelectedNodeId((current) => (current === tempNodeId ? saved.id : current));
+        });
+        return;
+      } catch (mutationError) {
+        startTransition(() => {
+          setNodes((current) => removeDirectoryNode(current, tempNodeId));
+          setLayoutMap((current) => removeLayoutEntries(current, [tempNodeId]));
+          setSelectedNodeId((current) => (current === tempNodeId ? previousSelectedNodeId : current));
+        });
+        setError(mutationError instanceof Error ? mutationError.message : WORKSPACE_ERROR);
+        throw mutationError;
+      } finally {
+        setIsMutating(false);
+      }
+    }
+
     await runLocalMutation(
-      async () => (id ? biApi.updateDirectory(id, payload) : biApi.createDirectory(payload)),
+      async () => biApi.updateDirectory(id, payload),
       async (saved) => {
         startTransition(() => {
           setNodes((current) => upsertDirectoryNode(current, saved));
@@ -259,27 +379,20 @@ export function useBiWorkspace() {
     );
   }
 
-  async function bindNodeSources(nodeId: number, datasourceIds: number[]) {
+  async function bindNodeSourceAssets(nodeId: number, sourceAssetIds: number[]) {
     await runLocalMutation(
-      async () => {
-        await biApi.bindNodeSources(nodeId, datasourceIds);
-        return nodeId;
-      },
-      async () => {
+      async () => biApi.bindNodeSourceAssets(nodeId, sourceAssetIds),
+      async (savedNode) => {
         startTransition(() => {
-          setNodes((current) =>
-            updateDirectoryNode(current, nodeId, (node) => ({
-              ...node,
-              datasourceIds,
-            })),
-          );
+          setNodes((current) => upsertDirectoryNode(current, savedNode));
+          setSelectedNodeId(savedNode.id);
         });
       },
     );
   }
 
   async function createDatasource(payload: DatasourceSavePayload) {
-    await runLocalMutation(
+    return runLocalMutation(
       async () => biApi.createDatasource(payload),
       async (datasource) => {
         startTransition(() => {
@@ -290,7 +403,7 @@ export function useBiWorkspace() {
   }
 
   async function saveAsset(datasourceId: number, payload: DataAssetSavePayload, assetId?: number) {
-    await runLocalMutation(
+    return runLocalMutation(
       async () =>
         assetId
           ? biApi.updateDatasourceAsset(datasourceId, assetId, payload)
@@ -298,6 +411,39 @@ export function useBiWorkspace() {
       async (asset) => {
         startTransition(() => {
           setDatasources((current) => upsertDatasourceAsset(current, datasourceId, asset));
+        });
+      },
+    );
+  }
+
+  async function replaceAssetFields(assetId: number, fields: DataAssetFieldSavePayload[]) {
+    return runLocalMutation(
+      async () => biApi.replaceAssetFields(assetId, fields),
+      async (nextFields) => {
+        startTransition(() => {
+          setDatasources((current) => replaceDatasourceAssetFields(current, assetId, nextFields));
+        });
+      },
+    );
+  }
+
+  async function updateDatasource(id: number, payload: DatasourceSavePayload) {
+    return runLocalMutation(
+      async () => biApi.updateDatasource(id, payload),
+      async (datasource) => {
+        startTransition(() => {
+          setDatasources((current) => upsertDatasource(current, datasource));
+        });
+      },
+    );
+  }
+
+  async function saveNodeType(payload: NodeTypeSavePayload, id?: number) {
+    return runLocalMutation(
+      async () => (id ? biApi.updateNodeType(id, payload) : biApi.createNodeType(payload)),
+      async (savedNodeType) => {
+        startTransition(() => {
+          setNodeTypes((current) => upsertNodeType(current, savedNodeType));
         });
       },
     );
@@ -312,7 +458,7 @@ export function useBiWorkspace() {
   }
 
   async function createScreen(payload: ScreenSavePayload) {
-    await runLocalMutation(
+    return runLocalMutation(
       async () => biApi.createScreen(payload),
       async (screen) => {
         startTransition(() => {
@@ -323,6 +469,27 @@ export function useBiWorkspace() {
         await loadScreenSideData(screen.id);
       },
     );
+  }
+
+  async function updateScreen(screenId: number, payload: ScreenSavePayload) {
+    return runLocalMutation(
+      async () => biApi.updateScreen(screenId, payload),
+      async (screen) => {
+        startTransition(() => {
+          setAllScreens((current) => upsertScreen(current, screen));
+          setSelectedNodeId(screen.nodeId);
+          setSelectedScreenId(screen.id);
+        });
+        await loadScreenSideData(screen.id);
+      },
+    );
+  }
+
+  async function saveScreenVersion(screenId: number, payload: ScreenVersionSavePayload) {
+    return mutate(async () => {
+      await biApi.saveScreenVersion(screenId, payload);
+      return { nextNodeId: selectedNodeId, nextScreenId: screenId };
+    });
   }
 
   async function publishScreenVersion(screenId: number, versionId: number) {
@@ -460,10 +627,66 @@ export function useBiWorkspace() {
       id: node.id,
     }));
 
-    await runLocalMutation(async () => {
-      await biApi.saveCanvasLayout(payload);
-      return payload;
+    await runLocalMutation(
+      async () => biApi.saveCanvasLayout(payload),
+      async (savedNodes) => {
+        const nextFlatNodes = flattenDirectoryNodes(savedNodes);
+        const nextSelectedNodeId =
+          selectedNodeId && nextFlatNodes.some((node) => node.id === selectedNodeId)
+            ? selectedNodeId
+            : nextFlatNodes[0]?.id ?? null;
+        startTransition(() => {
+          setNodes(savedNodes);
+          setLayoutMap(mergeLayouts(savedNodes));
+          setSelectedNodeId(nextSelectedNodeId);
+        });
+      },
+    );
+  }
+
+  async function deleteDirectory(nodeId: number) {
+    const targetNode = flatNodes.find((node) => node.id === nodeId) ?? null;
+    if (!targetNode) {
+      return;
+    }
+
+    const subtreeNodeIds = new Set(flattenDirectoryNodes([targetNode]).map((node) => node.id));
+    if (allScreens.some((screen) => subtreeNodeIds.has(screen.nodeId))) {
+      const message = '当前节点或下级节点仍有关联 BI 档案，请先处理档案后再删除。';
+      setError(message);
+      throw new Error(message);
+    }
+
+    const previousNodes = nodes;
+    const previousLayoutMap = layoutMap;
+    const previousSelectedNodeId = selectedNodeId;
+    const remainingNodes = flatNodes.filter((node) => !subtreeNodeIds.has(node.id));
+    const fallbackSelectedNodeId =
+      targetNode.parentId ?? remainingNodes[0]?.id ?? null;
+
+    startTransition(() => {
+      setNodes((current) => removeDirectoryNode(current, nodeId));
+      setLayoutMap((current) => removeLayoutEntries(current, subtreeNodeIds));
+      setSelectedNodeId((current) =>
+        current != null && subtreeNodeIds.has(current) ? fallbackSelectedNodeId : current,
+      );
     });
+
+    setIsMutating(true);
+    setError(null);
+    try {
+      await biApi.deleteDirectory(nodeId);
+    } catch (mutationError) {
+      startTransition(() => {
+        setNodes(previousNodes);
+        setLayoutMap(previousLayoutMap);
+        setSelectedNodeId(previousSelectedNodeId);
+      });
+      setError(mutationError instanceof Error ? mutationError.message : WORKSPACE_ERROR);
+      throw mutationError;
+    } finally {
+      setIsMutating(false);
+    }
   }
 
   async function refreshGenerationTask(taskId: number) {
@@ -477,12 +700,13 @@ export function useBiWorkspace() {
   return {
     allScreens,
     autoLayout,
-    bindNodeSources,
+    bindNodeSourceAssets,
     boundDatasources,
     createDatasource,
     createScreen,
     createShareToken,
     datasources,
+    deleteDirectory,
     designRecords,
     error,
     flatNodes,
@@ -495,18 +719,22 @@ export function useBiWorkspace() {
     layoutMap,
     metrics,
     nodes,
+    nodeTypes,
     previewPrompt,
     promptPreview,
     promptTemplates,
     publishGeneratedVersion,
     publishScreenVersion,
+    replaceAssetFields,
     refreshGenerationTask,
     regenerateVersion,
     revokeShareToken,
     saveAsset,
     saveCanvasLayout,
     saveDirectory,
+    saveNodeType,
     savePromptTemplate,
+    saveScreenVersion,
     screens,
     selectedNode,
     selectedNodeId,
@@ -516,6 +744,8 @@ export function useBiWorkspace() {
     setSelectedNodeId,
     setSelectedScreenId,
     shareTokens,
+    updateDatasource,
     updateNodeLayout,
+    updateScreen,
   };
 }

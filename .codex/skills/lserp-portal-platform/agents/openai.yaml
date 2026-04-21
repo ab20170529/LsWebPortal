@@ -1,0 +1,4 @@
+interface:
+  display_name: "LsERP Portal Platform"
+  short_description: "Portal shell, auth, routes, and product boundaries"
+  default_prompt: "Use $lserp-portal-platform to inspect the portal shell, auth bootstrap, route entrypoints, and package boundaries."

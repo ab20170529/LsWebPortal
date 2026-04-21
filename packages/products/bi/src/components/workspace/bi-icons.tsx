@@ -1,6 +1,6 @@
-import type { SVGProps } from 'react';
+import type React from 'react';
 
-type IconProps = SVGProps<SVGSVGElement>;
+type IconProps = React.SVGProps<SVGSVGElement>;
 
 function IconBase(props: IconProps) {
   return (
