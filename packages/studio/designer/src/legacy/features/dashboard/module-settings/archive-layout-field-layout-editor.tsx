@@ -130,6 +130,7 @@ type FieldRowDropData = { beforeId: string | null; groupId: string; rowNumber: n
 type FieldSizeInputDraft = { fieldId: string | null; h: string; w: string };
 type SchemeFieldSizeInputDraftMap = Record<string, { h: string; w: string }>;
 type SchemeBatchSizeInputDraft = { h: string; w: string };
+type SchemeFieldFilterMode = 'all' | 'selected' | 'unassigned';
 type WidthPreset = 'compact' | 'standard' | 'full';
 type HeightPreset = 'single' | 'comfortable' | 'expanded';
 type FieldResizeState = {
@@ -322,6 +323,15 @@ function parseCommittedNumber(rawValue: string, fallback: number, min: number, m
     return fallback;
   }
   return clampNumber(parsedValue, min, max);
+}
+
+function isEditableEventTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = target.tagName.toLowerCase();
+  return target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
 }
 
 function sortItems(items: DetailLayoutItem[]) {
@@ -616,7 +626,6 @@ const ArchiveLayoutWorkbenchToolbar = React.memo(function ArchiveLayoutWorkbench
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Workbench</div>
           <div className="mt-1 text-[15px] font-semibold text-slate-900">字段预览工作台</div>
-          <div className="mt-1 text-[12px] text-slate-500">中间区域只保留分组标题和字段预览，双击字段打开快编设置。</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-[12px] border border-[#dbe5ef] bg-white px-2.5 py-1.5">
@@ -725,14 +734,13 @@ const ArchiveLayoutSidebar = React.memo(function ArchiveLayoutSidebar({
 }: ArchiveLayoutSidebarProps) {
   return (
     <aside className={cn(SURFACE_CLASS, 'flex min-h-0 flex-col overflow-hidden')}>
-      <div className="border-b border-[#e4ecf5] px-3 py-2">
+      <div className="border-b border-[#e4ecf5] px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Fields</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Fields</div>
             <div className="mt-1 text-[15px] font-semibold text-slate-900">字段编排</div>
-            <div className="mt-1 text-[12px] leading-5 text-slate-500">左侧负责筛选与放入，中间完成分组预览、顺序和尺寸快编。</div>
           </div>
-          <div className="grid w-[136px] shrink-0 grid-cols-2 gap-1 rounded-[12px] border border-[#dbe5ef] bg-white/88 p-1 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.22)]">
+          <div className="grid w-[140px] shrink-0 grid-cols-2 gap-1 rounded-[12px] border border-[#dbe5ef] bg-white/88 p-1 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.22)]">
             <button
               type="button"
               onClick={() => onOpenSchemeModal()}
@@ -843,47 +851,50 @@ const ArchiveLayoutSidebar = React.memo(function ArchiveLayoutSidebar({
         {sidebarTab === 'schemes' ? (
           <section className="flex h-full min-h-0 flex-col rounded-[14px] border border-[#e0e8f2] bg-white/82">
             <div className="flex items-center justify-between border-b border-[#edf2f7] px-3 py-2">
-              <div>
+              <div className="min-w-0">
                 <div className="text-[12px] font-semibold text-slate-700">已有方案</div>
-                <div className="mt-1 text-[11px] text-slate-400">空布局会自动弹出方案设置，也可以从这里继续应用和维护。</div>
               </div>
-              <div className="grid w-full max-w-[160px] shrink-0 gap-1 rounded-[12px] border border-[#dbe5ef] bg-white/90 p-1 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.22)]">
-                <button
-                  type="button"
-                  onClick={onCreateSchemeFromCurrentLayout}
-                  disabled={!hasPlacedFields}
-                  className={cn(
-                    'inline-flex h-8 items-center justify-center rounded-[9px] px-2 text-center text-[10px] font-semibold leading-tight transition-[background-color,color,box-shadow,transform]',
-                    hasPlacedFields
-                      ? 'bg-[#f8fbff] text-slate-600 hover:bg-[#eef5ff] hover:text-primary hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.2)]'
-                      : 'cursor-not-allowed bg-[#f8fafc] text-slate-300',
-                  )}
-                  style={staticWorkbenchMotionStyle}
-                >
-                  从当前布局生成
-                </button>
-                <button
-                  type="button"
-                  onClick={onCreateNewSchemeDraft}
-                  className="inline-flex h-8 items-center justify-center rounded-[9px] bg-[#f8fbff] px-2 text-center text-[10px] font-semibold leading-tight text-slate-600 transition-[background-color,color,box-shadow,transform] hover:bg-[#eef5ff] hover:text-primary hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.2)]"
-                  style={staticWorkbenchMotionStyle}
-                >
-                  新建方案
-                </button>
+              <div className="ml-3 rounded-full border border-[#e5ecf5] bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
+                {schemes.length} 个方案
+              </div>
+            </div>
+            <div className="border-b border-[#edf2f7] px-3 py-2">
+              <div className="grid gap-1 rounded-[12px] border border-[#dbe5ef] bg-white/90 p-1 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.22)]">
+                <div className="grid grid-cols-2 gap-1">
+                  <button
+                    type="button"
+                    onClick={onCreateSchemeFromCurrentLayout}
+                    disabled={!hasPlacedFields}
+                    className={cn(
+                      'inline-flex h-8 items-center justify-center rounded-[9px] px-2 text-center text-[10px] font-semibold leading-tight transition-[background-color,color,box-shadow,transform]',
+                      hasPlacedFields
+                        ? 'bg-[#f8fbff] text-slate-600 hover:bg-[#eef5ff] hover:text-primary hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.2)]'
+                        : 'cursor-not-allowed bg-[#f8fafc] text-slate-300',
+                    )}
+                    style={staticWorkbenchMotionStyle}
+                  >
+                    从布局生成
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onCreateNewSchemeDraft}
+                    className="inline-flex h-8 items-center justify-center rounded-[9px] bg-[#f8fbff] px-2 text-center text-[10px] font-semibold leading-tight text-slate-600 transition-[background-color,color,box-shadow,transform] hover:bg-[#eef5ff] hover:text-primary hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.2)]"
+                    style={staticWorkbenchMotionStyle}
+                  >
+                    新建方案
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => onOpenSchemeModal()}
                   className="inline-flex h-8 items-center justify-center rounded-[9px] bg-primary px-2 text-center text-[10px] font-semibold leading-tight text-white transition-[background-color,box-shadow,transform] hover:bg-primary/90 hover:shadow-[0_12px_24px_-24px_rgba(59,130,246,0.45)]"
                   style={staticWorkbenchMotionStyle}
                 >
-                  打开设置
+                  打开方案设置
                 </button>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              <div className="mb-2 rounded-[12px] border border-[#dbe5ef] bg-[#f8fbff] px-3 py-2.5 text-[11px] leading-5 text-slate-500">
-                方案会先写入当前模块配置。返回页面后再点击模块保存，刷新页面时这些已保存方案才会继续保留。
-              </div>
               {schemes.length > 0 ? schemes.map((scheme) => (
                 <div
                   key={scheme.id}
@@ -963,6 +974,219 @@ const ArchiveLayoutSidebar = React.memo(function ArchiveLayoutSidebar({
         ) : null}
       </div>
     </aside>
+  );
+});
+
+type ArchiveLayoutSchemeFieldRowProps = {
+  assignedGroupName: string;
+  checked: boolean;
+  fieldId: string;
+  heightInput: string;
+  isExpanded: boolean;
+  label: string;
+  onHandleFieldSizeInputKeyDown: (
+    event: React.KeyboardEvent<HTMLInputElement>,
+    commit: () => void,
+    reset: () => void,
+  ) => void;
+  onCommitSizeDraft: (fieldId: string, dimension: 'w' | 'h', rawValue: string, fallback: number, resolvedWidth: number, resolvedHeight: number) => void;
+  onNudgeSizeDraft: (fieldId: string, dimension: 'w' | 'h', currentValue: number, delta: number, resolvedWidth: number, resolvedHeight: number) => void;
+  onResetSizeDraft: (fieldId: string, resolvedWidth: number, resolvedHeight: number) => void;
+  onToggleChecked: (fieldId: string, checked: boolean) => void;
+  onToggleExpanded: (fieldId: string) => void;
+  onUpdateSizeDraft: (fieldId: string, patch: { h?: string; w?: string }, resolvedWidth: number, resolvedHeight: number) => void;
+  resolvedHeight: number;
+  resolvedWidth: number;
+  schemeModalCardClass: string;
+  schemeModalInputClass: string;
+  schemeModalSelectedCardClass: string;
+  schemeModalSurfaceButtonClass: string;
+  showAssignedGroupName: boolean;
+  staticWorkbenchMotionStyle: React.CSSProperties;
+  title: string;
+  widthInput: string;
+};
+
+const ArchiveLayoutSchemeFieldRow = React.memo(function ArchiveLayoutSchemeFieldRow({
+  assignedGroupName,
+  checked,
+  fieldId,
+  heightInput,
+  isExpanded,
+  label,
+  onHandleFieldSizeInputKeyDown,
+  onCommitSizeDraft,
+  onNudgeSizeDraft,
+  onResetSizeDraft,
+  onToggleChecked,
+  onToggleExpanded,
+  onUpdateSizeDraft,
+  resolvedHeight,
+  resolvedWidth,
+  schemeModalCardClass,
+  schemeModalInputClass,
+  schemeModalSelectedCardClass,
+  schemeModalSurfaceButtonClass,
+  showAssignedGroupName,
+  staticWorkbenchMotionStyle,
+  title,
+  widthInput,
+}: ArchiveLayoutSchemeFieldRowProps) {
+  return (
+    <label
+      className={cn(
+        'mb-2 flex cursor-pointer items-start gap-3 rounded-[14px] border px-3 py-2.5',
+        checked
+          ? `border-primary/35 bg-primary/5 ${schemeModalSelectedCardClass}`
+          : 'border-[#edf2f7] bg-[#fbfdff] hover:border-[#d7e5f4] hover:bg-white',
+        schemeModalCardClass,
+      )}
+      style={staticWorkbenchMotionStyle}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onToggleChecked(fieldId, event.target.checked)}
+        className="mt-0.5 size-4 rounded border-[#c7d4e4]"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-800">{title}</div>
+          {checked ? (
+            <span className="rounded-full border border-[#dbe5ef] bg-white px-2 py-1 text-[10px] font-medium text-slate-500">
+              {resolvedWidth} × {resolvedHeight}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1 truncate text-[11px] text-slate-400">{label}</div>
+        {checked ? (
+          <div className="mt-1.5 space-y-2" onClick={(event) => event.stopPropagation()}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-primary/15 bg-white px-2 py-1 text-[10px] font-semibold text-primary">
+                已加入当前分组
+              </span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onToggleExpanded(fieldId);
+                }}
+                className={cn(
+                  'rounded-[8px] border border-[#d8e3ef] bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
+                  schemeModalSurfaceButtonClass,
+                )}
+                style={staticWorkbenchMotionStyle}
+              >
+                {isExpanded ? '收起尺寸' : '尺寸设置'}
+              </button>
+            </div>
+            {isExpanded ? (
+              <div className="grid grid-cols-2 gap-2">
+                <label className="grid gap-1 text-[10px] font-medium text-slate-500">
+                  <span>默认宽度</span>
+                  <div className="grid grid-cols-[24px_minmax(0,1fr)_24px] items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onNudgeSizeDraft(fieldId, 'w', resolvedWidth, -20, resolvedWidth, resolvedHeight)}
+                      className={cn(
+                        'h-7 rounded-[8px] border border-[#d8e3ef] bg-white text-[12px] font-semibold text-slate-500 hover:border-[#cddaea] hover:bg-[#f8fbff]',
+                        schemeModalSurfaceButtonClass,
+                      )}
+                      style={staticWorkbenchMotionStyle}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={widthInput}
+                      onChange={(event) => onUpdateSizeDraft(fieldId, { w: event.target.value.replace(/[^\d]/g, '') }, resolvedWidth, resolvedHeight)}
+                      onBlur={() => onCommitSizeDraft(fieldId, 'w', widthInput, resolvedWidth, resolvedWidth, resolvedHeight)}
+                      onKeyDown={(event) => onHandleFieldSizeInputKeyDown(
+                        event,
+                        () => onCommitSizeDraft(fieldId, 'w', widthInput, resolvedWidth, resolvedWidth, resolvedHeight),
+                        () => onResetSizeDraft(fieldId, resolvedWidth, resolvedHeight),
+                      )}
+                      className={cn(
+                        'h-7 min-w-0 rounded-[8px] border border-[#d8e3ef] bg-white px-2 text-center text-[11px] text-slate-700 outline-none',
+                        schemeModalInputClass,
+                      )}
+                      style={staticWorkbenchMotionStyle}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onNudgeSizeDraft(fieldId, 'w', resolvedWidth, 20, resolvedWidth, resolvedHeight)}
+                      className={cn(
+                        'h-7 rounded-[8px] border border-[#d8e3ef] bg-white text-[12px] font-semibold text-slate-500 hover:border-[#cddaea] hover:bg-[#f8fbff]',
+                        schemeModalSurfaceButtonClass,
+                      )}
+                      style={staticWorkbenchMotionStyle}
+                    >
+                      +
+                    </button>
+                  </div>
+                </label>
+                <label className="grid gap-1 text-[10px] font-medium text-slate-500">
+                  <span>默认高度</span>
+                  <div className="grid grid-cols-[24px_minmax(0,1fr)_24px] items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onNudgeSizeDraft(fieldId, 'h', resolvedHeight, -4, resolvedWidth, resolvedHeight)}
+                      className={cn(
+                        'h-7 rounded-[8px] border border-[#d8e3ef] bg-white text-[12px] font-semibold text-slate-500 hover:border-[#cddaea] hover:bg-[#f8fbff]',
+                        schemeModalSurfaceButtonClass,
+                      )}
+                      style={staticWorkbenchMotionStyle}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={heightInput}
+                      onChange={(event) => onUpdateSizeDraft(fieldId, { h: event.target.value.replace(/[^\d]/g, '') }, resolvedWidth, resolvedHeight)}
+                      onBlur={() => onCommitSizeDraft(fieldId, 'h', heightInput, resolvedHeight, resolvedWidth, resolvedHeight)}
+                      onKeyDown={(event) => onHandleFieldSizeInputKeyDown(
+                        event,
+                        () => onCommitSizeDraft(fieldId, 'h', heightInput, resolvedHeight, resolvedWidth, resolvedHeight),
+                        () => onResetSizeDraft(fieldId, resolvedWidth, resolvedHeight),
+                      )}
+                      className={cn(
+                        'h-7 min-w-0 rounded-[8px] border border-[#d8e3ef] bg-white px-2 text-center text-[11px] text-slate-700 outline-none',
+                        schemeModalInputClass,
+                      )}
+                      style={staticWorkbenchMotionStyle}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onNudgeSizeDraft(fieldId, 'h', resolvedHeight, 4, resolvedWidth, resolvedHeight)}
+                      className={cn(
+                        'h-7 rounded-[8px] border border-[#d8e3ef] bg-white text-[12px] font-semibold text-slate-500 hover:border-[#cddaea] hover:bg-[#f8fbff]',
+                        schemeModalSurfaceButtonClass,
+                      )}
+                      style={staticWorkbenchMotionStyle}
+                    >
+                      +
+                    </button>
+                  </div>
+                </label>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {showAssignedGroupName ? (
+        <span
+          className="shrink-0 rounded-full border border-[#e5ecf5] bg-white px-2 py-1 text-[10px] font-medium text-slate-500 transition-[border-color,background-color,box-shadow]"
+          style={staticWorkbenchMotionStyle}
+        >
+          {assignedGroupName}
+        </span>
+      ) : null}
+    </label>
   );
 });
 
@@ -1888,6 +2112,9 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     (schemes[0]?.groups[0] ?? suggestedScheme.groups[0])?.id ?? null,
   );
   const [schemeFieldKeyword, setSchemeFieldKeyword] = React.useState('');
+  const [schemeFieldFilterMode, setSchemeFieldFilterMode] = React.useState<SchemeFieldFilterMode>('all');
+  const [isBatchSizePanelOpen, setIsBatchSizePanelOpen] = React.useState(false);
+  const [expandedSchemeFieldId, setExpandedSchemeFieldId] = React.useState<string | null>(null);
   const [schemeFieldSizeInputs, setSchemeFieldSizeInputs] = React.useState<SchemeFieldSizeInputDraftMap>(() => (
     buildSchemeFieldSizeInputDrafts(schemes[0] ? cloneArchiveLayoutScheme(schemes[0]) : cloneArchiveLayoutScheme(suggestedScheme))
   ));
@@ -1896,6 +2123,7 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
   const fieldResizePreviewRef = React.useRef<FieldResizePreview | null>(null);
   const fieldResizeFrameRef = React.useRef<number | null>(null);
   const schemeAutoOpenedRef = React.useRef(false);
+  const schemeFieldSearchInputRef = React.useRef<HTMLInputElement | null>(null);
   const {
     beginFieldDrag,
     collisionDetection,
@@ -2010,13 +2238,7 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
   const schemeModalCardClass = 'transition-[border-color,background-color,box-shadow,transform] hover:-translate-y-[1px] hover:shadow-[0_14px_28px_-26px_rgba(15,23,42,0.18)]';
   const schemeModalSelectedCardClass = 'shadow-[0_16px_30px_-28px_rgba(59,130,246,0.34)]';
   const shouldAutoOpenSchemeModal = !hasPlacedFields && !hasSourcePlacedFields;
-  const filteredSchemeFieldOptions = React.useMemo(() => {
-    const normalizedSchemeKeyword = schemeFieldKeyword.trim().toLowerCase();
-    return fieldOptions.filter((option) => {
-      const text = `${option.title || ''} ${option.label || ''} ${option.description || ''}`.toLowerCase();
-      return !normalizedSchemeKeyword || text.includes(normalizedSchemeKeyword);
-    });
-  }, [fieldOptions, schemeFieldKeyword]);
+  const deferredSchemeFieldKeyword = React.useDeferredValue(schemeFieldKeyword);
   const schemeDraftGroupById = React.useMemo(() => {
     const nextMap = new Map<string, ArchiveLayoutSchemeGroup>();
     schemeDraft.groups.forEach((group) => {
@@ -2039,6 +2261,10 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     () => Array.from(schemeFieldAssignments.keys()),
     [schemeFieldAssignments],
   );
+  const selectedSchemeFieldIdSet = React.useMemo(
+    () => new Set(selectedSchemeFieldIds),
+    [selectedSchemeFieldIds],
+  );
   const schemeGroupNameById = React.useMemo(() => {
     const nextMap = new Map<string, string>();
     schemeDraft.groups.forEach((group) => {
@@ -2046,36 +2272,75 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     });
     return nextMap;
   }, [schemeDraft.groups]);
+  const selectedSchemeGroupFieldIdSet = React.useMemo(
+    () => new Set(selectedSchemeGroup?.fieldIds.map(String) ?? []),
+    [selectedSchemeGroup],
+  );
+  const filteredSchemeFieldOptions = React.useMemo(() => {
+    const normalizedSchemeKeyword = deferredSchemeFieldKeyword.trim().toLowerCase();
+    return fieldOptions.filter((option) => {
+      const fieldId = String(option.value);
+      const text = `${option.title || ''} ${option.label || ''} ${option.description || ''}`.toLowerCase();
+      const assignedGroupId = schemeFieldAssignments.get(fieldId) ?? null;
+      const isSelectedField = selectedSchemeGroupFieldIdSet.has(fieldId);
+      if (schemeFieldFilterMode === 'selected' && !isSelectedField) {
+        return false;
+      }
+      if (schemeFieldFilterMode === 'unassigned' && assignedGroupId) {
+        return false;
+      }
+      return !normalizedSchemeKeyword || text.includes(normalizedSchemeKeyword);
+    });
+  }, [deferredSchemeFieldKeyword, fieldOptions, schemeFieldAssignments, schemeFieldFilterMode, selectedSchemeGroupFieldIdSet]);
+  const filteredSelectedSchemeFieldCount = React.useMemo(
+    () => filteredSchemeFieldOptions.reduce((count, option) => count + (selectedSchemeGroupFieldIdSet.has(String(option.value)) ? 1 : 0), 0),
+    [filteredSchemeFieldOptions, selectedSchemeGroupFieldIdSet],
+  );
+  const filteredUnassignedSchemeFieldCount = React.useMemo(
+    () => filteredSchemeFieldOptions.reduce((count, option) => count + (schemeFieldAssignments.has(String(option.value)) ? 0 : 1), 0),
+    [filteredSchemeFieldOptions, schemeFieldAssignments],
+  );
+  React.useEffect(() => {
+    if (!expandedSchemeFieldId || selectedSchemeGroupFieldIdSet.has(expandedSchemeFieldId)) {
+      return;
+    }
+    setExpandedSchemeFieldId(null);
+  }, [expandedSchemeFieldId, selectedSchemeGroupFieldIdSet]);
 
   const openSchemeModal = React.useCallback((schemeId?: string | null, draft?: ArchiveLayoutScheme | null) => {
-    if (draft) {
-      setIsEditingUnsavedScheme(true);
-      setSchemeSourceId(null);
-      setSchemeDraft(cloneArchiveLayoutScheme(draft));
-      setSelectedSchemeGroupId(draft.groups[0]?.id ?? null);
-    } else if (schemeId) {
-      const targetScheme = schemeById.get(schemeId);
-      if (targetScheme) {
+    React.startTransition(() => {
+      if (draft) {
+        setIsEditingUnsavedScheme(true);
+        setSchemeSourceId(null);
+        setSchemeDraft(cloneArchiveLayoutScheme(draft));
+        setSelectedSchemeGroupId(draft.groups[0]?.id ?? null);
+      } else if (schemeId) {
+        const targetScheme = schemeById.get(schemeId);
+        if (targetScheme) {
+          setIsEditingUnsavedScheme(false);
+          setSchemeSourceId(targetScheme.id);
+          setSchemeDraft(cloneArchiveLayoutScheme(targetScheme));
+          setSelectedSchemeGroupId(targetScheme.groups[0]?.id ?? null);
+        }
+      } else if (schemes.length > 0) {
+        const fallbackScheme = (schemeSourceId ? schemeById.get(schemeSourceId) : null) ?? schemes[0];
         setIsEditingUnsavedScheme(false);
-        setSchemeSourceId(targetScheme.id);
-        setSchemeDraft(cloneArchiveLayoutScheme(targetScheme));
-        setSelectedSchemeGroupId(targetScheme.groups[0]?.id ?? null);
+        setSchemeSourceId(fallbackScheme.id);
+        setSchemeDraft(cloneArchiveLayoutScheme(fallbackScheme));
+        setSelectedSchemeGroupId(fallbackScheme.groups[0]?.id ?? null);
+      } else {
+        setIsEditingUnsavedScheme(true);
+        setSchemeSourceId(null);
+        setSchemeDraft(cloneArchiveLayoutScheme(suggestedScheme));
+        setSelectedSchemeGroupId(suggestedScheme.groups[0]?.id ?? null);
       }
-    } else if (schemes.length > 0) {
-      const fallbackScheme = (schemeSourceId ? schemeById.get(schemeSourceId) : null) ?? schemes[0];
-      setIsEditingUnsavedScheme(false);
-      setSchemeSourceId(fallbackScheme.id);
-      setSchemeDraft(cloneArchiveLayoutScheme(fallbackScheme));
-      setSelectedSchemeGroupId(fallbackScheme.groups[0]?.id ?? null);
-    } else {
-      setIsEditingUnsavedScheme(true);
-      setSchemeSourceId(null);
-      setSchemeDraft(cloneArchiveLayoutScheme(suggestedScheme));
-      setSelectedSchemeGroupId(suggestedScheme.groups[0]?.id ?? null);
-    }
 
-    setSchemeFieldKeyword('');
-    setIsSchemeModalOpen(true);
+      setSchemeFieldKeyword('');
+      setSchemeFieldFilterMode('all');
+      setIsBatchSizePanelOpen(false);
+      setExpandedSchemeFieldId(null);
+      setIsSchemeModalOpen(true);
+    });
   }, [schemeById, schemeSourceId, schemes, suggestedScheme]);
 
   React.useEffect(() => {
@@ -2173,26 +2438,88 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     setSelectedSchemeGroupId(nextScheme.groups[0]?.id ?? null);
     return nextScheme;
   }, [onSchemesChange, schemeDraft, schemes]);
+  React.useEffect(() => {
+    if (!isSchemeModalOpen) {
+      return;
+    }
+
+    const focusTimer = globalThis.setTimeout(() => {
+      schemeFieldSearchInputRef.current?.focus();
+      schemeFieldSearchInputRef.current?.select();
+    }, 40);
+
+    return () => globalThis.clearTimeout(focusTimer);
+  }, [isSchemeModalOpen, schemeSourceId]);
+  React.useEffect(() => {
+    if (!isSchemeModalOpen || typeof globalThis.window === 'undefined') {
+      return;
+    }
+
+    const handleSchemeModalKeyDown = (event: KeyboardEvent) => {
+      const modifierKey = event.metaKey || event.ctrlKey;
+      if (modifierKey && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          saveSchemeDraftAsCopy();
+          return;
+        }
+        saveSchemeDraft();
+        return;
+      }
+
+      if (modifierKey && event.key === 'Enter') {
+        event.preventDefault();
+        saveSchemeDraft();
+        applySchemeDraft(false);
+        return;
+      }
+
+      if (!isEditableEventTarget(event.target) && event.key === '/') {
+        event.preventDefault();
+        schemeFieldSearchInputRef.current?.focus();
+        schemeFieldSearchInputRef.current?.select();
+        return;
+      }
+
+      if (!isEditableEventTarget(event.target) && event.key === 'Escape') {
+        event.preventDefault();
+        setIsSchemeModalOpen(false);
+      }
+    };
+
+    globalThis.window.addEventListener('keydown', handleSchemeModalKeyDown);
+    return () => globalThis.window.removeEventListener('keydown', handleSchemeModalKeyDown);
+  }, [applySchemeDraft, isSchemeModalOpen, saveSchemeDraft, saveSchemeDraftAsCopy]);
 
   const createNewSchemeDraft = React.useCallback(() => {
     const nextScheme = createEmptyScheme(`方案 ${schemes.length + 1}`);
-    setIsEditingUnsavedScheme(true);
-    setSchemeSourceId(null);
-    setSchemeDraft(nextScheme);
-    setSelectedSchemeGroupId(nextScheme.groups[0]?.id ?? null);
-    setSchemeFieldKeyword('');
-    setIsSchemeModalOpen(true);
+    React.startTransition(() => {
+      setIsEditingUnsavedScheme(true);
+      setSchemeSourceId(null);
+      setSchemeDraft(nextScheme);
+      setSelectedSchemeGroupId(nextScheme.groups[0]?.id ?? null);
+      setSchemeFieldKeyword('');
+      setSchemeFieldFilterMode('all');
+      setIsBatchSizePanelOpen(false);
+      setExpandedSchemeFieldId(null);
+      setIsSchemeModalOpen(true);
+    });
   }, [schemes.length]);
 
   const createSchemeFromCurrentLayout = React.useCallback(() => {
     const nextScheme = buildSchemeFromCurrentLayout(groups);
-    setIsEditingUnsavedScheme(true);
-    setSchemeSourceId(null);
-    setSchemeDraft(nextScheme);
-    setSelectedSchemeGroupId(nextScheme.groups[0]?.id ?? null);
-    setSchemeFieldKeyword('');
-    setSidebarTab('schemes');
-    setIsSchemeModalOpen(true);
+    React.startTransition(() => {
+      setIsEditingUnsavedScheme(true);
+      setSchemeSourceId(null);
+      setSchemeDraft(nextScheme);
+      setSelectedSchemeGroupId(nextScheme.groups[0]?.id ?? null);
+      setSchemeFieldKeyword('');
+      setSchemeFieldFilterMode('all');
+      setIsBatchSizePanelOpen(false);
+      setExpandedSchemeFieldId(null);
+      setSidebarTab('schemes');
+      setIsSchemeModalOpen(true);
+    });
   }, [groups]);
 
   const deleteActiveScheme = React.useCallback(() => {
@@ -2230,11 +2557,17 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
       })),
     };
     onSchemesChange([...schemes, duplicatedScheme]);
-    setIsEditingUnsavedScheme(false);
-    setSchemeSourceId(duplicatedScheme.id);
-    setSchemeDraft(cloneArchiveLayoutScheme(duplicatedScheme));
-    setSelectedSchemeGroupId(duplicatedScheme.groups[0]?.id ?? null);
-    setSidebarTab('schemes');
+    React.startTransition(() => {
+      setIsEditingUnsavedScheme(false);
+      setSchemeSourceId(duplicatedScheme.id);
+      setSchemeDraft(cloneArchiveLayoutScheme(duplicatedScheme));
+      setSelectedSchemeGroupId(duplicatedScheme.groups[0]?.id ?? null);
+      setSchemeFieldKeyword('');
+      setSchemeFieldFilterMode('all');
+      setIsBatchSizePanelOpen(false);
+      setExpandedSchemeFieldId(null);
+      setSidebarTab('schemes');
+    });
     return duplicatedScheme;
   }, [onSchemesChange, schemes]);
 
@@ -2351,7 +2684,6 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
       };
     });
   }, [updateSchemeDraft]);
-
   const commitPreviewWorkbenchWidth = React.useCallback((nextWidth: number) => {
     const normalizedWidth = normalizePreviewWorkbenchWidth(nextWidth);
     setPreviewWorkbenchWidth(normalizedWidth);
@@ -3117,6 +3449,35 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
       w: typeof defaults?.w === 'number' ? defaults.w : fallbackSize.w,
     };
   }, [getDefaultSize, optionMap, schemeDraft.fieldDefaults]);
+  const visibleSchemeFieldRows = React.useMemo(() => (
+    filteredSchemeFieldOptions.map((option) => {
+      const fieldId = String(option.value);
+      const assignedGroupId = schemeFieldAssignments.get(fieldId) ?? null;
+      const checked = selectedSchemeGroupFieldIdSet.has(fieldId);
+      const resolvedSize = getSchemeFieldResolvedSize(fieldId);
+      return {
+        assignedGroupName: assignedGroupId ? schemeGroupNameById.get(assignedGroupId) ?? '' : '',
+        checked,
+        fieldId,
+        heightInput: schemeFieldSizeInputs[fieldId]?.h ?? String(resolvedSize.h),
+        isExpanded: expandedSchemeFieldId === fieldId,
+        label: option.label,
+        resolvedHeight: resolvedSize.h,
+        resolvedWidth: resolvedSize.w,
+        showAssignedGroupName: Boolean(assignedGroupId && !checked),
+        title: option.title || option.label,
+        widthInput: schemeFieldSizeInputs[fieldId]?.w ?? String(resolvedSize.w),
+      };
+    })
+  ), [
+    expandedSchemeFieldId,
+    filteredSchemeFieldOptions,
+    getSchemeFieldResolvedSize,
+    schemeFieldAssignments,
+    schemeFieldSizeInputs,
+    schemeGroupNameById,
+    selectedSchemeGroupFieldIdSet,
+  ]);
 
   const commitSchemeFieldSizeValue = React.useCallback((
     fieldId: string,
@@ -3148,6 +3509,79 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     updateSchemeFieldDefault(fieldId, dimension, nextValue);
     return nextValue;
   }, [updateSchemeFieldDefault]);
+  const handleSchemeFieldCheckedChange = React.useCallback((fieldId: string, checked: boolean) => {
+    if (!selectedSchemeGroup) {
+      return;
+    }
+    toggleFieldInSchemeGroup(selectedSchemeGroup.id, fieldId, checked);
+    if (!checked) {
+      setExpandedSchemeFieldId((current) => (current === fieldId ? null : current));
+    }
+  }, [selectedSchemeGroup, toggleFieldInSchemeGroup]);
+  const handleToggleSchemeFieldExpanded = React.useCallback((fieldId: string) => {
+    setExpandedSchemeFieldId((current) => (current === fieldId ? null : fieldId));
+  }, []);
+  const handleSchemeFieldSizeDraftChange = React.useCallback((
+    fieldId: string,
+    patch: { h?: string; w?: string },
+    resolvedWidth: number,
+    resolvedHeight: number,
+  ) => {
+    setSchemeFieldSizeInputs((current) => ({
+      ...current,
+      [fieldId]: {
+        h: patch.h ?? current[fieldId]?.h ?? String(resolvedHeight),
+        w: patch.w ?? current[fieldId]?.w ?? String(resolvedWidth),
+      },
+    }));
+  }, []);
+  const handleCommitSchemeFieldSizeDraft = React.useCallback((
+    fieldId: string,
+    dimension: 'w' | 'h',
+    rawValue: string,
+    fallback: number,
+    resolvedWidth: number,
+    resolvedHeight: number,
+  ) => {
+    const nextValue = commitSchemeFieldSizeValue(fieldId, dimension, rawValue, fallback);
+    setSchemeFieldSizeInputs((current) => ({
+      ...current,
+      [fieldId]: {
+        h: dimension === 'h' ? String(nextValue) : current[fieldId]?.h ?? String(resolvedHeight),
+        w: dimension === 'w' ? String(nextValue) : current[fieldId]?.w ?? String(resolvedWidth),
+      },
+    }));
+  }, [commitSchemeFieldSizeValue]);
+  const handleResetSchemeFieldSizeDraft = React.useCallback((
+    fieldId: string,
+    resolvedWidth: number,
+    resolvedHeight: number,
+  ) => {
+    setSchemeFieldSizeInputs((current) => ({
+      ...current,
+      [fieldId]: {
+        h: String(resolvedHeight),
+        w: String(resolvedWidth),
+      },
+    }));
+  }, []);
+  const handleNudgeSchemeFieldSizeDraft = React.useCallback((
+    fieldId: string,
+    dimension: 'w' | 'h',
+    currentValue: number,
+    delta: number,
+    resolvedWidth: number,
+    resolvedHeight: number,
+  ) => {
+    const nextValue = nudgeSchemeFieldSizeValue(fieldId, dimension, currentValue, delta);
+    setSchemeFieldSizeInputs((current) => ({
+      ...current,
+      [fieldId]: {
+        h: dimension === 'h' ? String(nextValue) : current[fieldId]?.h ?? String(resolvedHeight),
+        w: dimension === 'w' ? String(nextValue) : current[fieldId]?.w ?? String(resolvedWidth),
+      },
+    }));
+  }, [nudgeSchemeFieldSizeValue]);
   const applySchemeBatchFieldSize = React.useCallback(() => {
     if (selectedSchemeFieldIds.length === 0) {
       return;
@@ -3313,10 +3747,16 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     setSelectedFieldId(fieldId);
   }, []);
   const handleSelectScheme = React.useCallback((scheme: ArchiveLayoutScheme) => {
-    setIsEditingUnsavedScheme(false);
-    setSchemeSourceId(scheme.id);
-    setSchemeDraft(cloneArchiveLayoutScheme(scheme));
-    setSelectedSchemeGroupId(scheme.groups[0]?.id ?? null);
+    React.startTransition(() => {
+      setIsEditingUnsavedScheme(false);
+      setSchemeSourceId(scheme.id);
+      setSchemeDraft(cloneArchiveLayoutScheme(scheme));
+      setSelectedSchemeGroupId(scheme.groups[0]?.id ?? null);
+      setSchemeFieldKeyword('');
+      setSchemeFieldFilterMode('all');
+      setIsBatchSizePanelOpen(false);
+      setExpandedSchemeFieldId(null);
+    });
   }, []);
   const handleSidebarTabChange = React.useCallback((tab: SidebarTabKey) => {
     setSidebarTab(tab);
@@ -3490,15 +3930,19 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
             <>
               <div className="fixed inset-0 z-[118] bg-slate-950/22 backdrop-blur-[2px]" onClick={() => setIsSchemeModalOpen(false)} />
               <div className="fixed inset-0 z-[119] flex items-center justify-center p-5" onClick={() => setIsSchemeModalOpen(false)}>
-                <div
-                  className="flex h-[min(780px,calc(100vh-40px))] w-[min(1160px,calc(100vw-40px))] flex-col overflow-hidden rounded-[22px] border border-[#d9e3ef] bg-white shadow-[0_30px_80px_-40px_rgba(15,23,42,0.38)]"
+              <div
+                  className="flex h-[min(760px,calc(100vh-40px))] w-[min(1120px,calc(100vw-40px))] flex-col overflow-hidden rounded-[24px] border border-[#d9e3ef] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-[0_30px_80px_-40px_rgba(15,23,42,0.38)]"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <div className="flex items-start justify-between gap-4 border-b border-[#e8eef5] px-5 py-4">
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Scheme</div>
-                      <div className="mt-1 text-[16px] font-semibold text-slate-900">方案设置</div>
-                      <div className="mt-1 text-[12px] leading-5 text-slate-500">先设置分组，再勾选需要放入该分组的字段，最后一键放入当前布局。</div>
+                  <div className="flex items-center justify-between gap-4 border-b border-[#e8eef5] px-5 py-4">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Scheme</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <div className="text-[16px] font-semibold text-slate-900">方案设置</div>
+                        <div className="rounded-full border border-[#e5ecf5] bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
+                          {schemeDraft.groups.length} 组 / {countSchemeFields(schemeDraft)} 字段
+                        </div>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -3542,13 +3986,7 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
                       </button>
                     </div>
                   </div>
-                  <div className="border-b border-[#edf2f7] bg-[#fffaf1] px-5 py-2.5">
-                    <div className="flex items-start gap-2 text-[11px] leading-5 text-slate-600">
-                      <span className="material-symbols-outlined mt-0.5 text-[15px] text-amber-500">info</span>
-                      <span>保存方案只会更新当前模块配置草稿。要在刷新页面后继续保留这些方案，还需要返回主页面再执行一次模块保存。</span>
-                    </div>
-                  </div>
-                  <div className="grid min-h-0 flex-1 grid-cols-[260px_240px_minmax(0,1fr)] gap-0">
+                  <div className="grid min-h-0 flex-1 grid-cols-[248px_224px_minmax(0,1fr)] gap-0">
                     <div className="flex min-h-0 flex-col border-r border-[#edf2f7] bg-[#fbfdff]">
                       <div className="flex items-center justify-between px-4 py-3">
                           <div className="text-[12px] font-semibold text-slate-700">已有方案</div>
@@ -3700,10 +4138,14 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
                     </div>
                     <div className="flex min-h-0 flex-col">
                       <div className="border-b border-[#edf2f7] px-4 py-3">
-                        <div className="flex items-end justify-between gap-3">
-                          <div>
-                            <div className="text-[12px] font-semibold text-slate-700">{selectedSchemeGroup?.name || '选择一个分组'}</div>
-                            <div className="mt-1 text-[11px] text-slate-400">勾选后字段会归入当前分组；如果它已在其他分组，会自动移动过来。</div>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <div className="truncate text-[12px] font-semibold text-slate-700">{selectedSchemeGroup?.name || '选择一个分组'}</div>
+                            {selectedSchemeGroup ? (
+                              <div className="rounded-full border border-[#e5ecf5] bg-white px-2 py-1 text-[10px] font-medium text-slate-500">
+                                {selectedSchemeGroupFieldIdSet.size} 项
+                              </div>
+                            ) : null}
                           </div>
                           {schemeSourceId ? (
                             <button
@@ -3720,308 +4162,157 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
                           ) : null}
                         </div>
                         <input
+                          ref={schemeFieldSearchInputRef}
                           value={schemeFieldKeyword}
                           onChange={(event) => setSchemeFieldKeyword(event.target.value)}
-                          placeholder="搜索字段"
+                          placeholder="搜索字段，按 / 快速聚焦"
                           className={cn(
                             'mt-3 h-10 w-full rounded-[12px] border border-[#d8e3ef] bg-white px-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-400',
                             schemeModalInputClass,
                           )}
                           style={staticWorkbenchMotionStyle}
                         />
-                        <div className="mt-3 rounded-[14px] border border-[#e6edf6] bg-[#fbfdff] p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-[12px] font-semibold text-slate-700">统一宽高</div>
-                              <div className="mt-1 text-[11px] text-slate-400">一键应用到当前方案内所有已选字段，共 {selectedSchemeFieldIds.length} 个。</div>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="inline-flex rounded-[10px] border border-[#dbe5ef] bg-[#fbfdff] p-1">
+                            {([
+                              { key: 'all', label: `全部 ${filteredSchemeFieldOptions.length}` },
+                              { key: 'selected', label: `本组已选 ${filteredSelectedSchemeFieldCount}` },
+                              { key: 'unassigned', label: `未分配 ${filteredUnassignedSchemeFieldCount}` },
+                            ] as Array<{ key: SchemeFieldFilterMode; label: string }>).map((item) => (
+                              <button
+                                key={item.key}
+                                type="button"
+                                onClick={() => setSchemeFieldFilterMode(item.key)}
+                                className={cn(
+                                  'rounded-[8px] px-2.5 py-1.5 text-[10px] font-semibold transition-[background-color,color,box-shadow]',
+                                  schemeFieldFilterMode === item.key ? 'bg-primary text-white shadow-[0_10px_24px_-24px_rgba(59,130,246,0.45)]' : 'text-slate-500 hover:bg-white',
+                                )}
+                                style={staticWorkbenchMotionStyle}
+                              >
+                                {item.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-3 rounded-[14px] border border-[#e6edf6] bg-[#fbfdff] p-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="text-[11px] font-semibold text-slate-700">统一宽高</div>
+                              <div className="rounded-full border border-[#e5ecf5] bg-white px-2 py-1 text-[10px] font-medium text-slate-500">
+                                {selectedSchemeFieldIdSet.size} 项
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={applySchemeBatchFieldSize}
-                              disabled={selectedSchemeFieldIds.length === 0}
-                              className={cn(
-                                'shrink-0 rounded-[10px] border px-3 py-2 text-[11px] font-semibold',
-                                selectedSchemeFieldIds.length > 0
-                                  ? `border-primary/20 bg-primary/8 text-primary hover:border-primary/28 hover:bg-primary/12 ${schemeModalSurfaceButtonClass}`
-                                  : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
-                              )}
-                              style={selectedSchemeFieldIds.length > 0 ? staticWorkbenchMotionStyle : undefined}
-                            >
-                              应用到全部
-                            </button>
-                          </div>
-                          <div className="mt-3 grid grid-cols-2 gap-2">
-                            <label className="grid gap-1 text-[10px] font-medium text-slate-500">
-                              <span>统一宽度</span>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                value={schemeBatchSizeInput.w}
-                                onChange={(event) => setSchemeBatchSizeInput((current) => ({
-                                  ...current,
-                                  w: event.target.value.replace(/[^\d]/g, ''),
-                                }))}
-                                onKeyDown={(event) => handleFieldSizeInputKeyDown(
-                                  event,
-                                  applySchemeBatchFieldSize,
-                                  () => setSchemeBatchSizeInput((current) => ({ ...current, w: '' })),
-                                )}
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsBatchSizePanelOpen((current) => !current)}
                                 className={cn(
-                                  'h-8 min-w-0 rounded-[10px] border border-[#d8e3ef] bg-white px-3 text-[11px] text-slate-700 outline-none',
-                                  schemeModalInputClass,
+                                  'rounded-[9px] border border-[#d8e3ef] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
+                                  schemeModalSurfaceButtonClass,
                                 )}
                                 style={staticWorkbenchMotionStyle}
-                                placeholder="例如 280"
-                              />
-                            </label>
-                            <label className="grid gap-1 text-[10px] font-medium text-slate-500">
-                              <span>统一高度</span>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                value={schemeBatchSizeInput.h}
-                                onChange={(event) => setSchemeBatchSizeInput((current) => ({
-                                  ...current,
-                                  h: event.target.value.replace(/[^\d]/g, ''),
-                                }))}
-                                onKeyDown={(event) => handleFieldSizeInputKeyDown(
-                                  event,
-                                  applySchemeBatchFieldSize,
-                                  () => setSchemeBatchSizeInput((current) => ({ ...current, h: '' })),
-                                )}
+                              >
+                                {isBatchSizePanelOpen ? '收起' : '展开'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={applySchemeBatchFieldSize}
+                                disabled={selectedSchemeFieldIdSet.size === 0}
                                 className={cn(
-                                  'h-8 min-w-0 rounded-[10px] border border-[#d8e3ef] bg-white px-3 text-[11px] text-slate-700 outline-none',
-                                  schemeModalInputClass,
+                                  'shrink-0 rounded-[9px] border px-3 py-1.5 text-[10px] font-semibold',
+                                  selectedSchemeFieldIdSet.size > 0
+                                    ? `border-primary/20 bg-primary/8 text-primary hover:border-primary/28 hover:bg-primary/12 ${schemeModalSurfaceButtonClass}`
+                                    : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
                                 )}
-                                style={staticWorkbenchMotionStyle}
-                                placeholder="例如 36"
-                              />
-                            </label>
+                                style={selectedSchemeFieldIdSet.size > 0 ? staticWorkbenchMotionStyle : undefined}
+                              >
+                                应用
+                              </button>
+                            </div>
                           </div>
+                          {isBatchSizePanelOpen ? (
+                            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+                              <label className="grid gap-1 text-[10px] font-medium text-slate-500">
+                                <span>宽度</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  value={schemeBatchSizeInput.w}
+                                  onChange={(event) => setSchemeBatchSizeInput((current) => ({
+                                    ...current,
+                                    w: event.target.value.replace(/[^\d]/g, ''),
+                                  }))}
+                                  onKeyDown={(event) => handleFieldSizeInputKeyDown(
+                                    event,
+                                    applySchemeBatchFieldSize,
+                                    () => setSchemeBatchSizeInput((current) => ({ ...current, w: '' })),
+                                  )}
+                                  className={cn(
+                                    'h-8 min-w-0 rounded-[10px] border border-[#d8e3ef] bg-white px-3 text-[11px] text-slate-700 outline-none',
+                                    schemeModalInputClass,
+                                  )}
+                                  style={staticWorkbenchMotionStyle}
+                                  placeholder="如 280"
+                                />
+                              </label>
+                              <label className="grid gap-1 text-[10px] font-medium text-slate-500">
+                                <span>高度</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  value={schemeBatchSizeInput.h}
+                                  onChange={(event) => setSchemeBatchSizeInput((current) => ({
+                                    ...current,
+                                    h: event.target.value.replace(/[^\d]/g, ''),
+                                  }))}
+                                  onKeyDown={(event) => handleFieldSizeInputKeyDown(
+                                    event,
+                                    applySchemeBatchFieldSize,
+                                    () => setSchemeBatchSizeInput((current) => ({ ...current, h: '' })),
+                                  )}
+                                  className={cn(
+                                    'h-8 min-w-0 rounded-[10px] border border-[#d8e3ef] bg-white px-3 text-[11px] text-slate-700 outline-none',
+                                    schemeModalInputClass,
+                                  )}
+                                  style={staticWorkbenchMotionStyle}
+                                  placeholder="如 36"
+                                />
+                              </label>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                        {selectedSchemeGroup ? filteredSchemeFieldOptions.map((option) => {
-                          const fieldId = String(option.value);
-                          const assignedGroupId = schemeFieldAssignments.get(fieldId) ?? null;
-                          const assignedGroupName = assignedGroupId
-                            ? schemeGroupNameById.get(assignedGroupId) ?? ''
-                            : '';
-                          const checked = selectedSchemeGroup.fieldIds.includes(fieldId);
-                          const resolvedSchemeFieldSize = getSchemeFieldResolvedSize(fieldId);
-
-                          return (
-                            <label
-                              key={fieldId}
-                              className={cn(
-                                'mb-2 flex cursor-pointer items-start gap-3 rounded-[14px] border px-3 py-3',
-                                checked
-                                  ? `border-primary/35 bg-primary/5 ${schemeModalSelectedCardClass}`
-                                  : 'border-[#edf2f7] bg-[#fbfdff] hover:border-[#d7e5f4] hover:bg-white',
-                                schemeModalCardClass,
-                              )}
-                              style={staticWorkbenchMotionStyle}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(event) => toggleFieldInSchemeGroup(selectedSchemeGroup.id, fieldId, event.target.checked)}
-                                className="mt-0.5 size-4 rounded border-[#c7d4e4]"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-[12px] font-semibold text-slate-800">{option.title || option.label}</div>
-                                <div className="mt-1 truncate text-[11px] text-slate-400">{option.label}</div>
-                                {checked ? (
-                                  <div
-                                    className="mt-2 grid grid-cols-2 gap-2"
-                                    onClick={(event) => event.stopPropagation()}
-                                  >
-                                    <label className="grid gap-1 text-[10px] font-medium text-slate-500">
-                                      <span>默认宽度</span>
-                                      <div className="grid grid-cols-[24px_minmax(0,1fr)_24px] items-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const nextValue = nudgeSchemeFieldSizeValue(fieldId, 'w', resolvedSchemeFieldSize.w, -20);
-                                            setSchemeFieldSizeInputs((current) => ({
-                                              ...current,
-                                              [fieldId]: { ...(current[fieldId] ?? {}), h: current[fieldId]?.h ?? String(resolvedSchemeFieldSize.h), w: String(nextValue) },
-                                            }));
-                                          }}
-                                          className={cn(
-                                            'h-7 rounded-[8px] border border-[#d8e3ef] bg-white text-[12px] font-semibold text-slate-500 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                                            schemeModalSurfaceButtonClass,
-                                          )}
-                                          style={staticWorkbenchMotionStyle}
-                                        >
-                                          -
-                                        </button>
-                                        <input
-                                          type="text"
-                                          inputMode="numeric"
-                                          pattern="[0-9]*"
-                                          value={schemeFieldSizeInputs[fieldId]?.w ?? String(resolvedSchemeFieldSize.w)}
-                                          onChange={(event) => setSchemeFieldSizeInputs((current) => ({
-                                            ...current,
-                                            [fieldId]: { ...(current[fieldId] ?? {}), h: current[fieldId]?.h ?? String(resolvedSchemeFieldSize.h), w: event.target.value.replace(/[^\d]/g, '') },
-                                          }))}
-                                          onBlur={() => {
-                                            const nextValue = commitSchemeFieldSizeValue(
-                                              fieldId,
-                                              'w',
-                                              schemeFieldSizeInputs[fieldId]?.w ?? String(resolvedSchemeFieldSize.w),
-                                              resolvedSchemeFieldSize.w,
-                                            );
-                                            setSchemeFieldSizeInputs((current) => ({
-                                              ...current,
-                                              [fieldId]: { ...(current[fieldId] ?? {}), h: current[fieldId]?.h ?? String(resolvedSchemeFieldSize.h), w: String(nextValue) },
-                                            }));
-                                          }}
-                                          onKeyDown={(event) => handleFieldSizeInputKeyDown(
-                                            event,
-                                            () => {
-                                              const nextValue = commitSchemeFieldSizeValue(
-                                                fieldId,
-                                                'w',
-                                                schemeFieldSizeInputs[fieldId]?.w ?? String(resolvedSchemeFieldSize.w),
-                                                resolvedSchemeFieldSize.w,
-                                              );
-                                              setSchemeFieldSizeInputs((current) => ({
-                                                ...current,
-                                                [fieldId]: { ...(current[fieldId] ?? {}), h: current[fieldId]?.h ?? String(resolvedSchemeFieldSize.h), w: String(nextValue) },
-                                              }));
-                                            },
-                                            () => setSchemeFieldSizeInputs((current) => ({
-                                              ...current,
-                                              [fieldId]: { ...(current[fieldId] ?? {}), h: current[fieldId]?.h ?? String(resolvedSchemeFieldSize.h), w: String(resolvedSchemeFieldSize.w) },
-                                            })),
-                                          )}
-                                          className={cn(
-                                            'h-7 min-w-0 rounded-[8px] border border-[#d8e3ef] bg-white px-2 text-center text-[11px] text-slate-700 outline-none',
-                                            schemeModalInputClass,
-                                          )}
-                                          style={staticWorkbenchMotionStyle}
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const nextValue = nudgeSchemeFieldSizeValue(fieldId, 'w', resolvedSchemeFieldSize.w, 20);
-                                            setSchemeFieldSizeInputs((current) => ({
-                                              ...current,
-                                              [fieldId]: { ...(current[fieldId] ?? {}), h: current[fieldId]?.h ?? String(resolvedSchemeFieldSize.h), w: String(nextValue) },
-                                            }));
-                                          }}
-                                          className={cn(
-                                            'h-7 rounded-[8px] border border-[#d8e3ef] bg-white text-[12px] font-semibold text-slate-500 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                                            schemeModalSurfaceButtonClass,
-                                          )}
-                                          style={staticWorkbenchMotionStyle}
-                                        >
-                                          +
-                                        </button>
-                                      </div>
-                                    </label>
-                                    <label className="grid gap-1 text-[10px] font-medium text-slate-500">
-                                      <span>默认高度</span>
-                                      <div className="grid grid-cols-[24px_minmax(0,1fr)_24px] items-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const nextValue = nudgeSchemeFieldSizeValue(fieldId, 'h', resolvedSchemeFieldSize.h, -4);
-                                            setSchemeFieldSizeInputs((current) => ({
-                                              ...current,
-                                              [fieldId]: { ...(current[fieldId] ?? {}), h: String(nextValue), w: current[fieldId]?.w ?? String(resolvedSchemeFieldSize.w) },
-                                            }));
-                                          }}
-                                          className={cn(
-                                            'h-7 rounded-[8px] border border-[#d8e3ef] bg-white text-[12px] font-semibold text-slate-500 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                                            schemeModalSurfaceButtonClass,
-                                          )}
-                                          style={staticWorkbenchMotionStyle}
-                                        >
-                                          -
-                                        </button>
-                                        <input
-                                          type="text"
-                                          inputMode="numeric"
-                                          pattern="[0-9]*"
-                                          value={schemeFieldSizeInputs[fieldId]?.h ?? String(resolvedSchemeFieldSize.h)}
-                                          onChange={(event) => setSchemeFieldSizeInputs((current) => ({
-                                            ...current,
-                                            [fieldId]: { ...(current[fieldId] ?? {}), h: event.target.value.replace(/[^\d]/g, ''), w: current[fieldId]?.w ?? String(resolvedSchemeFieldSize.w) },
-                                          }))}
-                                          onBlur={() => {
-                                            const nextValue = commitSchemeFieldSizeValue(
-                                              fieldId,
-                                              'h',
-                                              schemeFieldSizeInputs[fieldId]?.h ?? String(resolvedSchemeFieldSize.h),
-                                              resolvedSchemeFieldSize.h,
-                                            );
-                                            setSchemeFieldSizeInputs((current) => ({
-                                              ...current,
-                                              [fieldId]: { ...(current[fieldId] ?? {}), h: String(nextValue), w: current[fieldId]?.w ?? String(resolvedSchemeFieldSize.w) },
-                                            }));
-                                          }}
-                                          onKeyDown={(event) => handleFieldSizeInputKeyDown(
-                                            event,
-                                            () => {
-                                              const nextValue = commitSchemeFieldSizeValue(
-                                                fieldId,
-                                                'h',
-                                                schemeFieldSizeInputs[fieldId]?.h ?? String(resolvedSchemeFieldSize.h),
-                                                resolvedSchemeFieldSize.h,
-                                              );
-                                              setSchemeFieldSizeInputs((current) => ({
-                                                ...current,
-                                                [fieldId]: { ...(current[fieldId] ?? {}), h: String(nextValue), w: current[fieldId]?.w ?? String(resolvedSchemeFieldSize.w) },
-                                              }));
-                                            },
-                                            () => setSchemeFieldSizeInputs((current) => ({
-                                              ...current,
-                                              [fieldId]: { ...(current[fieldId] ?? {}), h: String(resolvedSchemeFieldSize.h), w: current[fieldId]?.w ?? String(resolvedSchemeFieldSize.w) },
-                                            })),
-                                          )}
-                                          className={cn(
-                                            'h-7 min-w-0 rounded-[8px] border border-[#d8e3ef] bg-white px-2 text-center text-[11px] text-slate-700 outline-none',
-                                            schemeModalInputClass,
-                                          )}
-                                          style={staticWorkbenchMotionStyle}
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const nextValue = nudgeSchemeFieldSizeValue(fieldId, 'h', resolvedSchemeFieldSize.h, 4);
-                                            setSchemeFieldSizeInputs((current) => ({
-                                              ...current,
-                                              [fieldId]: { ...(current[fieldId] ?? {}), h: String(nextValue), w: current[fieldId]?.w ?? String(resolvedSchemeFieldSize.w) },
-                                            }));
-                                          }}
-                                          className={cn(
-                                            'h-7 rounded-[8px] border border-[#d8e3ef] bg-white text-[12px] font-semibold text-slate-500 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                                            schemeModalSurfaceButtonClass,
-                                          )}
-                                          style={staticWorkbenchMotionStyle}
-                                        >
-                                          +
-                                        </button>
-                                      </div>
-                                    </label>
-                                  </div>
-                                ) : null}
-                              </div>
-                              {assignedGroupId && !checked ? (
-                                <span
-                                  className="shrink-0 rounded-full border border-[#e5ecf5] bg-white px-2 py-1 text-[10px] font-medium text-slate-500 transition-[border-color,background-color,box-shadow]"
-                                  style={staticWorkbenchMotionStyle}
-                                >
-                                  {assignedGroupName}
-                                </span>
-                              ) : null}
-                            </label>
-                          );
-                        }) : (
+                        {selectedSchemeGroup ? visibleSchemeFieldRows.map((row) => (
+                          <ArchiveLayoutSchemeFieldRow
+                            key={row.fieldId}
+                            assignedGroupName={row.assignedGroupName}
+                            checked={row.checked}
+                            fieldId={row.fieldId}
+                            heightInput={row.heightInput}
+                            isExpanded={row.isExpanded}
+                            label={row.label}
+                            onCommitSizeDraft={handleCommitSchemeFieldSizeDraft}
+                            onHandleFieldSizeInputKeyDown={handleFieldSizeInputKeyDown}
+                            onNudgeSizeDraft={handleNudgeSchemeFieldSizeDraft}
+                            onResetSizeDraft={handleResetSchemeFieldSizeDraft}
+                            onToggleChecked={handleSchemeFieldCheckedChange}
+                            onToggleExpanded={handleToggleSchemeFieldExpanded}
+                            onUpdateSizeDraft={handleSchemeFieldSizeDraftChange}
+                            resolvedHeight={row.resolvedHeight}
+                            resolvedWidth={row.resolvedWidth}
+                            schemeModalCardClass={schemeModalCardClass}
+                            schemeModalInputClass={schemeModalInputClass}
+                            schemeModalSelectedCardClass={schemeModalSelectedCardClass}
+                            schemeModalSurfaceButtonClass={schemeModalSurfaceButtonClass}
+                            showAssignedGroupName={row.showAssignedGroupName}
+                            staticWorkbenchMotionStyle={staticWorkbenchMotionStyle}
+                            title={row.title}
+                            widthInput={row.widthInput}
+                          />
+                        )) : (
                           <div className="rounded-[14px] border border-dashed border-[#d8e3ef] bg-[#f8fbff] px-4 py-6 text-center text-[12px] text-slate-400">
                             先选择一个分组，再勾选字段
                           </div>
@@ -4039,7 +4330,7 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
                             className="rounded-[12px] border border-primary/20 bg-primary px-4 py-2 text-[12px] font-semibold text-white transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-[1px] hover:bg-primary/90 hover:shadow-[0_16px_28px_-20px_rgba(59,130,246,0.42)] active:translate-y-0"
                             style={staticWorkbenchMotionStyle}
                           >
-                            一键放入布局
+                            保存并放入布局
                           </button>
                         </div>
                       </div>

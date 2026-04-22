@@ -17,6 +17,23 @@ const ARCHIVE_LAYOUT_TITLE = '基础档案详情布局';
 const ARCHIVE_LAYOUT_ENTRY_LABEL = '入口';
 const ARCHIVE_LAYOUT_FALLBACK_LABEL = '详情布局';
 const ARCHIVE_LAYOUT_MODULE_LABEL = '模块';
+const ARCHIVE_LAYOUT_DEFAULT_PREVIEW_WIDTH = 1320;
+
+function hasPersistedDesignerLayout(detailBoard: Record<string, any>) {
+  const designerLayout = detailBoard?.designerLayout;
+  return designerLayout?.version === 1 && Array.isArray(designerLayout?.items);
+}
+
+function maximizeArchivePreviewWorkbenchWidth(document: ReturnType<typeof buildArchiveDetailLayoutDocumentFromDetailBoard>) {
+  return {
+    ...document,
+    items: document.items.map((item) => (
+      item.type === 'groupbox' && !item.parentId
+        ? { ...item, w: Math.max(Number(item.w) || 0, ARCHIVE_LAYOUT_DEFAULT_PREVIEW_WIDTH) }
+        : item
+    )),
+  };
+}
 
 type ArchiveLayoutDesignerBridgeProps = {
   currentDetailBoard: Record<string, any>;
@@ -54,7 +71,13 @@ export const ArchiveLayoutDesignerBridge = React.memo(function ArchiveLayoutDesi
   }, [currentDetailBoard, draftDirty, isOpen]);
 
   const document = React.useMemo(
-    () => buildArchiveDetailLayoutDocumentFromDetailBoard(draftDetailBoard, mainTableColumns, normalizeColumn),
+    () => {
+      const nextDocument = buildArchiveDetailLayoutDocumentFromDetailBoard(draftDetailBoard, mainTableColumns, normalizeColumn);
+      if (hasPersistedDesignerLayout(draftDetailBoard)) {
+        return nextDocument;
+      }
+      return maximizeArchivePreviewWorkbenchWidth(nextDocument);
+    },
     [draftDetailBoard, mainTableColumns, normalizeColumn],
   );
   const fieldOptions = React.useMemo(
