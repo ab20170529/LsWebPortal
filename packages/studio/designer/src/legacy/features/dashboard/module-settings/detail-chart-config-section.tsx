@@ -1,9 +1,9 @@
 import React from 'react';
 import {
   shadcnFieldClass,
-  shadcnInfoCardClass,
+  shadcnInspectorCardClass,
+  shadcnInspectorInfoCardClass,
   shadcnMutedLabelClass,
-  shadcnSectionCardClass,
   shadcnSectionTitleClass,
 } from '../../../components/ui/shadcn-inspector';
 
@@ -57,6 +57,8 @@ export const DetailChartConfigSection = React.memo(function DetailChartConfigSec
   const secondaryChartColor = /^#(?:[0-9a-f]{3}){1,2}$/i.test(currentDetailChartConfig.chartColorDf)
     ? currentDetailChartConfig.chartColorDf
     : '#60a5fa';
+  const chartSubsectionClass =
+    'rounded-[18px] border border-slate-200/60 bg-white/80 p-4 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80';
 
   const renderToggleRow = (key: string, label: string) => (
     <label
@@ -75,37 +77,32 @@ export const DetailChartConfigSection = React.memo(function DetailChartConfigSec
   );
 
   return (
-    <section className={`${shadcnSectionCardClass} space-y-4`}>
+    <section className={`${shadcnInspectorCardClass} space-y-4`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className={shadcnSectionTitleClass}>
           <span className="material-symbols-outlined text-[18px] text-[color:var(--workspace-accent)]">bar_chart</span>
           <h4>图表视图配置</h4>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded-full border border-[color:var(--workspace-accent-border)] bg-[color:var(--workspace-accent-soft)] px-3 py-1 text-[11px] font-bold text-[color:var(--workspace-accent-strong)]">
-            p_systemdlltabchart
-          </span>
-        </div>
       </div>
 
       <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
-        <div className={shadcnInfoCardClass}>
+        <div className={shadcnInspectorInfoCardClass}>
           <div className="text-[11px] font-bold tracking-[0.08em] text-slate-400">当前明细</div>
           <div className="mt-1 text-[13px] font-bold text-slate-700 dark:text-slate-100">{currentDetailTabName}</div>
         </div>
-        <div className={shadcnInfoCardClass}>
+        <div className={shadcnInspectorInfoCardClass}>
           <div className="text-[11px] font-bold tracking-[0.08em] text-slate-400">图表类型</div>
           <div className="mt-1 text-[13px] font-bold text-slate-700 dark:text-slate-100">
             {chartTypeOptions.find((option) => option.value === String(currentDetailChartConfig.chartType))?.label ?? '未设置'}
           </div>
         </div>
-        <div className={shadcnInfoCardClass}>
+        <div className={shadcnInspectorInfoCardClass}>
           <div className="text-[11px] font-bold tracking-[0.08em] text-slate-400">可选字段</div>
           <div className="mt-1 text-[13px] font-bold text-slate-700 dark:text-slate-100">{detailChartFieldOptions.length} 个</div>
         </div>
       </div>
 
-      <section className="rounded-[18px] border border-slate-200/80 bg-slate-50/55 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-slate-700 dark:bg-slate-900/42">
+      <section className={chartSubsectionClass}>
         <div className="mb-3 text-[12px] font-semibold tracking-[0.04em] text-slate-500 dark:text-slate-300">基础定义</div>
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(210px,1fr))]">
           <div>
@@ -133,7 +130,7 @@ export const DetailChartConfigSection = React.memo(function DetailChartConfigSec
         <div className="mt-4 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(210px,1fr))]">
           <div>
             <label className={shadcnMutedLabelClass}>图表颜色</label>
-            <div className="flex items-center gap-3 rounded-[16px] border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex items-center gap-3 rounded-[16px] border border-slate-200/60 bg-white/80 px-3 py-2.5 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80">
               <input
                 type="color"
                 value={primaryChartColor}
@@ -151,7 +148,7 @@ export const DetailChartConfigSection = React.memo(function DetailChartConfigSec
           </div>
           <div>
             <label className={shadcnMutedLabelClass}>备用颜色</label>
-            <div className="flex items-center gap-3 rounded-[16px] border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex items-center gap-3 rounded-[16px] border border-slate-200/60 bg-white/80 px-3 py-2.5 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80">
               <input
                 type="color"
                 value={secondaryChartColor}
@@ -170,7 +167,7 @@ export const DetailChartConfigSection = React.memo(function DetailChartConfigSec
         </div>
       </section>
 
-      <section className="rounded-[18px] border border-slate-200/80 bg-slate-50/55 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-slate-700 dark:bg-slate-900/42">
+      <section className={chartSubsectionClass}>
         <div className="mb-3 text-[12px] font-semibold tracking-[0.04em] text-slate-500 dark:text-slate-300">轴字段</div>
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(210px,1fr))]">
           <div>
@@ -237,13 +234,13 @@ export const DetailChartConfigSection = React.memo(function DetailChartConfigSec
       </section>
 
       <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
-        <section className="rounded-[18px] border border-slate-200/80 bg-slate-50/55 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-slate-700 dark:bg-slate-900/42">
+        <section className={chartSubsectionClass}>
           <div className="mb-3 text-[12px] font-semibold tracking-[0.04em] text-slate-500 dark:text-slate-300">图形表现</div>
           <div className="space-y-2.5">
             {primaryToggleFields.map((item) => renderToggleRow(item.key, item.label))}
           </div>
         </section>
-        <section className="rounded-[18px] border border-slate-200/80 bg-slate-50/55 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-slate-700 dark:bg-slate-900/42">
+        <section className={chartSubsectionClass}>
           <div className="mb-3 text-[12px] font-semibold tracking-[0.04em] text-slate-500 dark:text-slate-300">显示控制</div>
           <div className="space-y-2.5">
             {visibilityToggleFields.map((item) => renderToggleRow(item.key, item.label))}
@@ -251,7 +248,7 @@ export const DetailChartConfigSection = React.memo(function DetailChartConfigSec
         </section>
       </div>
 
-      <section className="rounded-[18px] border border-slate-200/80 bg-slate-50/55 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-slate-700 dark:bg-slate-900/42">
+      <section className={chartSubsectionClass}>
         <div className="mb-3 text-[12px] font-semibold tracking-[0.04em] text-slate-500 dark:text-slate-300">标签与刻度</div>
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
           <div>

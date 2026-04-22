@@ -5,6 +5,11 @@ export interface FieldSqlTagOptionDto {
   showname?: unknown;
 }
 
+export interface DataFormatOptionDto {
+  formatString?: unknown;
+  remark?: unknown;
+}
+
 export type SystemTabDto = Record<string, unknown>;
 
 export async function fetchFieldSqlTagOptions() {
@@ -16,6 +21,13 @@ export async function fetchFieldSqlTagOptions() {
 
 export async function fetchSystemTab() {
   return apiRequest<SystemTabDto>('/api/system/system-tab', {
+    auth: true,
+    method: 'GET',
+  });
+}
+
+export async function fetchDataFormatOptions() {
+  return apiRequest<DataFormatOptionDto[]>('/api/system/dataformat-options', {
     auth: true,
     method: 'GET',
   });

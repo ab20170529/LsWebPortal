@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 import {
   fetchFunctionFlowModuleMeta,
-  previewFunctionFlow,
   saveFunctionFlow,
 } from '../../lib/backend-function-flow';
 import { fetchFieldSqlTagOptions, type FieldSqlTagOptionDto } from '../../lib/backend-system';
@@ -24,6 +24,7 @@ import { EdgeDetailModal } from './EdgeDetailModal';
 
 type FunctionFlowDrawIoDesignerProps = {
   flowCode: string;
+  flowId?: string | null;
   flowName: string;
   initialGeneratedArtifacts?: FunctionFlowGeneratedArtifacts | null;
   initialGraphJson?: FunctionFlowGraphJson | null;
@@ -31,8 +32,11 @@ type FunctionFlowDrawIoDesignerProps = {
   moduleOptions: FunctionFlowModuleOption[];
   onChange: (xml: string) => void;
   onClose: () => void;
+  onFlowNameChange?: (name: string) => void;
   onPersist?: (detail: FunctionFlowDetail) => void;
   onShowToast?: (message: string) => void;
+  rowVersion?: number | string | null;
+  subsystemId: string;
   subsystemTitle: string;
 };
 
@@ -176,9 +180,39 @@ function toJoinTypeAttribute(joinType: 'left' | 'inner' | 'right' | 'full') {
   }
 }
 
+function normalizeFlowName(value?: string | null) {
+  const normalized = String(value ?? '').trim();
+  return normalized || '未命名流程图';
+}
+
+function syncFlowNameIntoXml(xmlText: string, flowName: string) {
+  const normalizedXml = xmlText.trim();
+  if (!normalizedXml || typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
+    return normalizedXml;
+  }
+
+  try {
+    const xmlDocument = new DOMParser().parseFromString(normalizedXml, 'text/xml');
+    if (xmlDocument.getElementsByTagName('parsererror').length > 0) {
+      return normalizedXml;
+    }
+
+    const diagramNode = xmlDocument.getElementsByTagName('diagram')[0];
+    if (!diagramNode) {
+      return normalizedXml;
+    }
+
+    diagramNode.setAttribute('name', normalizeFlowName(flowName));
+    return new XMLSerializer().serializeToString(xmlDocument);
+  } catch {
+    return normalizedXml;
+  }
+}
+
 export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProps) {
   const {
     flowCode,
+    flowId,
     flowName,
     initialGeneratedArtifacts,
     initialGraphJson,
@@ -186,38 +220,146 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
     moduleOptions,
     onChange,
     onClose,
+    onFlowNameChange,
     onPersist,
     onShowToast,
+    rowVersion,
+    subsystemId,
     subsystemTitle,
   } = props;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const initialXmlRef = useRef(initialXml);
+  const currentXmlRef = useRef(initialXml.trim());
+  const currentFlowNameRef = useRef(normalizeFlowName(flowName));
+  const flowIdRef = useRef<string | null>(flowId?.trim() || null);
   const graphJsonRef = useRef<FunctionFlowGraphJson>(normalizeGraphJson(initialGraphJson));
+  const lastPersistedFlowNameRef = useRef(normalizeFlowName(flowName));
+  const lastPersistedXmlRef = useRef(initialXml.trim());
   const previewArtifactsRef = useRef<FunctionFlowGeneratedArtifacts>(toGeneratedArtifacts(initialGeneratedArtifacts));
-  const previewTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const rowVersionRef = useRef<number | string | null>(rowVersion ?? null);
   const saveQueueXmlRef = useRef<string | null>(null);
   const saveInFlightRef = useRef(false);
+  const saveSuccessToastTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const graphChangeInitializedRef = useRef(false);
   const moduleMetaCacheRef = useRef<Record<string, FunctionFlowModuleMeta>>({});
   const moduleMetaPendingRef = useRef<Record<string, boolean>>({});
   const [status, setStatus] = useState<DrawIoStatus>('booting');
   const [isReady, setIsReady] = useState(false);
+  const [flowNameInput, setFlowNameInput] = useState(normalizeFlowName(flowName));
+  const [hasUnsavedXmlChanges, setHasUnsavedXmlChanges] = useState(false);
+  const [saveSuccessToastVisible, setSaveSuccessToastVisible] = useState(false);
   const [fieldSqlTagOptions, setFieldSqlTagOptions] = useState<FieldSqlTagOptionDto[]>([]);
   const [edgeDetailModalOpen, setEdgeDetailModalOpen] = useState(false);
   const [selectedNodeForEdgeDetail, setSelectedNodeForEdgeDetail] = useState<string | null>(null);
   const { edgeDetails, loadEdgeDetails, reorderEdges } = useEdgeDetail();
   const isOpeningModalRef = useRef(false);
 
-  const editorTitle = useMemo(
-    () => `${subsystemTitle.trim() || '未命名子系统'} 流程设计`,
-    [subsystemTitle],
+  const resolvedFlowName = useMemo(() => normalizeFlowName(flowNameInput), [flowNameInput]);
+  const isFlowNameDirty = resolvedFlowName !== lastPersistedFlowNameRef.current;
+  const hasUnsavedChanges = hasUnsavedXmlChanges || isFlowNameDirty;
+  const editorTitle = useMemo(() => resolvedFlowName, [resolvedFlowName]);
+  const iframeTitle = useMemo(
+    () => `${subsystemTitle.trim() || '未命名子系统'} - ${resolvedFlowName}`,
+    [resolvedFlowName, subsystemTitle],
   );
   const iframeSrc = useMemo(() => buildDrawIoEmbedUrl(), []);
+  const isSaving = status === 'saving';
+
+  const isXmlDirty = useCallback((xmlText?: string | null) => {
+    const normalizedXml = String(xmlText ?? '').trim();
+    if (!normalizedXml) {
+      return false;
+    }
+
+    return normalizedXml !== lastPersistedXmlRef.current || saveInFlightRef.current;
+  }, []);
+
+  const rememberCurrentXml = useCallback((xmlText?: string | null) => {
+    const normalizedXml = String(xmlText ?? '').trim();
+    if (!normalizedXml) {
+      return '';
+    }
+
+    initialXmlRef.current = normalizedXml;
+    currentXmlRef.current = normalizedXml;
+    onChange(normalizedXml);
+    setHasUnsavedXmlChanges(isXmlDirty(normalizedXml));
+    return normalizedXml;
+  }, [isXmlDirty, onChange]);
+
+  const markDirty = useCallback(() => {
+    setHasUnsavedXmlChanges(true);
+    setStatus((prev) => (prev === 'saving' ? prev : 'ready'));
+  }, []);
+
+  const commitFlowNameInput = useCallback((nextValue?: string | null) => {
+    const nextFlowName = normalizeFlowName(nextValue ?? flowNameInput);
+    currentFlowNameRef.current = nextFlowName;
+    setFlowNameInput(nextFlowName);
+    onFlowNameChange?.(nextFlowName);
+    return nextFlowName;
+  }, [flowNameInput, onFlowNameChange]);
+
+  const showSaveSuccessToast = useCallback(() => {
+    if (saveSuccessToastTimerRef.current) {
+      window.clearTimeout(saveSuccessToastTimerRef.current);
+    }
+
+    setSaveSuccessToastVisible(true);
+    saveSuccessToastTimerRef.current = window.setTimeout(() => {
+      setSaveSuccessToastVisible(false);
+      saveSuccessToastTimerRef.current = null;
+    }, 1800);
+  }, []);
 
   useEffect(() => {
-    if (initialXml.trim()) {
-      initialXmlRef.current = initialXml;
-    }
+    const normalizedInitialXml = initialXml.trim();
+    initialXmlRef.current = normalizedInitialXml;
+    currentXmlRef.current = normalizedInitialXml;
+    lastPersistedXmlRef.current = normalizedInitialXml;
+    graphChangeInitializedRef.current = false;
+    setHasUnsavedXmlChanges(false);
   }, [initialXml]);
+
+  useEffect(() => {
+    const persistedFlowName = normalizeFlowName(flowName);
+    currentFlowNameRef.current = persistedFlowName;
+    lastPersistedFlowNameRef.current = persistedFlowName;
+    setFlowNameInput(persistedFlowName);
+  }, [flowName]);
+
+  useEffect(() => {
+    return () => {
+      if (saveSuccessToastTimerRef.current) {
+        window.clearTimeout(saveSuccessToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSaving) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && typeof activeElement.blur === 'function') {
+      activeElement.blur();
+    }
+    iframeRef.current?.blur();
+    setSaveSuccessToastVisible(false);
+  }, [isSaving]);
+
+  useEffect(() => {
+    flowIdRef.current = flowId?.trim() || null;
+  }, [flowId]);
+
+  useEffect(() => {
+    rowVersionRef.current = rowVersion ?? null;
+  }, [rowVersion]);
+
+  useEffect(() => {
+    currentFlowNameRef.current = resolvedFlowName;
+  }, [resolvedFlowName]);
 
   useEffect(() => {
     graphJsonRef.current = normalizeGraphJson(initialGraphJson);
@@ -306,10 +448,9 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
         })
         .finally(() => {
           delete moduleMetaPendingRef.current[requestedCode];
-      });
+        });
     }
   }, [postMessageToEditor]);
-
   const syncFunctionFlowEditor = useCallback(() => {
     postMessageToEditor({
       action: 'functionFlowConfig',
@@ -351,8 +492,87 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
   }, [edgeDetailModalOpen, loadEdgeDetails]);
 
   const persistFlow = useCallback(async (xmlText: string) => {
-    const normalizedXml = xmlText.trim();
+    const normalizedFlowName = commitFlowNameInput(currentFlowNameRef.current);
+    const normalizedXml = syncFlowNameIntoXml(xmlText, normalizedFlowName);
     if (!normalizedXml) {
+      return;
+    }
+
+    if (currentXmlRef.current !== undefined) {
+      currentXmlRef.current = normalizedXml;
+      initialXmlRef.current = normalizedXml;
+      onChange(normalizedXml);
+
+      const xmlDirty = isXmlDirty(normalizedXml);
+      const nameDirty = normalizedFlowName !== lastPersistedFlowNameRef.current;
+
+      if (!xmlDirty && !nameDirty) {
+        setHasUnsavedXmlChanges(false);
+        return;
+      }
+
+      if (saveInFlightRef.current) {
+        saveQueueXmlRef.current = normalizedXml;
+        setHasUnsavedXmlChanges(true);
+        return;
+      }
+
+      saveInFlightRef.current = true;
+      setStatus('saving');
+
+      try {
+        const detail = await saveFunctionFlow({
+          editorXml: normalizedXml,
+          flowCode,
+          flowId: flowIdRef.current,
+          flowName: normalizedFlowName,
+          generatedArtifacts: previewArtifactsRef.current,
+          graphJson: {
+            ...graphJsonRef.current,
+            generatedArtifacts: previewArtifactsRef.current,
+          },
+          rowVersion: rowVersionRef.current,
+          subsystemId,
+        });
+
+        const persistedFlowName = normalizeFlowName(detail.flowName || normalizedFlowName);
+        flowIdRef.current = detail.id || flowIdRef.current;
+        currentFlowNameRef.current = persistedFlowName;
+        lastPersistedFlowNameRef.current = persistedFlowName;
+        lastPersistedXmlRef.current = normalizedXml;
+        rowVersionRef.current = detail.rowVersion ?? rowVersionRef.current;
+        setFlowNameInput(persistedFlowName);
+        onFlowNameChange?.(persistedFlowName);
+        setHasUnsavedXmlChanges(Boolean(saveQueueXmlRef.current && saveQueueXmlRef.current !== normalizedXml));
+        graphChangeInitializedRef.current = true;
+        onPersist?.(detail);
+        setStatus('saved');
+
+        showSaveSuccessToast();
+        return;
+      } catch (error) {
+        setStatus('ready');
+        setHasUnsavedXmlChanges(xmlDirty);
+        onShowToast?.(error instanceof Error && error.message.trim() ? error.message : '功能流程图保存失败');
+        return;
+      } finally {
+        saveInFlightRef.current = false;
+
+        if (saveQueueXmlRef.current === normalizedXml) {
+          saveQueueXmlRef.current = null;
+        }
+
+        if (saveQueueXmlRef.current && saveQueueXmlRef.current !== normalizedXml) {
+          const queuedXml = saveQueueXmlRef.current;
+          saveQueueXmlRef.current = null;
+          void persistFlow(queuedXml);
+        }
+      }
+    }
+
+    const xmlDirty = normalizedXml !== lastPersistedXmlRef.current;
+    const nameDirty = normalizedFlowName !== lastPersistedFlowNameRef.current;
+    if (!xmlDirty && !nameDirty) {
       return;
     }
 
@@ -366,18 +586,32 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
 
     try {
       const detail = await saveFunctionFlow({
-        drawioXml: normalizedXml,
+        editorXml: normalizedXml,
         flowCode,
-        flowName,
+        flowId: flowIdRef.current,
+        flowName: normalizedFlowName,
         generatedArtifacts: previewArtifactsRef.current,
         graphJson: {
           ...graphJsonRef.current,
           generatedArtifacts: previewArtifactsRef.current,
         },
+        rowVersion: rowVersionRef.current,
+        subsystemId,
       });
 
+      const persistedFlowName = normalizeFlowName(detail.flowName || normalizedFlowName);
+      flowIdRef.current = detail.id || flowIdRef.current;
+      currentFlowNameRef.current = persistedFlowName;
+      lastPersistedFlowNameRef.current = persistedFlowName;
+      lastPersistedXmlRef.current = normalizedXml;
+      rowVersionRef.current = detail.rowVersion ?? rowVersionRef.current;
+      setFlowNameInput(persistedFlowName);
+      onFlowNameChange?.(persistedFlowName);
+      setHasUnsavedXmlChanges(false);
       onPersist?.(detail);
       setStatus('saved');
+
+      showSaveSuccessToast();
     } catch (error) {
       setStatus('ready');
       onShowToast?.(error instanceof Error && error.message.trim() ? error.message : '功能流程图保存失败');
@@ -390,30 +624,21 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
         void persistFlow(queuedXml);
       }
     }
-  }, [flowCode, flowName, onPersist, onShowToast]);
+  }, [commitFlowNameInput, flowCode, isXmlDirty, onChange, onClose, onFlowNameChange, onPersist, onShowToast, showSaveSuccessToast, subsystemId]);
 
-  const runPreview = useCallback(async (graphJson: FunctionFlowGraphJson) => {
-    try {
-      const preview = await previewFunctionFlow({
-        flowCode,
-        graphJson,
-      });
-      sendPreviewToEditor(preview);
-    } catch (error) {
-      sendPreviewToEditor(previewArtifactsRef.current);
-      onShowToast?.(error instanceof Error && error.message.trim() ? error.message : 'SQL 预览生成失败');
-    }
-  }, [flowCode, onShowToast, sendPreviewToEditor]);
-
-  const schedulePreview = useCallback((graphJson: FunctionFlowGraphJson) => {
-    if (previewTimerRef.current) {
-      window.clearTimeout(previewTimerRef.current);
+  const requestEditorSave = useCallback(() => {
+    if (isSaving) {
+      return;
     }
 
-    previewTimerRef.current = window.setTimeout(() => {
-      void runPreview(graphJson);
-    }, 320);
-  }, [runPreview]);
+    commitFlowNameInput();
+    if (!postMessageToEditor({
+      action: 'invokeAction',
+      actionName: 'save',
+    })) {
+      void persistFlow(currentXmlRef.current);
+    }
+  }, [commitFlowNameInput, isSaving, persistFlow, postMessageToEditor]);
 
   useEffect(() => {
     if (!isReady) {
@@ -422,6 +647,49 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
 
     syncFunctionFlowEditor();
   }, [isReady, syncFunctionFlowEditor]);
+
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!hasUnsavedChanges && !saveInFlightRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = '';
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+
+    postMessageToEditor({
+      action: 'status',
+      modified: hasUnsavedChanges,
+    });
+  }, [hasUnsavedChanges, isReady, postMessageToEditor]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') {
+        return;
+      }
+
+      event.preventDefault();
+      requestEditorSave();
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [requestEditorSave]);
 
   useEffect(() => {
     function handleWindowMessage(event: MessageEvent) {
@@ -447,7 +715,7 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
         setStatus('ready');
         postMessageToEditor({
           action: 'load',
-          autosave: 1,
+          autosave: 0,
           title: editorTitle,
           xml: initialXmlRef.current,
         });
@@ -459,21 +727,15 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
         return;
       }
 
-      if (payload.event === 'autosave' || payload.event === 'save') {
-        if (payload.xml?.trim()) {
-          initialXmlRef.current = payload.xml;
-          onChange(payload.xml);
-          void persistFlow(payload.xml);
+      if (payload.event === 'save') {
+        const nextXml = rememberCurrentXml(payload.xml ?? currentXmlRef.current);
+        if (nextXml) {
+          void persistFlow(nextXml);
         }
         return;
       }
 
       if (payload.event === 'exit') {
-        if (payload.xml?.trim()) {
-          initialXmlRef.current = payload.xml;
-          onChange(payload.xml);
-          void persistFlow(payload.xml);
-        }
         onClose();
         return;
       }
@@ -500,7 +762,11 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
           generatedArtifacts: previewArtifactsRef.current,
         };
         prefetchModuleMetas(graphJsonRef.current);
-        schedulePreview(graphJsonRef.current);
+        if (graphChangeInitializedRef.current) {
+          markDirty();
+        } else {
+          graphChangeInitializedRef.current = true;
+        }
         return;
       }
 
@@ -560,11 +826,8 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
 
     return () => {
       window.removeEventListener('message', handleWindowMessage);
-      if (previewTimerRef.current) {
-        window.clearTimeout(previewTimerRef.current);
-      }
     };
-  }, [editorTitle, onChange, onClose, onShowToast, openEdgeDetailForTarget, persistFlow, postMessageToEditor, schedulePreview, syncFunctionFlowEditor]);
+  }, [editorTitle, markDirty, onClose, onShowToast, openEdgeDetailForTarget, persistFlow, postMessageToEditor, prefetchModuleMetas, rememberCurrentXml, syncFunctionFlowEditor]);
 
   return (
     <div className="relative h-full min-h-0 w-full overflow-hidden bg-[#eef3f8]">
@@ -572,9 +835,84 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
         key={iframeSrc}
         ref={iframeRef}
         src={iframeSrc}
-        title={editorTitle}
+        title={iframeTitle}
         className="h-full w-full border-0"
       />
+
+      <div className="pointer-events-none absolute left-[calc(50%-108px)] top-2 z-[11] -translate-x-1/2">
+        <div
+          className={`pointer-events-auto rounded-full border px-3 py-1 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.24)] backdrop-blur-md transition-all ${isSaving ? 'opacity-80' : ''} ${isFlowNameDirty ? 'border-amber-200 bg-amber-50/92' : 'border-white/80 bg-white/92'}`}
+          title="流程图名称，按 Ctrl+S 保存"
+        >
+          <input
+            type="text"
+            value={flowNameInput}
+            onChange={(event) => {
+              setFlowNameInput(event.target.value);
+              currentFlowNameRef.current = normalizeFlowName(event.target.value);
+            }}
+            onBlur={(event) => {
+              commitFlowNameInput(event.currentTarget.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                commitFlowNameInput(event.currentTarget.value);
+                event.currentTarget.blur();
+              }
+            }}
+            disabled={isSaving}
+            placeholder="请输入流程图名称"
+            className="w-[188px] max-w-[28vw] bg-transparent text-center text-[14px] font-semibold text-slate-700 outline-none placeholder:text-slate-300 disabled:cursor-not-allowed"
+          />
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {saveSuccessToastVisible && !isSaving ? (
+          <motion.div
+            initial={{ opacity: 0, y: -18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="pointer-events-none absolute left-1/2 top-16 z-[12] -translate-x-1/2"
+          >
+            <div className="flex items-center gap-3 rounded-full border border-emerald-200/80 bg-white/96 px-4 py-2 text-[13px] font-semibold text-emerald-700 shadow-[0_22px_50px_-30px_rgba(16,185,129,0.38)] backdrop-blur-md">
+              <span className="flex size-7 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <span className="material-symbols-outlined text-[18px]">check_circle</span>
+              </span>
+              <span>保存成功</span>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isSaving ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[13] flex items-center justify-center bg-slate-950/18 backdrop-blur-[3px]"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="flex min-w-[320px] max-w-[420px] flex-col items-center rounded-[28px] border border-white/80 bg-white/96 px-7 py-6 text-center shadow-[0_30px_70px_-36px_rgba(15,23,42,0.42)]"
+            >
+              <div className="flex size-14 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                <span className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span>
+              </div>
+              <div className="mt-4 text-[18px] font-bold text-slate-900">正在保存当前流程</div>
+              <div className="mt-2 text-[13px] leading-6 text-slate-500">
+                保存完成前将暂时锁定编辑器，请稍候片刻。
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {!isReady ? (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#eef3f8]/72 backdrop-blur-[2px]">
@@ -584,7 +922,7 @@ export function FunctionFlowDrawIoDesigner(props: FunctionFlowDrawIoDesignerProp
             </div>
             <div className="mt-4 text-[15px] font-semibold text-slate-900">正在载入 draw.io 编辑器</div>
             <div className="mt-1 text-[12px] text-slate-500">
-              {status === 'saving' ? '正在同步当前草稿...' : '首次打开会稍慢一点'}
+              {status === 'saving' ? '正在同步当前内容...' : '首次打开会稍慢一点'}
             </div>
           </div>
         </div>

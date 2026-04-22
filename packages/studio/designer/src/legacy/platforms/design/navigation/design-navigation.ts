@@ -85,7 +85,7 @@ export function decodeDesignRouteSegment(value?: string) {
 }
 
 export function buildDesignWorkspacePath(context?: Pick<DesignRouteContext, 'menuCode' | 'subsystemCode'>) {
-  const segments = ['/designer', 'workspace'];
+  const segments = ['/design', 'workspace'];
 
   if (context?.subsystemCode) {
     segments.push(encodeSegment(context.subsystemCode));
@@ -99,7 +99,7 @@ export function buildDesignWorkspacePath(context?: Pick<DesignRouteContext, 'men
 }
 
 export function buildDesignModulePath(context?: Pick<DesignRouteContext, 'menuCode' | 'moduleCode' | 'subsystemCode'>) {
-  const segments = ['/designer', 'module'];
+  const segments = ['/design', 'module'];
 
   if (context?.subsystemCode) {
     segments.push(encodeSegment(context.subsystemCode));
@@ -117,7 +117,7 @@ export function buildDesignModulePath(context?: Pick<DesignRouteContext, 'menuCo
 }
 
 export function buildDesignBillPath(context?: Pick<DesignRouteContext, 'moduleCode'>) {
-  const segments = ['/designer', 'bill'];
+  const segments = ['/design', 'bill'];
 
   if (context?.moduleCode) {
     segments.push(encodeSegment(context.moduleCode));

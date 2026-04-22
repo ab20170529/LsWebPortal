@@ -27,6 +27,24 @@ const DETAIL_BOARD_GROUP_BODY_GAP = 24;
 
 type NormalizeColumn = (column: Record<string, any>) => Record<string, any>;
 
+export type ArchiveLayoutSchemeGroup = {
+  fieldIds: string[];
+  id: string;
+  name: string;
+};
+
+export type ArchiveLayoutSchemeFieldDefaults = {
+  h?: number;
+  w?: number;
+};
+
+export type ArchiveLayoutScheme = {
+  fieldDefaults?: Record<string, ArchiveLayoutSchemeFieldDefaults>;
+  groups: ArchiveLayoutSchemeGroup[];
+  id: string;
+  name: string;
+};
+
 function isPlainObject(value: unknown): value is Record<string, any> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -102,6 +120,7 @@ function normalizeDesignerLayoutDocument(rawLayout: unknown, columnMap: Map<stri
       y: isFiniteNumber(item.y) ? Number(item.y) : 16,
       w: isFiniteNumber(item.w) ? Number(item.w) : 160,
       h: isFiniteNumber(item.h) ? Number(item.h) : 56,
+      rows: isFiniteNumber(item.rows) ? Number(item.rows) : undefined,
     }))
     .filter((item) => item.type === 'groupbox' || !item.field || columnMap.has(String(item.field)));
 
@@ -112,7 +131,7 @@ function normalizeDesignerLayoutDocument(rawLayout: unknown, columnMap: Map<stri
     items: normalizedItems.map((item) => ({
       ...item,
       parentId: item.parentId && itemIdSet.has(item.parentId) ? item.parentId : null,
-    })),
+    })) as DetailLayoutItem[],
   });
 }
 
@@ -210,15 +229,73 @@ export function buildDetailLayoutDocumentFromDetailBoard(
     items.push({
       id: groupId,
       type: 'groupbox',
-      title: typeof group?.name === 'string' && group.name.trim() ? group.name : `信息分组 ${groupIndex + 1}`,
+      title: typeof group?.name === 'string' ? group.name : `信息分组 ${groupIndex + 1}`,
       parentId: null,
       x: 24,
       y: nextGroupY,
       w: groupWidth,
       h: groupHeight,
-    });
+      rows: Math.max(DETAIL_BOARD_GROUP_MIN_ROWS, getDetailBoardGroupRows(group)),
+    } as DetailLayoutItem & { rows?: number });
     items.push(...childItems);
     nextGroupY += groupHeight + DETAIL_BOARD_GROUP_GAP;
+  });
+
+  return createEmptyDetailLayoutDocument({
+    items,
+  });
+}
+
+export function buildArchiveDetailLayoutDocumentFromDetailBoard(
+  currentDetailBoard: Record<string, any>,
+  availableGridColumns: Record<string, any>[],
+  normalizeColumn: NormalizeColumn,
+): DetailLayoutDocument {
+  const availableColumnMap = buildColumnMap(availableGridColumns);
+  const normalizedDesignerLayout = normalizeDesignerLayoutDocument(currentDetailBoard?.designerLayout, availableColumnMap);
+  if (normalizedDesignerLayout) {
+    return normalizedDesignerLayout;
+  }
+
+  const groups = Array.isArray(currentDetailBoard?.groups) ? currentDetailBoard.groups : [];
+  const items: DetailLayoutItem[] = [];
+  let nextGroupY = 24;
+
+  const appendGroup = (group: Record<string, any>, groupIndex: number) => {
+    const effectiveColumnIds = Array.isArray(group?.columnIds)
+      ? group.columnIds.map(String).filter((columnId) => availableColumnMap.has(columnId))
+      : [];
+    if (effectiveColumnIds.length === 0) {
+      return;
+    }
+
+    const groupId = String(group?.id || `archive_detail_group_${groupIndex + 1}`);
+    const { childItems, groupHeight, groupWidth } = buildGroupChildItems(
+      {
+        ...group,
+        columnIds: effectiveColumnIds,
+      },
+      groupId,
+      availableColumnMap,
+      normalizeColumn,
+    );
+    items.push({
+      id: groupId,
+      type: 'groupbox',
+      title: typeof group?.name === 'string' ? group.name : `信息分组 ${groupIndex + 1}`,
+      parentId: null,
+      x: 24,
+      y: nextGroupY,
+      w: groupWidth,
+      h: groupHeight,
+      rows: Math.max(DETAIL_BOARD_GROUP_MIN_ROWS, getDetailBoardGroupRows(group)),
+    } as DetailLayoutItem & { rows?: number });
+    items.push(...childItems);
+    nextGroupY += groupHeight + DETAIL_BOARD_GROUP_GAP;
+  };
+
+  groups.forEach((group: Record<string, any>, groupIndex: number) => {
+    appendGroup(group, groupIndex);
   });
 
   return createEmptyDetailLayoutDocument({
@@ -249,13 +326,17 @@ function buildLegacyGroupFromItems(
   }
 
   const columnsPerRow = rowCounts.size > 0 ? Math.max(...rowCounts.values()) : 1;
+  const configuredRows = Number(previousGroup?.rows);
+  const detectedRows = Math.max(DETAIL_BOARD_GROUP_MIN_ROWS, rowAnchors.length || 1);
 
   return {
     id: groupId,
-    name: groupTitle || previousGroup?.name || '信息分组',
+    name: groupTitle ?? previousGroup?.name ?? '信息分组',
     description: previousGroup?.description ?? '',
     columnIds,
-    rows: Math.max(DETAIL_BOARD_GROUP_MIN_ROWS, rowAnchors.length || 1),
+    rows: Number.isFinite(configuredRows)
+      ? Math.max(detectedRows, configuredRows)
+      : detectedRows,
     columnRows: Object.fromEntries(children.map((child) => [child.field as string, Math.max(1, rowAnchors.indexOf(child.y) + 1)])),
     columnsPerRow,
     columnWidths: Object.fromEntries(children.map((child) => [child.field as string, Math.round(child.w)])),
@@ -291,7 +372,7 @@ export function buildDetailBoardFromDesignerLayout(
   if (rootFieldItems.length > 0) {
     groups.push(buildLegacyGroupFromItems(
       DETAIL_BOARD_DESIGNER_ROOT_GROUP_ID,
-      previousGroupMap.get(DETAIL_BOARD_DESIGNER_ROOT_GROUP_ID)?.name || '未分组字段',
+      previousGroupMap.get(DETAIL_BOARD_DESIGNER_ROOT_GROUP_ID)?.name ?? '未分组字段',
       rootFieldItems,
       previousGroupMap,
       usedFieldIds,
@@ -303,7 +384,7 @@ export function buildDetailBoardFromDesignerLayout(
     .forEach((groupItem) => {
       groups.push(buildLegacyGroupFromItems(
         groupItem.id,
-        groupItem.title || '信息分组',
+        typeof groupItem.title === 'string' ? groupItem.title : '信息分组',
         childrenByParent.get(groupItem.id) ?? [],
         previousGroupMap,
         usedFieldIds,
@@ -355,7 +436,7 @@ export function buildDetailBoardPreviewGroupsFromDesignerLayout(document: Detail
       previewGroups.push({
         id: groupItem.id,
         items: itemsByParent.get(groupItem.id) ?? [],
-        title: groupItem.title || '信息分组',
+        title: typeof groupItem.title === 'string' ? groupItem.title : '信息分组',
       });
     });
 
@@ -411,6 +492,306 @@ function normalizeSuggestedLayoutFieldText(normalizedColumn: Record<string, any>
 
 function includesSuggestedLayoutKeyword(text: string, keywords: string[]) {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function buildSuggestedArchiveLayoutGroups(
+  availableGridColumns: Record<string, any>[],
+  normalizeColumn: NormalizeColumn,
+) {
+  const groupedColumns = new Map<SuggestedLayoutBucketKey, Array<{ column: Record<string, any>; normalizedColumn: Record<string, any> }>>(
+    SUGGESTED_LAYOUT_BUCKETS.map((bucket) => [bucket.key, []]),
+  );
+
+  availableGridColumns
+    .filter((column) => Boolean(column?.id))
+    .forEach((column) => {
+      const normalizedColumn = normalizeColumn(column);
+      const fieldMeta = buildLayoutFieldWorkbenchMeta(normalizeColumn, column);
+      const bucketKey = resolveSuggestedLayoutBucket(normalizedColumn, fieldMeta.isTallControl);
+      groupedColumns.get(bucketKey)?.push({ column, normalizedColumn });
+    });
+
+  return SUGGESTED_LAYOUT_BUCKETS
+    .map((bucket, index) => {
+      const bucketFields = (groupedColumns.get(bucket.key) ?? [])
+        .sort((left, right) => (
+          resolveSuggestedLayoutOrderScore(left.normalizedColumn) - resolveSuggestedLayoutOrderScore(right.normalizedColumn)
+        ) || String(left.column.orderId ?? '').localeCompare(String(right.column.orderId ?? '')));
+
+      if (bucketFields.length === 0) {
+        return null;
+      }
+
+      let currentRow = 1;
+      let itemsInRow = 0;
+      const columnIds: string[] = [];
+      const columnRows: Record<string, number> = {};
+      const columnWidths: Record<string, number> = {};
+      const columnHeights: Record<string, number> = {};
+
+      bucketFields.forEach(({ column, normalizedColumn }) => {
+        const fieldMeta = buildLayoutFieldWorkbenchMeta(normalizeColumn, column);
+        const fieldId = String(column.id);
+        const forceSingleRow = fieldMeta.isTallControl || includesSuggestedLayoutKeyword(
+          normalizeSuggestedLayoutFieldText(normalizedColumn),
+          LONG_FIELD_KEYWORDS,
+        );
+
+        if (forceSingleRow && itemsInRow > 0) {
+          currentRow += 1;
+          itemsInRow = 0;
+        }
+
+        columnIds.push(fieldId);
+        columnRows[fieldId] = currentRow;
+        columnWidths[fieldId] = resolveSuggestedFieldWidth(normalizedColumn, fieldMeta.width, forceSingleRow);
+
+        if (fieldMeta.isTallControl) {
+          columnHeights[fieldId] = Math.max(fieldMeta.height, 104);
+        }
+
+        if (forceSingleRow) {
+          currentRow += 1;
+          itemsInRow = 0;
+          return;
+        }
+
+        itemsInRow += 1;
+        if (itemsInRow >= 2) {
+          currentRow += 1;
+          itemsInRow = 0;
+        }
+      });
+
+      const usedRows = Math.max(1, ...Object.values(columnRows));
+
+      return {
+        columnHeights,
+        columnIds,
+        columnRows,
+        columnWidths,
+        columnsPerRow: 2,
+        description: bucket.description,
+        id: `suggested_detail_group_${bucket.key}_${index + 1}`,
+        name: bucket.title,
+        rows: Math.max(DETAIL_BOARD_GROUP_MIN_ROWS, Math.min(DETAIL_BOARD_GROUP_MAX_ROWS, usedRows)),
+      };
+    })
+    .filter(Boolean) as Record<string, any>[];
+}
+
+function createArchiveLayoutSchemeId(prefix = 'archive_layout_scheme') {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createArchiveLayoutSchemeGroupId(prefix = 'archive_layout_scheme_group') {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function createBlankArchiveLayoutScheme(name = '新方案'): ArchiveLayoutScheme {
+  return {
+    fieldDefaults: {},
+    groups: [
+      {
+        fieldIds: [],
+        id: createArchiveLayoutSchemeGroupId(),
+        name: '信息分组 1',
+      },
+    ],
+    id: createArchiveLayoutSchemeId(),
+    name,
+  };
+}
+
+export function normalizeArchiveLayoutSchemes(
+  rawSchemes: unknown,
+  availableGridColumns: Record<string, any>[],
+): ArchiveLayoutScheme[] {
+  if (!Array.isArray(rawSchemes)) {
+    return [];
+  }
+
+  const validFieldIds = new Set(
+    availableGridColumns
+      .filter((column) => Boolean(column?.id))
+      .map((column) => String(column.id)),
+  );
+
+  return rawSchemes
+    .filter((scheme): scheme is Record<string, any> => isPlainObject(scheme))
+    .map((scheme, schemeIndex) => {
+      const usedFieldIds = new Set<string>();
+      const groups = Array.isArray(scheme.groups)
+        ? scheme.groups
+          .filter((group): group is Record<string, any> => isPlainObject(group))
+          .map((group, groupIndex) => {
+            const fieldIds = Array.isArray(group.fieldIds)
+              ? group.fieldIds
+                .map((fieldId) => String(fieldId))
+                .filter((fieldId) => {
+                  if (!validFieldIds.has(fieldId) || usedFieldIds.has(fieldId)) {
+                    return false;
+                  }
+                  usedFieldIds.add(fieldId);
+                  return true;
+                })
+              : [];
+
+            return {
+              fieldIds,
+              id: typeof group.id === 'string' && group.id.trim()
+                ? group.id
+                : createArchiveLayoutSchemeGroupId(`archive_layout_scheme_group_${schemeIndex + 1}_${groupIndex + 1}`),
+              name: typeof group.name === 'string' && group.name.trim()
+                ? group.name
+                : `信息分组 ${groupIndex + 1}`,
+            } satisfies ArchiveLayoutSchemeGroup;
+          })
+        : [];
+
+      const fieldDefaults = isPlainObject(scheme.fieldDefaults)
+        ? Array.from(usedFieldIds).reduce<Record<string, ArchiveLayoutSchemeFieldDefaults>>((result, fieldId) => {
+          const defaults = scheme.fieldDefaults?.[fieldId];
+          if (!isPlainObject(defaults)) {
+            return result;
+          }
+
+          const nextDefaults: ArchiveLayoutSchemeFieldDefaults = {};
+          if (isFiniteNumber(defaults.w) && Number(defaults.w) > 0) {
+            nextDefaults.w = Number(defaults.w);
+          }
+          if (isFiniteNumber(defaults.h) && Number(defaults.h) > 0) {
+            nextDefaults.h = Number(defaults.h);
+          }
+          if (typeof nextDefaults.w === 'number' || typeof nextDefaults.h === 'number') {
+            result[fieldId] = nextDefaults;
+          }
+          return result;
+        }, {})
+        : {};
+
+      return {
+        fieldDefaults,
+        groups: groups.length > 0 ? groups : createBlankArchiveLayoutScheme().groups,
+        id: typeof scheme.id === 'string' && scheme.id.trim()
+          ? scheme.id
+          : createArchiveLayoutSchemeId(`archive_layout_scheme_${schemeIndex + 1}`),
+        name: typeof scheme.name === 'string' && scheme.name.trim()
+          ? scheme.name
+          : `方案 ${schemeIndex + 1}`,
+      } satisfies ArchiveLayoutScheme;
+    });
+}
+
+export function buildSuggestedArchiveLayoutScheme(
+  availableGridColumns: Record<string, any>[],
+  normalizeColumn: NormalizeColumn,
+): ArchiveLayoutScheme {
+  const suggestedGroups = buildSuggestedArchiveLayoutGroups(availableGridColumns, normalizeColumn);
+  if (suggestedGroups.length === 0) {
+    return createBlankArchiveLayoutScheme('默认方案');
+  }
+
+  return {
+    fieldDefaults: {},
+    groups: suggestedGroups.map((group, index) => ({
+      fieldIds: Array.isArray(group.columnIds) ? group.columnIds.map(String) : [],
+      id: typeof group.id === 'string' && group.id.trim() ? group.id : createArchiveLayoutSchemeGroupId(),
+      name: typeof group.name === 'string' && group.name.trim() ? group.name : `信息分组 ${index + 1}`,
+    })),
+    id: createArchiveLayoutSchemeId('archive_layout_scheme_suggested'),
+    name: '默认方案',
+  };
+}
+
+export function buildArchiveLayoutDocumentFromScheme(
+  scheme: ArchiveLayoutScheme,
+  availableGridColumns: Record<string, any>[],
+  normalizeColumn: NormalizeColumn,
+  previewWorkbenchWidth: number = DETAIL_BOARD_GROUPBOX_MIN_WIDTH,
+): DetailLayoutDocument {
+  const availableColumnMap = buildColumnMap(availableGridColumns);
+  const items: DetailLayoutItem[] = [];
+  let nextGroupY = 24;
+  const groupWidth = Math.max(DETAIL_BOARD_GROUPBOX_MIN_WIDTH, Math.round(Number(previewWorkbenchWidth) || DETAIL_BOARD_GROUPBOX_MIN_WIDTH));
+  const usableGroupWidth = Math.max(DETAIL_BOARD_GROUP_PADDING_X, groupWidth - DETAIL_BOARD_GROUP_PADDING_X * 2);
+
+  scheme.groups.forEach((group, groupIndex) => {
+    const groupId = String(group.id || `archive_layout_scheme_group_${groupIndex + 1}`);
+    const fieldIds = group.fieldIds
+      .map(String)
+      .filter((fieldId) => availableColumnMap.has(fieldId));
+    let nextFieldX = DETAIL_BOARD_GROUP_PADDING_X;
+    let nextFieldY = DETAIL_BOARD_GROUP_PADDING_Y;
+    let currentRowHeight = 0;
+    let currentRowCount = 1;
+
+    items.push({
+      h: DETAIL_BOARD_GROUPBOX_MIN_HEIGHT,
+      id: groupId,
+      type: 'groupbox',
+      w: groupWidth,
+      x: 24,
+      y: nextGroupY,
+      title: group.name || `信息分组 ${groupIndex + 1}`,
+      rows: 1,
+    } as DetailLayoutItem & { rows?: number });
+
+    fieldIds.forEach((fieldId, fieldIndex) => {
+      const rawColumn = availableColumnMap.get(fieldId);
+      if (!rawColumn) {
+        return;
+      }
+
+      const normalizedColumn = normalizeColumn(rawColumn);
+      const preferredDefaults = scheme.fieldDefaults?.[fieldId];
+      const fieldMeta = buildLayoutFieldWorkbenchMeta(
+        normalizeColumn,
+        rawColumn,
+        preferredDefaults?.w,
+        preferredDefaults?.h,
+      );
+      const resolvedWidth = Number.isFinite(Number(preferredDefaults?.w)) && Number(preferredDefaults?.w) > 0
+        ? Number(preferredDefaults?.w)
+        : fieldMeta.width;
+      const resolvedHeight = Number.isFinite(Number(preferredDefaults?.h)) && Number(preferredDefaults?.h) > 0
+        ? Number(preferredDefaults?.h)
+        : fieldMeta.height;
+      if (
+        nextFieldX > DETAIL_BOARD_GROUP_PADDING_X
+        && nextFieldX + resolvedWidth > DETAIL_BOARD_GROUP_PADDING_X + usableGroupWidth
+      ) {
+        nextFieldX = DETAIL_BOARD_GROUP_PADDING_X;
+        nextFieldY += Math.max(currentRowHeight, resolvedHeight) + DETAIL_BOARD_GROUP_ROW_GAP;
+        currentRowHeight = 0;
+        currentRowCount += 1;
+      }
+      items.push({
+        h: resolvedHeight,
+        id: `${groupId}::${fieldId}::${fieldIndex + 1}`,
+        type: mapColumnToDetailLayoutType(normalizedColumn),
+        w: resolvedWidth,
+        x: nextFieldX,
+        y: nextFieldY,
+        field: fieldId,
+        parentId: groupId,
+        readOnly: Boolean(normalizedColumn.readOnly),
+        required: Boolean(normalizedColumn.required),
+        title: normalizedColumn.name || normalizedColumn.sourceField || fieldId,
+      });
+      currentRowHeight = Math.max(currentRowHeight, resolvedHeight);
+      nextFieldX += resolvedWidth + DETAIL_BOARD_GROUP_COLUMN_GAP;
+    });
+
+    const groupItem = items[items.length - fieldIds.length - 1] as DetailLayoutItem & { rows?: number };
+    groupItem.rows = Math.max(1, currentRowCount);
+
+    nextGroupY += DETAIL_BOARD_GROUPBOX_MIN_HEIGHT + DETAIL_BOARD_GROUP_GAP;
+  });
+
+  return createEmptyDetailLayoutDocument({
+    items,
+  });
 }
 
 function resolveSuggestedLayoutBucket(
@@ -497,86 +878,7 @@ export function buildSuggestedDetailBoardLayout(
     };
   }
 
-  const groupedColumns = new Map<SuggestedLayoutBucketKey, Array<{ column: Record<string, any>; normalizedColumn: Record<string, any> }>>(
-    SUGGESTED_LAYOUT_BUCKETS.map((bucket) => [bucket.key, []]),
-  );
-
-  availableGridColumns
-    .filter((column) => Boolean(column?.id))
-    .forEach((column) => {
-      const normalizedColumn = normalizeColumn(column);
-      const fieldMeta = buildLayoutFieldWorkbenchMeta(normalizeColumn, column);
-      const bucketKey = resolveSuggestedLayoutBucket(normalizedColumn, fieldMeta.isTallControl);
-      groupedColumns.get(bucketKey)?.push({ column, normalizedColumn });
-    });
-
-  const groups = SUGGESTED_LAYOUT_BUCKETS
-    .map((bucket, index) => {
-      const bucketFields = (groupedColumns.get(bucket.key) ?? [])
-        .sort((left, right) => (
-          resolveSuggestedLayoutOrderScore(left.normalizedColumn) - resolveSuggestedLayoutOrderScore(right.normalizedColumn)
-        ) || String(left.column.orderId ?? '').localeCompare(String(right.column.orderId ?? '')));
-
-      if (bucketFields.length === 0) {
-        return null;
-      }
-
-      let currentRow = 1;
-      let itemsInRow = 0;
-      const columnIds: string[] = [];
-      const columnRows: Record<string, number> = {};
-      const columnWidths: Record<string, number> = {};
-      const columnHeights: Record<string, number> = {};
-
-      bucketFields.forEach(({ column, normalizedColumn }) => {
-        const fieldMeta = buildLayoutFieldWorkbenchMeta(normalizeColumn, column);
-        const fieldId = String(column.id);
-        const forceSingleRow = fieldMeta.isTallControl || includesSuggestedLayoutKeyword(
-          normalizeSuggestedLayoutFieldText(normalizedColumn),
-          LONG_FIELD_KEYWORDS,
-        );
-
-        if (forceSingleRow && itemsInRow > 0) {
-          currentRow += 1;
-          itemsInRow = 0;
-        }
-
-        columnIds.push(fieldId);
-        columnRows[fieldId] = currentRow;
-        columnWidths[fieldId] = resolveSuggestedFieldWidth(normalizedColumn, fieldMeta.width, forceSingleRow);
-
-        if (fieldMeta.isTallControl) {
-          columnHeights[fieldId] = Math.max(fieldMeta.height, 104);
-        }
-
-        if (forceSingleRow) {
-          currentRow += 1;
-          itemsInRow = 0;
-          return;
-        }
-
-        itemsInRow += 1;
-        if (itemsInRow >= 2) {
-          currentRow += 1;
-          itemsInRow = 0;
-        }
-      });
-
-      const usedRows = Math.max(1, ...Object.values(columnRows));
-
-      return {
-        columnHeights,
-        columnIds,
-        columnRows,
-        columnWidths,
-        columnsPerRow: 2,
-        description: bucket.description,
-        id: `suggested_detail_group_${bucket.key}_${index + 1}`,
-        name: bucket.title,
-        rows: Math.max(DETAIL_BOARD_GROUP_MIN_ROWS, Math.min(DETAIL_BOARD_GROUP_MAX_ROWS, usedRows)),
-      };
-    })
-    .filter(Boolean) as Record<string, any>[];
+  const groups = buildSuggestedArchiveLayoutGroups(availableGridColumns, normalizeColumn);
 
   const nextDetailBoard = {
     ...currentDetailBoard,

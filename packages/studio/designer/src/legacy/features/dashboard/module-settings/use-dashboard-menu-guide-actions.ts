@@ -12,6 +12,7 @@ import {
   type ModuleMenuDraft,
   type ModuleMenuValue,
 } from './dashboard-menu-config-helpers';
+import type { DashboardWorkbench } from '../dashboard-workbench-types';
 
 type SyncWorkspaceUrlState = (patch: Partial<{
   configOpen: boolean;
@@ -20,7 +21,7 @@ type SyncWorkspaceUrlState = (patch: Partial<{
   mode: string | null;
   moduleCode: string | null;
   theme: string | null;
-  workbench: 'modules' | 'research-record' | null;
+  workbench: DashboardWorkbench | null;
 }>, options?: { replace?: boolean }) => void;
 
 export function useDashboardMenuGuideActions({
@@ -56,7 +57,7 @@ export function useDashboardMenuGuideActions({
   resetModuleDesignerState: () => void;
   selectedSubsystem: BackendSubsystemNode | null;
   setActiveConfigMenu: Dispatch<SetStateAction<BackendMenuNode | null>>;
-  setActiveWorkbench: Dispatch<SetStateAction<'modules' | 'research-record'>>;
+  setActiveWorkbench: Dispatch<SetStateAction<DashboardWorkbench>>;
   setBusinessType: Dispatch<SetStateAction<BusinessType>>;
   setCompletedSteps: Dispatch<SetStateAction<number[]>>;
   setConfigStep: Dispatch<SetStateAction<number>>;

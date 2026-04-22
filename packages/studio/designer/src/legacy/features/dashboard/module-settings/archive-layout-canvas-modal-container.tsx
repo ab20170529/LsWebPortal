@@ -1,4 +1,5 @@
 import React from 'react';
+import { Modal } from 'antd';
 
 import { ArchiveLayoutDesignerBridge } from './archive-layout-designer-bridge';
 import { useArchiveLayoutDesignerSave } from './use-archive-layout-designer-save';
@@ -27,6 +28,7 @@ export const ArchiveLayoutCanvasModalContainer = React.memo(function ArchiveLayo
   onShowToast,
   onClose,
   onUpdateDetailBoard,
+  renderFieldPreview,
 }: ArchiveLayoutCanvasModalContainerProps) {
   const layoutPaletteColumns = useArchiveLayoutPaletteColumns({
     businessType,
@@ -37,7 +39,6 @@ export const ArchiveLayoutCanvasModalContainer = React.memo(function ArchiveLayo
     onShowToast,
   });
   const {
-    isDirty,
     isSaving,
     saveArchiveLayout,
   } = useArchiveLayoutDesignerSave({
@@ -49,18 +50,53 @@ export const ArchiveLayoutCanvasModalContainer = React.memo(function ArchiveLayo
     onUpdateDetailBoard,
   });
 
+  const handleSave = React.useCallback(async (detailBoard: Record<string, any>) => {
+    onUpdateDetailBoard(detailBoard);
+    return saveArchiveLayout(detailBoard);
+  }, [onUpdateDetailBoard, saveArchiveLayout]);
+
+  const handleRequestClose = React.useCallback(({
+    detailBoard,
+    hasUnsavedChanges,
+  }: {
+    detailBoard: Record<string, any>;
+    hasUnsavedChanges: boolean;
+  }) => {
+    if (isSaving) {
+      return;
+    }
+
+    if (!hasUnsavedChanges) {
+      onClose();
+      return;
+    }
+
+    Modal.confirm({
+      cancelText: '继续编辑',
+      centered: true,
+      content: '当前布局还有未保存的改动。是否先保存，再关闭弹窗？',
+      okText: '保存并关闭',
+      title: '未保存的布局改动',
+      onOk: async () => {
+        const success = await handleSave(detailBoard);
+        if (success) {
+          onClose();
+        }
+      },
+    });
+  }, [handleSave, isSaving, onClose]);
+
   return (
     <ArchiveLayoutDesignerBridge
       currentDetailBoard={currentDetailBoard}
       currentModuleCode={currentModuleCode}
-      isDirty={isDirty}
       isOpen={isOpen}
       isSaving={isSaving}
       mainTableColumns={layoutPaletteColumns}
       normalizeColumn={normalizeColumn}
-      onClose={onClose}
-      onSave={saveArchiveLayout}
-      onUpdateDetailBoard={onUpdateDetailBoard}
+      onRequestClose={handleRequestClose}
+      onSave={handleSave}
+      renderFieldPreview={renderFieldPreview}
     />
   );
 });

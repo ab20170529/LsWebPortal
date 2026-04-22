@@ -99,6 +99,8 @@ export function areDetailLayoutDocumentsEqual(left: DetailLayoutDocument, right:
 
   return left.items.every((item, index) => {
     const other = right.items[index];
+    const itemRows = Number((item as DetailLayoutItem & { rows?: number }).rows ?? 0);
+    const otherRows = Number((other as DetailLayoutItem & { rows?: number }).rows ?? 0);
     return item.id === other.id
       && item.type === other.type
       && item.title === other.title
@@ -109,7 +111,8 @@ export function areDetailLayoutDocumentsEqual(left: DetailLayoutDocument, right:
       && item.x === other.x
       && item.y === other.y
       && item.w === other.w
-      && item.h === other.h;
+      && item.h === other.h
+      && itemRows === otherRows;
   });
 }
 

@@ -13,6 +13,7 @@ import {
   syncBillTypeDesignerLayout,
 } from '../../../lib/backend-module-config';
 import { buildBillHeaderFieldsFromDesignerLayout } from './dashboard-single-table-field-mappers';
+import { buildSingleTableMainFieldExtraBody } from './single-table-main-field-settings-schema';
 
 type SaveCurrentPageOptions = {
   gridColumnsOverride?: {
@@ -322,8 +323,10 @@ function buildBillHeaderLayoutBodies(
       const visible = field.visible === undefined
         ? 0
         : (field.visible === false || field.visible === 0 || field.visible === '0' ? 1 : 0);
+      const extraBody = buildSingleTableMainFieldExtraBody(field);
 
       return {
+        ...extraBody,
         ...(layoutRowId != null && layoutRowId !== '' ? { id: layoutRowId } : {}),
         Column_Id: columnId,
         columnId,
@@ -380,6 +383,7 @@ function sortBillHeaderLayoutBodies(bodies: BillHeaderLayoutBody[]) {
 
 function buildBillHeaderLayoutComparableBody(body: Record<string, unknown>) {
   return stripUndefinedEntries({
+    ...buildSingleTableMainFieldExtraBody(body),
     columnId: toText(body.columnId ?? body.Column_Id),
     controlHeight: toRoundedNumber(body.controlHeight, 0),
     controlLeft: toRoundedNumber(body.controlLeft, 0),
@@ -508,6 +512,7 @@ function buildBillFieldPropertyComparableBody(
   );
 
   return stripUndefinedEntries({
+    ...buildSingleTableMainFieldExtraBody(field),
     align: scope === 'detail' ? toText(field.align) : undefined,
     defaultValue: toText(field.defaultValue),
     dynamicSql: toText(field.dynamicSql ?? field.fieldSql ?? field.fieldsql ?? field.checkCond ?? field.checkcond),
@@ -641,6 +646,7 @@ function buildBillDetailFieldSaveBody(record: Record<string, any>) {
   const nullable = toBooleanNumber(record?.required ?? record?.nullable, false);
 
   return stripUndefinedEntries({
+    ...buildSingleTableMainFieldExtraBody(record),
     ...(persistedId ? { id: persistedId } : {}),
     InputHintText: toText(record?.placeholder ?? record?.InputHintText ?? record?.inputHintText ?? record?.inputhinttext),
     checkCond: toText(record?.dynamicSql ?? record?.fieldSql ?? record?.fieldsql ?? record?.checkCond ?? record?.checkcond),
@@ -660,12 +666,17 @@ function buildBillDetailFieldSaveBody(record: Record<string, any>) {
     inputHintText: toText(record?.placeholder ?? record?.InputHintText ?? record?.inputHintText ?? record?.inputhinttext),
     isCodeField: Boolean(record?.isCodeField ?? record?.iscodefield ?? false),
     isVisible,
+    visible: record?.visible === false ? 0 : 1,
+    vislble: record?.visible === false ? 1 : 0,
     mobileWidth: toRoundedNumber(record?.mobileWidth ?? record?.mobilewidth ?? record?.controlWidth ?? record?.width, 120),
+    MobileWidth: toRoundedNumber(record?.mobileWidth ?? record?.mobilewidth ?? record?.controlWidth ?? record?.width, 120),
     nullable,
     orderId: Math.max(1, toRoundedNumber(record?.orderId ?? record?.orderid, 1)),
+    orderid: Math.max(1, toRoundedNumber(record?.orderId ?? record?.orderid, 1)),
     relationSql: toText(record?.relationSql ?? record?.relationsql ?? record?.sourceSql ?? record?.sourcesql),
     required: nullable,
     showMobile: Boolean(record?.showMobile ?? record?.showmobile ?? false),
+    ShowMobile: toBooleanNumber(record?.showMobile ?? record?.showmobile ?? false),
     sourceSql: toText(record?.relationSql ?? record?.relationsql ?? record?.sourceSql ?? record?.sourcesql),
     userName: displayName,
     username: displayName,

@@ -14,8 +14,11 @@ type SingleTablePreviewTemplateParams = {
   layoutVersion?: string;
   normalizedDetailBoardConfig?: any;
   onCanvasDoubleClick?: () => void;
+  onHeaderDoubleClick?: (columnId: string) => void;
   onSelectTable: () => void;
   renderableColumns?: any[];
+  surfaceShape?: TableBuilderOptions['surfaceShape'];
+  surfaceVariant?: TableBuilderOptions['surfaceVariant'];
   tableSelected: boolean;
 };
 
@@ -27,23 +30,28 @@ function buildSingleTablePreviewTemplate({
   layoutVersion,
   normalizedDetailBoardConfig,
   onCanvasDoubleClick,
+  onHeaderDoubleClick,
   onSelectTable,
   renderableColumns,
+  surfaceShape = 'square',
+  surfaceVariant = 'solid',
   tableSelected,
 }: SingleTablePreviewTemplateParams): TableBuilderOptions {
   return {
     contextMenuScope,
     contextMenuConfig,
     backgroundSelectable: true,
+    hostSurface: 'embedded',
     tableSelected,
     onSelectTable,
     detailBoardConfig,
     normalizedDetailBoardConfig,
     renderableColumns,
     onCanvasDoubleClick,
+    onHeaderDoubleClick,
     canvasLabel,
-    surfaceVariant: 'solid',
-    surfaceShape: 'square',
+    surfaceVariant,
+    surfaceShape,
     previewReadableMinWidth: SINGLE_TABLE_PREVIEW_MIN_COLUMN_WIDTH,
     layoutVersion,
   };
@@ -64,6 +72,9 @@ export type UseDashboardTableBuilderOptionsParams = {
     detailBoard?: any;
   };
   normalizedMainDetailBoardConfig: any;
+  onOpenBillDetailFieldSettings: (columnId?: string | null) => void;
+  onOpenDetailFieldSettings: (columnId?: string | null) => void;
+  onOpenMainFieldSettings: (columnId?: string | null) => void;
   openDetailBoardPreview: (tabIndex: number) => void;
   selectedTableConfigScope: string | null;
   setDetailTableColumns: React.Dispatch<React.SetStateAction<DetailTableColumnsState>>;
@@ -83,6 +94,9 @@ export function useDashboardTableBuilderOptions({
   mainRenderableColumns,
   mainTableConfig,
   normalizedMainDetailBoardConfig,
+  onOpenBillDetailFieldSettings,
+  onOpenDetailFieldSettings,
+  onOpenMainFieldSettings,
   openDetailBoardPreview,
   selectedTableConfigScope,
   setDetailTableColumns,
@@ -119,6 +133,11 @@ export function useDashboardTableBuilderOptions({
     activateTableConfigSelection('main');
   }, [activateTableConfigSelection]);
 
+  const handleMainTableHeaderDoubleClick = useCallback((columnId: string) => {
+    handleBuilderMainTableSelect();
+    onOpenMainFieldSettings(columnId);
+  }, [handleBuilderMainTableSelect, onOpenMainFieldSettings]);
+
   const handleBuilderMainTablePreview = useCallback(() => {
     if (!mainDetailBoardEnabled) return;
     openDetailBoardPreview(1);
@@ -132,6 +151,14 @@ export function useDashboardTableBuilderOptions({
   const handleBillDetailTableSelect = useCallback(() => {
     activateTableConfigSelection('detail');
   }, [activateTableConfigSelection]);
+  const handleDetailTableHeaderDoubleClick = useCallback((columnId: string) => {
+    handleActiveDetailTableSelect();
+    onOpenDetailFieldSettings(columnId);
+  }, [handleActiveDetailTableSelect, onOpenDetailFieldSettings]);
+  const handleBillDetailHeaderDoubleClick = useCallback((columnId: string) => {
+    handleBillDetailTableSelect();
+    onOpenBillDetailFieldSettings(columnId);
+  }, [handleBillDetailTableSelect, onOpenBillDetailFieldSettings]);
 
   const archiveMainTableBuilderOptions = useMemo<TableBuilderOptions>(() => buildSingleTablePreviewTemplate({
     contextMenuScope: 'main',
@@ -145,12 +172,14 @@ export function useDashboardTableBuilderOptions({
     normalizedDetailBoardConfig: normalizedMainDetailBoardConfig,
     renderableColumns: mainRenderableColumns,
     onCanvasDoubleClick: handleArchiveMainTablePreview,
+    onHeaderDoubleClick: handleMainTableHeaderDoubleClick,
     canvasLabel: '点击配置基础档案主表',
     layoutVersion: detailTabsLength > 0 ? 'main-with-detail' : 'main-without-detail',
   }), [
     detailTabsLength,
     handleArchiveMainTablePreview,
     handleArchiveMainTableSelect,
+    handleMainTableHeaderDoubleClick,
     mainRenderableColumns,
     mainTableConfig.contextMenuItems,
     mainTableConfig.detailBoard,
@@ -169,18 +198,21 @@ export function useDashboardTableBuilderOptions({
 
   const builderMainTableBuilderOptions = useMemo<TableBuilderOptions>(() => ({
     backgroundSelectable: true,
+    hostSurface: 'embedded',
     tableSelected: selectedTableConfigScope === 'main',
     onSelectTable: handleBuilderMainTableSelect,
     detailBoardConfig: mainTableConfig.detailBoard,
     normalizedDetailBoardConfig: normalizedMainDetailBoardConfig,
     renderableColumns: mainRenderableColumns,
     onCanvasDoubleClick: handleBuilderMainTablePreview,
+    onHeaderDoubleClick: handleMainTableHeaderDoubleClick,
     canvasLabel: '点击配置主表属性',
     surfaceVariant: 'solid',
     surfaceShape: 'square',
   }), [
     handleBuilderMainTablePreview,
     handleBuilderMainTableSelect,
+    handleMainTableHeaderDoubleClick,
     mainRenderableColumns,
     mainTableConfig.detailBoard,
     normalizedMainDetailBoardConfig,
@@ -197,14 +229,18 @@ export function useDashboardTableBuilderOptions({
     onSelectTable: handleActiveDetailTableSelect,
     detailBoardConfig: activeDetailTableConfig?.detailBoard,
     renderableColumns: activeDetailTableColumns,
+    onHeaderDoubleClick: handleDetailTableHeaderDoubleClick,
     canvasLabel: '点击配置明细表属性',
     layoutVersion: `detail-tabs-${detailTabsLength}-footer-${showDetailGridActionBar ? 1 : 0}`,
+    surfaceVariant: 'solid',
+    surfaceShape: 'square',
   }), [
     activeDetailTableColumns,
     activeDetailTableConfig?.contextMenuEnabled,
     activeDetailTableConfig?.contextMenuItems,
     activeDetailTableConfig?.detailBoard,
     detailTabsLength,
+    handleDetailTableHeaderDoubleClick,
     handleActiveDetailTableSelect,
     isDetailGridTableSelected,
     showDetailGridActionBar,
@@ -212,10 +248,14 @@ export function useDashboardTableBuilderOptions({
 
   const billDetailTableBuilderOptions = useMemo<TableBuilderOptions>(() => ({
     backgroundSelectable: true,
+    hostSurface: 'embedded',
     tableSelected: selectedTableConfigScope === 'detail',
     onSelectTable: handleBillDetailTableSelect,
+    onHeaderDoubleClick: handleBillDetailHeaderDoubleClick,
+    surfaceVariant: 'solid',
+    surfaceShape: 'square',
     canvasLabel: '点击配置单据明细表',
-  }), [handleBillDetailTableSelect, selectedTableConfigScope]);
+  }), [handleBillDetailHeaderDoubleClick, handleBillDetailTableSelect, selectedTableConfigScope]);
 
   return {
     activeDetailTableColumns,

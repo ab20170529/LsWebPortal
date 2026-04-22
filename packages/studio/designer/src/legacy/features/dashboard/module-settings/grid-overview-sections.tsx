@@ -1,9 +1,17 @@
 import React from 'react';
 import {
+  getShadcnInspectorListBadgeClass,
+  getShadcnInspectorListItemClass,
   shadcnFieldClass,
-  shadcnInfoCardClass,
+  shadcnInspectorActionButtonClass,
+  shadcnInspectorCardClass,
+  shadcnInspectorPrimaryActionButtonClass,
+  shadcnInspectorInfoCardClass,
+  shadcnInspectorListClass,
+  shadcnInspectorSectionClass,
+  shadcnInspectorSectionHeaderClass,
+  shadcnInspectorSectionTitleClass,
   shadcnMutedLabelClass,
-  shadcnSectionCardClass,
   shadcnSectionTitleClass,
   shadcnTextareaClass,
 } from '../../../components/ui/shadcn-inspector';
@@ -28,9 +36,12 @@ type GridIdentifierTranslationSectionProps = {
 };
 
 type GridColumnDataSectionProps = {
+  actionNode?: React.ReactNode;
   availableGridColumns: any[];
   normalizeColumn: (column: any) => any;
+  onDoubleClickColumn?: (columnId: string) => void;
   onSelectColumn: (columnId: string) => void;
+  selectedColumnId?: string | null;
   title?: string;
 };
 
@@ -41,6 +52,7 @@ type GridSqlConfigSectionProps = {
   hideSqlPrompt?: boolean;
   isDetailConfig: boolean;
   isGeneratingSqlDraft: boolean;
+  layoutMode?: 'card' | 'section';
   mainSql: string;
   mainSqlLabel?: string;
   onBlurMainSql?: (value: string) => void;
@@ -151,10 +163,10 @@ type GridLayoutWorkflowSectionProps = {
   totalFieldCount: number;
 };
 
-const quietDocumentInspectorCardClass = 'w-full rounded-xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900';
-const quietDocumentInspectorSummaryClass = 'rounded-lg border border-slate-100 bg-slate-50/50 p-3 text-[11px] leading-5 text-slate-500 dark:border-slate-800 dark:bg-slate-800/30 dark:text-slate-400';
-const quietDocumentInspectorActionClass = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-slate-100';
-const quietDocumentInspectorPrimaryActionClass = 'inline-flex h-8 items-center gap-1.5 rounded-lg bg-[color:var(--workspace-accent)] px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-[color:var(--workspace-accent-strong)]';
+const quietDocumentInspectorCardClass = shadcnInspectorSectionClass;
+const quietDocumentInspectorSummaryClass = 'text-[11px] leading-5 text-slate-500 dark:text-slate-300';
+const quietDocumentInspectorActionClass = shadcnInspectorActionButtonClass;
+const quietDocumentInspectorPrimaryActionClass = shadcnInspectorPrimaryActionButtonClass;
 
 export const GridLayoutWorkflowSection = React.memo(function GridLayoutWorkflowSection({
   assignedFieldCount,
@@ -200,19 +212,8 @@ export const GridLayoutWorkflowSection = React.memo(function GridLayoutWorkflowS
           </button>
         </div>
       </div>
-      <div className="grid gap-2.5 sm:grid-cols-3">
-        <div className={quietDocumentInspectorSummaryClass}>
-          <div className="text-[10px] font-bold tracking-[0.08em] text-slate-400">分组数量</div>
-          <div className="mt-1 text-[13px] font-semibold text-slate-700 dark:text-slate-100">{groupCount} 组</div>
-        </div>
-        <div className={quietDocumentInspectorSummaryClass}>
-          <div className="text-[10px] font-bold tracking-[0.08em] text-slate-400">已排布字段</div>
-          <div className="mt-1 text-[13px] font-semibold text-slate-700 dark:text-slate-100">{assignedFieldCount} 项</div>
-        </div>
-        <div className={quietDocumentInspectorSummaryClass}>
-          <div className="text-[10px] font-bold tracking-[0.08em] text-slate-400">待排布字段</div>
-          <div className="mt-1 text-[13px] font-semibold text-slate-700 dark:text-slate-100">{pendingFieldCount} 项</div>
-        </div>
+      <div className={quietDocumentInspectorSummaryClass}>
+        当前共有 {groupCount} 组，已排布 {assignedFieldCount} 项，待排布 {pendingFieldCount} 项。
       </div>
     </section>
   );
@@ -225,6 +226,7 @@ export const GridSqlConfigSection = React.memo(function GridSqlConfigSection({
   hideSqlPrompt = false,
   isDetailConfig,
   isGeneratingSqlDraft,
+  layoutMode = 'section',
   mainSql,
   mainSqlLabel,
   onBlurMainSql,
@@ -241,9 +243,24 @@ export const GridSqlConfigSection = React.memo(function GridSqlConfigSection({
   const resolvedTitle = title || (isDetailConfig ? '明细 SQL 配置' : '主 SQL 配置');
   const resolvedConditionLabel = conditionLabel || (isDetailConfig ? '关联条件' : '默认查询');
   const resolvedMainSqlLabel = mainSqlLabel || '主 SQL';
-
-  return (
-    <section className={`${shadcnSectionCardClass} w-full`}>
+  const sectionClass = layoutMode === 'section' ? shadcnInspectorSectionClass : shadcnInspectorCardClass;
+  const titleBlock = layoutMode === 'section'
+    ? (
+      <div className={shadcnInspectorSectionHeaderClass}>
+        <div className={shadcnInspectorSectionTitleClass}>
+          <span className="material-symbols-outlined text-[18px] text-[color:var(--workspace-accent)]">frame_source</span>
+          <div className="min-w-0">
+            <h4>{resolvedTitle}</h4>
+            {sectionDescription ? (
+              <p className="mt-1 text-[11px] font-normal text-slate-500 dark:text-slate-300">
+                {sectionDescription}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    )
+    : (
       <div className={shadcnSectionTitleClass}>
         <span className="material-symbols-outlined text-[18px] text-[color:var(--workspace-accent)]">frame_source</span>
         <div className="min-w-0">
@@ -255,6 +272,11 @@ export const GridSqlConfigSection = React.memo(function GridSqlConfigSection({
           ) : null}
         </div>
       </div>
+    );
+
+  return (
+    <section className={sectionClass}>
+      {titleBlock}
       <div className="grid gap-4">
         {!hideSqlPrompt ? (
           <div>
@@ -332,9 +354,6 @@ export const DocumentMainTableSetupSection = React.memo(function DocumentMainTab
           <span className="material-symbols-outlined text-[17px] text-[color:var(--workspace-accent)]">dataset</span>
           <div className="min-w-0">
             <h4>主表定义</h4>
-            <p className="mt-1 text-[11px] font-normal text-slate-500 dark:text-slate-300">
-              翻译未转英文的字段标识，生成建表 SQL，并同步主表 SQL。
-            </p>
           </div>
         </div>
         {showMainHiddenColumnsAction ? (
@@ -393,9 +412,6 @@ export const GridIdentifierTranslationSection = React.memo(function GridIdentifi
           <span className="material-symbols-outlined text-[18px] text-[color:var(--workspace-accent)]">translate</span>
           <div className="min-w-0">
             <h4>字段标识</h4>
-            <p className="mt-1 text-[11px] font-normal text-slate-500 dark:text-slate-300">
-              批量把字段显示名同步到标识字段。
-            </p>
           </div>
         </div>
         <button
@@ -414,17 +430,18 @@ export const GridIdentifierTranslationSection = React.memo(function GridIdentifi
           一键翻译
         </button>
       </div>
-      <div className={quietDocumentInspectorSummaryClass}>
-        当前列数 {availableGridColumnCount} 个，待翻译 {translatableColumnCount} 个。
-      </div>
+      <div className={quietDocumentInspectorSummaryClass}>当前列数 {availableGridColumnCount} 个，待翻译 {translatableColumnCount} 个。</div>
     </section>
   );
 });
 
 export const GridColumnDataSection = React.memo(function GridColumnDataSection({
+  actionNode,
   availableGridColumns,
   normalizeColumn,
+  onDoubleClickColumn,
   onSelectColumn,
+  selectedColumnId = null,
   title = '列数据',
 }: GridColumnDataSectionProps) {
   const normalizedColumns = React.useMemo(
@@ -439,21 +456,26 @@ export const GridColumnDataSection = React.memo(function GridColumnDataSection({
           <span className="material-symbols-outlined text-[18px] text-[color:var(--workspace-accent)]">table_rows</span>
           <h4>{title}</h4>
         </div>
-        <span className="inline-flex h-7 shrink-0 items-center rounded-md border border-slate-200/80 bg-white px-2.5 text-[11px] font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-          {normalizedColumns.length} 列
-        </span>
+        {actionNode}
       </div>
 
       {normalizedColumns.length > 0 ? (
-        <div className="grid gap-2">
+        <div className={shadcnInspectorListClass}>
           {normalizedColumns.map((column, index) => {
             const columnName = String(column.name || '').trim() || `字段 ${index + 1}`;
             const sourceField = String(column.sourceField || '').trim();
-            const columnType = String(column.type || '').trim() || '文本';
-            const columnWidth = Number(column.width || 0);
+            const isActive = Boolean(column.id) && String(column.id) === String(selectedColumnId);
             const isVisible = !(column.visible === false || column.visible === 0 || column.visible === '0');
             const isReadonly = Boolean(column.readonly || column.readOnly);
             const isRequired = Boolean(column.required);
+            const badgeText = isRequired ? '必填' : !isVisible ? '隐藏' : isReadonly ? '只读' : String(index + 1);
+            const badgeClass = isRequired
+              ? 'rounded-full px-2.5 py-0.5 text-[11px] font-bold bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-200'
+              : !isVisible
+                ? 'rounded-full px-2.5 py-0.5 text-[11px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-200'
+                : isReadonly
+                  ? 'rounded-full px-2.5 py-0.5 text-[11px] font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+                  : getShadcnInspectorListBadgeClass(false);
 
             return (
               <button
@@ -464,47 +486,26 @@ export const GridColumnDataSection = React.memo(function GridColumnDataSection({
                     onSelectColumn(column.id);
                   }
                 }}
-                className="flex items-start justify-between gap-3 rounded-md border border-slate-200/80 bg-white px-3 py-2.5 text-left transition-colors hover:border-[color:var(--workspace-accent-border)] hover:bg-[color:var(--workspace-accent-tint)] dark:border-slate-800 dark:bg-slate-950 dark:hover:border-[color:var(--workspace-accent-border)] dark:hover:bg-slate-900"
+                onDoubleClick={() => {
+                  if (column.id) {
+                    onDoubleClickColumn?.(column.id);
+                  }
+                }}
+                className={getShadcnInspectorListItemClass(isActive)}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                      {index + 1}
-                    </span>
-                    <span className="truncate text-[12px] font-semibold text-slate-700 dark:text-slate-100">{columnName}</span>
+                  <div className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900 dark:text-slate-100' : 'font-medium'}`}>
+                    {columnName}
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] text-slate-500 dark:text-slate-300">
-                    <span className="rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 dark:border-slate-700 dark:bg-slate-900">
-                      {sourceField || '未配置标识'}
-                    </span>
-                    <span className="rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 dark:border-slate-700 dark:bg-slate-900">
-                      {columnType}
-                    </span>
-                    {columnWidth > 0 ? (
-                      <span className="rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 dark:border-slate-700 dark:bg-slate-900">
-                        {Math.round(columnWidth)}px
-                      </span>
-                    ) : null}
-                  </div>
+                  {sourceField ? (
+                    <div className={`mt-0.5 truncate text-[11px] ${isActive ? 'text-slate-500 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                      {sourceField}
+                    </div>
+                  ) : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {isRequired ? (
-                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600 dark:bg-rose-500/10 dark:text-rose-200">
-                      必填
-                    </span>
-                  ) : null}
-                  {!isVisible ? (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:bg-amber-500/10 dark:text-amber-200">
-                      隐藏
-                    </span>
-                  ) : null}
-                  {isReadonly ? (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                      只读
-                    </span>
-                  ) : null}
-                  <span className="material-symbols-outlined text-[16px] text-slate-300 dark:text-slate-600">chevron_right</span>
-                </div>
+                <span className={isRequired || !isVisible || isReadonly ? badgeClass : getShadcnInspectorListBadgeClass(isActive)}>
+                  {badgeText}
+                </span>
               </button>
             );
           })}
@@ -540,25 +541,19 @@ export const DetailSourceSection = React.memo(function DetailSourceSection({
   onUpdateRelatedValue,
   onUpdateSqlPrompt,
 }: DetailSourceSectionProps) {
-  const detailSourceStatusText = detailSourceModuleCode
-    ? `继承 ${detailSourceModuleCode}`
-    : (currentMainSql ? '自定义 SQL' : '未配置');
-  const sourceBadgeText = detailSourceModuleCode ? '模块继承' : 'SQL 构列';
-
   return (
     <section className={`${quietDocumentInspectorCardClass} space-y-3`}>
       <div className={shadcnSectionTitleClass}>
         <span className="material-symbols-outlined text-[18px] text-[color:var(--workspace-accent)]">dataset_linked</span>
         <div className="min-w-0">
           <h4>表格数据来源</h4>
-          <p className="mt-1 text-[11px] font-normal text-slate-500 dark:text-slate-300">
-            {sourceBadgeText} · {detailSourceStatusText}
-          </p>
         </div>
       </div>
       <div className={quietDocumentInspectorSummaryClass}>
-        模块 {matchedDetailModuleCandidate?.moduleName || matchedDetailModuleCandidate?.moduleCode || '未指定'}，
-        主表 {matchedDetailModuleCandidate?.tableName || '按 SQL 构列'}，当前字段 {availableGridColumnCount} 个。
+        当前已构建字段 {availableGridColumnCount} 个。
+        {matchedDetailModuleCandidate?.moduleName || matchedDetailModuleCandidate?.moduleCode
+          ? ` 来源模块 ${matchedDetailModuleCandidate.moduleName || matchedDetailModuleCandidate.moduleCode}。`
+          : ''}
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div>
@@ -614,9 +609,6 @@ export const DetailSourceSection = React.memo(function DetailSourceSection({
             placeholder="描述需要的字段、筛选条件和排序方式"
             className={shadcnTextareaClass}
           />
-        </div>
-        <div className={quietDocumentInspectorSummaryClass}>
-          明细 SQL 会直接决定字段构列；需要继承主表时先填写模块编号。
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className={`${shadcnMutedLabelClass} mb-0`}>明细 SQL</label>
@@ -706,28 +698,16 @@ export const DetailTabRelationSection = React.memo(function DetailTabRelationSec
   onUpdateRelatedValue,
 }: DetailTabRelationSectionProps) {
   const isModuleMode = detailSourceMode === 'module';
-  const detailSourceLabel = isModuleMode ? '模块继承' : '明细 SQL';
-  const detailSourceSummary = isModuleMode
-    ? `当前继承 ${detailSourceModuleCode || '目标模块'} 的主表配置`
-    : '当前未关联模块，表格按明细 SQL 单独配置';
-
   return (
     <section className={`${quietDocumentInspectorCardClass} space-y-3`}>
       <div className={shadcnSectionTitleClass}>
         <span className="material-symbols-outlined text-[18px] text-[color:var(--workspace-accent)]">dataset_linked</span>
         <div className="min-w-0">
           <h4>明细关联</h4>
-          <p className="mt-1 text-[11px] font-normal text-slate-500 dark:text-slate-300">
-            配置当前明细与主模块的关联关系。
-          </p>
         </div>
       </div>
       <div className={quietDocumentInspectorSummaryClass}>
-        <span className="font-semibold text-slate-700 dark:text-slate-100">{detailSourceLabel}</span>
-        {' · '}
-        {detailSourceSummary}
-        {' · '}
-        已构建字段 {availableGridColumnCount} 个。
+        当前已构建字段 {availableGridColumnCount} 个。
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div>
@@ -814,9 +794,6 @@ export const DocumentTableMappingSection = React.memo(function DocumentTableMapp
         <span className="material-symbols-outlined text-[17px] text-[color:var(--workspace-accent)]">schema</span>
         <h4>落表映射</h4>
       </div>
-      <div className={quietDocumentInspectorSummaryClass}>
-        主配置 `p_systemdlltab`，条件 `p_systembillsourcecond`，右键 {contextMenuCount} 项，颜色 {colorRuleCount} 条。
-      </div>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -850,7 +827,7 @@ export const LeftGridMappingSection = React.memo(function LeftGridMappingSection
   treeOwnerFieldName,
 }: LeftGridMappingSectionProps) {
   return (
-    <section className={`${shadcnSectionCardClass} space-y-4`}>
+    <section className={`${shadcnInspectorCardClass} space-y-4`}>
       <div className="flex items-center justify-between gap-3">
         <div className={shadcnSectionTitleClass}>
           <span className="material-symbols-outlined text-[17px] text-[color:var(--workspace-accent)]">account_tree</span>
@@ -868,23 +845,23 @@ export const LeftGridMappingSection = React.memo(function LeftGridMappingSection
         ) : null}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className={shadcnInfoCardClass}>
+        <div className={shadcnInspectorInfoCardClass}>
           <div className="text-[11px] font-bold tracking-[0.08em] text-slate-400">所属字段</div>
           <div className="mt-1 text-[13px] font-bold text-slate-700 dark:text-slate-100">{treeOwnerFieldName || '未配置树形字段'}</div>
           <div className="mt-1 break-all font-mono text-[11px] text-slate-400">{treeOwnerFieldKey || '未设置 fieldkey'}</div>
         </div>
-        <div className={shadcnInfoCardClass}>
+        <div className={shadcnInspectorInfoCardClass}>
           <div className="text-[11px] font-bold tracking-[0.08em] text-slate-400">关联条件</div>
           <div className="mt-1 text-[13px] font-bold text-slate-700 dark:text-slate-100">{leftFilterCount} 条</div>
           <div className="mt-1 break-all font-mono text-[11px] text-slate-400">sourceid = {documentConditionOwnerSourceId || '未设置'}</div>
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className={shadcnInfoCardClass}>
+        <div className={shadcnInspectorInfoCardClass}>
           <div className="text-[11px] font-bold tracking-[0.08em] text-slate-400">左侧列</div>
           <div className="mt-1 text-[13px] font-bold text-slate-700 dark:text-slate-100">p_systemwordbookgrid</div>
         </div>
-        <div className={shadcnInfoCardClass}>
+        <div className={shadcnInspectorInfoCardClass}>
           <div className="text-[11px] font-bold tracking-[0.08em] text-slate-400">左侧条件</div>
           <div className="mt-1 text-[13px] font-bold text-slate-700 dark:text-slate-100">p_systembillsourcecond</div>
         </div>
@@ -955,13 +932,13 @@ export const GridConfigSummarySection = React.memo(function GridConfigSummarySec
             <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
               <div>
                 <label className={shadcnMutedLabelClass}>图表类型</label>
-                <div className="rounded-lg border border-slate-200/80 bg-slate-50/50 px-3 py-2 text-[12px] font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200">
+                <div className="rounded-lg border border-slate-200/60 bg-white/80 px-3 py-2 text-[12px] font-bold text-slate-700 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-200">
                   {chartTypeLabel || '未设置'}
                 </div>
               </div>
               <div>
                 <label className={shadcnMutedLabelClass}>图表标题</label>
-                <div className="rounded-lg border border-slate-200/80 bg-slate-50/50 px-3 py-2 text-[12px] font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-200">
+                <div className="rounded-lg border border-slate-200/60 bg-white/80 px-3 py-2 text-[12px] font-bold text-slate-700 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-200">
                   {chartTitle || activeTitle}
                 </div>
               </div>
@@ -969,11 +946,9 @@ export const GridConfigSummarySection = React.memo(function GridConfigSummarySec
           )}
         </div>
         <div className={quietDocumentInspectorSummaryClass}>
-          {detailGridFillTypeMeta?.value === '图表' ? '当前填充' : '当前表格'} {activeTitle}
-          ，显示字段 {availableGridColumnCount} 个，右键菜单 {contextMenuCount} 项，颜色规则 {enabledColorRuleCount} 条生效。
           {detailGridFillTypeMeta?.value === '图表'
-            ? ` X轴 ${xAxisField || '未设置'}，Y轴 ${yAxisField || '未设置'}。`
-            : ''}
+            ? `当前图表 ${activeTitle}，字段 ${availableGridColumnCount} 个，X轴 ${xAxisField || '未设置'}，Y轴 ${yAxisField || '未设置'}。`
+            : `当前表格 ${activeTitle}，字段 ${availableGridColumnCount} 个，右键 ${contextMenuCount} 项，颜色规则 ${enabledColorRuleCount} 条。`}
         </div>
       </div>
     </section>

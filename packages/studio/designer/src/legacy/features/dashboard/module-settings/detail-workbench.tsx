@@ -137,15 +137,15 @@ export const MemoDetailTabStrip = React.memo(function DetailTabStrip({
       />
       {addButtonPlacement === 'centered' ? (
         <div className="flex items-center justify-center pb-2 pt-1">
-            <Button
-              type="default"
-              size="small"
-              onClick={onAddTab}
-              className={`dashboard-module-ant-add-detail-btn !font-semibold !shadow-none ${addButtonClassName}`}
-            >
-              <span className="material-symbols-outlined text-[16px]">add</span>
-              {addLabel ?? '新增页签'}
-            </Button>
+          <Button
+            type="default"
+            size="small"
+            onClick={onAddTab}
+            className={`dashboard-module-ant-add-detail-btn !font-semibold !shadow-none ${addButtonClassName}`}
+          >
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            {addLabel ?? '新增页签'}
+          </Button>
         </div>
       ) : null}
     </div>
@@ -164,9 +164,12 @@ export const MemoDocumentDetailWorkbench = React.memo(function DocumentDetailWor
   fillPlaceholderNode,
 }: DocumentDetailWorkbenchProps) {
   const activeDetailContentNode = currentDetailFillType === '表格' ? tableBuilderNode : fillPlaceholderNode;
+  const detailWorkbenchGridClass = footerNode
+    ? 'grid-rows-[auto_minmax(0,1fr)_auto]'
+    : 'grid-rows-[auto_minmax(0,1fr)]';
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-[#d6e2f1] bg-white shadow-none">
+    <div className={`grid h-full min-h-0 overflow-hidden border border-[#d6e2f1] bg-white shadow-none ${detailWorkbenchGridClass} ${activeDetailContentNode === tableBuilderNode ? 'rounded-t-[18px] rounded-b-none' : 'rounded-[18px]'}`}>
       <div className="overflow-hidden rounded-t-[18px] border-b border-[#dbe7f7] bg-[linear-gradient(180deg,#f8fbff_0%,#f1f7ff_100%)]">
         <div className="min-w-0 overflow-hidden">
           <MemoDetailTabStrip
@@ -183,7 +186,7 @@ export const MemoDocumentDetailWorkbench = React.memo(function DocumentDetailWor
           />
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-[18px] bg-white">
+      <div className={`flex min-h-0 flex-col overflow-hidden bg-white ${activeDetailContentNode === tableBuilderNode ? 'rounded-b-none' : 'rounded-b-[18px]'}`}>
         {currentDetailFillType === '表格' ? (
           <div
             className="min-h-0 flex-1 overflow-hidden bg-white outline-none"

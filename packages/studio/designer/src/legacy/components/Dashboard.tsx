@@ -197,6 +197,10 @@ import {
   normalizeDetailBoardConfig,
 } from '../features/dashboard/module-settings/detail-board-config';
 import { BillDocumentWorkbench } from '../features/dashboard/module-settings/bill-document-workbench';
+import {
+  type GridFieldSettingsModalMode,
+  type GridFieldSettingsOpenRequest,
+} from '../features/dashboard/module-settings/grid-field-settings-modal-types';
 import { useBillDocumentLayout } from '../features/dashboard/module-settings/use-bill-document-layout';
 import { useBillFieldResize } from '../features/dashboard/module-settings/use-bill-field-resize';
 import { useBillHeaderWorkbench } from '../features/dashboard/module-settings/use-bill-header-workbench';
@@ -251,10 +255,8 @@ interface DashboardWorkspaceState {
 }
 
 interface DashboardProps {
-  activeCompanyTitle?: string;
   currentUserName: string;
   onLogout: () => void;
-  onSwitchCompany?: () => void;
   routeContext?: DesignRouteContext;
   workspaceState?: DashboardWorkspaceState;
 }
@@ -266,10 +268,8 @@ type BillHeaderWorkbenchConfig = {
   rows: number;
 };
 export default function Dashboard({
-  activeCompanyTitle,
   currentUserName,
   onLogout,
-  onSwitchCompany,
   routeContext,
   workspaceState,
 }: DashboardProps) {
@@ -645,6 +645,7 @@ export default function Dashboard({
   const [selectedPopupMenuParamKey, setSelectedPopupMenuParamKey] = useState<string>('dllpar1');
   const [selectedLeftForDelete, setSelectedLeftForDelete] = useState<string[]>([]);
   const [selectedMainForDelete, setSelectedMainForDelete] = useState<string[]>([]);
+  const [fieldSettingsOpenRequest, setFieldSettingsOpenRequest] = useState<GridFieldSettingsOpenRequest>(null);
   const [selectedLeftFiltersForDelete, setSelectedLeftFiltersForDelete] = useState<string[]>([]);
   const [selectedMainFiltersForDelete, setSelectedMainFiltersForDelete] = useState<string[]>([]);
   const fieldSqlTagOptions = useDashboardFieldSqlTagOptions({
@@ -680,10 +681,13 @@ export default function Dashboard({
     billSourceFieldMap,
     billSources,
     createBillSourceDraft,
+    deleteBillSourceById,
+    hydrateBillSources,
     resetBillSourceState,
     saveBillSourceDraft,
     selectBillSourceDraft,
     setBillSourceDraft,
+    updateBillSourceById,
     updateBillSourceDraft,
   } = useBillSourceState({ showToast });
   const [billDetailColumns, setBillDetailColumns] = useState<any[]>([]);
@@ -1094,6 +1098,32 @@ export default function Dashboard({
     setMainTableConfig,
     setSelectedMainHiddenColumnIds,
   });
+  const requestOpenFieldSettings = useCallback((mode: GridFieldSettingsModalMode, fieldId?: string | null) => {
+    setFieldSettingsOpenRequest((prev) => ({
+      fieldId: fieldId ?? null,
+      key: (prev?.key ?? 0) + 1,
+      mode,
+    }));
+  }, []);
+  const requestOpenMainFieldSettings = useCallback((fieldId?: string | null) => {
+    activateTableConfigSelection('main');
+    requestOpenFieldSettings(businessType === 'table' ? 'bill-main' : 'single-table-main', fieldId);
+  }, [activateTableConfigSelection, businessType, requestOpenFieldSettings]);
+  const requestOpenDetailFieldSettings = useCallback((fieldId?: string | null) => {
+    activateTableConfigSelection('detail', '表格');
+    requestOpenFieldSettings('single-table-detail', fieldId);
+  }, [activateTableConfigSelection, requestOpenFieldSettings]);
+  const requestOpenBillMainFieldSettings = useCallback((fieldId?: string | null) => {
+    activateTableConfigSelection('main');
+    requestOpenFieldSettings('bill-main', fieldId);
+  }, [activateTableConfigSelection, requestOpenFieldSettings]);
+  const requestOpenBillDetailFieldSettings = useCallback((fieldId?: string | null) => {
+    activateTableConfigSelection('detail');
+    requestOpenFieldSettings('bill-detail', fieldId);
+  }, [activateTableConfigSelection, requestOpenFieldSettings]);
+  const consumeFieldSettingsOpenRequest = useCallback(() => {
+    setFieldSettingsOpenRequest(null);
+  }, []);
   const {
     addTab,
     deleteSelectedColumns,
@@ -1342,7 +1372,10 @@ export default function Dashboard({
         activateColumnSelection,
         activateTableConfigSelection,
         autoFitColumnWidth,
+        openBillDetailFieldSettings: requestOpenBillDetailFieldSettings,
+        openDetailFieldSettings: requestOpenDetailFieldSettings,
         openDetailBoardPreview,
+        openMainFieldSettings: requestOpenMainFieldSettings,
         setBuilderSelectionContextMenu,
         setDetailTableColumns,
         setSelectedArchiveNodeId,
@@ -1503,6 +1536,7 @@ export default function Dashboard({
         commitBillHeaderFields,
         deleteSelectedColumns,
         moveBillHeaderField,
+        openBillMainFieldSettings: requestOpenBillMainFieldSettings,
         setBillDocumentTone,
         setBillHeaderWorkbenchDrag,
         setBillHeaderWorkbenchDropTarget,
@@ -1585,6 +1619,7 @@ export default function Dashboard({
       moduleSettingStep: MODULE_SETTING_STEP,
       parsedTreeSourceFields,
       restrictionTopStructures,
+      shouldLoadBillSources: inspectorTarget.kind === 'source-grid',
       treeRelationColumn,
     },
     helpers: {
@@ -1648,6 +1683,7 @@ export default function Dashboard({
       setSelectedLeftForDelete,
       setSelectedMainFiltersForDelete,
       setSelectedMainForDelete,
+      hydrateBillSources,
     },
   });
   const {
@@ -1757,7 +1793,9 @@ export default function Dashboard({
       activateSourceGridSelection,
       applyDetailModuleInheritanceById,
       clearColumnSelection,
+      consumeFieldSettingsOpenRequest,
       createBillSourceDraft,
+      deleteBillSourceById,
       deleteSelectedColumns,
       deleteSelectedConditions,
       handleConditionPanelFieldSelect,
@@ -1776,6 +1814,7 @@ export default function Dashboard({
       showToast,
       syncDetailColumnsFromSqlById,
       updateBillHeaderWorkbenchRows,
+      updateBillSourceById,
       updateBillSourceDraft,
       updateDetailTabConfigById,
     },
@@ -1895,6 +1934,7 @@ export default function Dashboard({
       leftFilterFields,
       leftTableColumns,
       leftTableConfig,
+      fieldSettingsOpenRequest,
       mainFilterFields,
       mainTableColumns,
       mainTableConfig,
@@ -2080,7 +2120,7 @@ export default function Dashboard({
         activeMenuName,
         activeSubsystem,
         activeSubsystemName,
-        companyTitle: activeCompanyTitle ?? authSession?.companyTitle ?? '',
+        companyTitle: authSession?.companyTitle ?? '',
         currentUserName,
         deletingMenuId,
         expandedSubsystemId,
@@ -2098,7 +2138,6 @@ export default function Dashboard({
         onCreateModule: openNewModuleGuide,
         onDeleteMenu: setPendingDeleteMenu,
         onLogout,
-        onSwitchCompany,
         onOpenFunctionFlowDesign: openFunctionFlowDesignWorkbenchWithReset,
         onOpenServerPermission: openServerPermissionWorkbench,
         onOpenResearchRecord: openResearchRecordWorkbenchWithReset,

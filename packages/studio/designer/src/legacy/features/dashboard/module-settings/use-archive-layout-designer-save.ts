@@ -46,14 +46,15 @@ export function useArchiveLayoutDesignerSave({
   const [isSaving, setIsSaving] = useState(false);
   const isDirty = Boolean(currentDetailBoard?.archiveLayoutDirty);
 
-  const saveArchiveLayout = useCallback(async () => {
+  const saveArchiveLayout = useCallback(async (detailBoardOverride?: Record<string, any>) => {
     const moduleCode = currentModuleCode.trim();
     if (!moduleCode) {
       onShowToast('\u8bf7\u5148\u4fdd\u5b58\u6a21\u5757\u4fe1\u606f\uff0c\u518d\u4fdd\u5b58\u5b9a\u4e49\u8bbe\u8ba1\u3002');
       return false;
     }
 
-    const savePlan = buildArchiveLayoutSavePlan(currentDetailBoard, layoutColumns);
+    const detailBoardToSave = detailBoardOverride ?? currentDetailBoard;
+    const savePlan = buildArchiveLayoutSavePlan(detailBoardToSave, layoutColumns);
     const hasChanges = savePlan.groupSaveBodies.length > 0
       || savePlan.groupDeleteIds.length > 0
       || savePlan.layoutSaveBodies.length > 0
