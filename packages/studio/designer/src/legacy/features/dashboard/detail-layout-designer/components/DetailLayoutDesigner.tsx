@@ -11,6 +11,22 @@ import { DetailPropertyPanel } from './DetailPropertyPanel';
 import { useDetailLayoutState } from '../hooks/useDetailLayoutState';
 import { areDetailLayoutDocumentsEqual } from '../utils/layout';
 
+export type DetailLayoutDesignerRenderHelpers = {
+  addItem: (type: DetailLayoutItem['type'], overrides?: Partial<DetailLayoutItem>) => DetailLayoutItem;
+  addPaletteItem: (paletteItem: DetailLayoutPaletteItem) => void;
+  clearSelection: () => void;
+  deleteItem: (itemId: string) => void;
+  deleteSelectedItem: () => void;
+  document: DetailLayoutDocument;
+  itemCount: number;
+  replaceDocument: (document: DetailLayoutDocument) => void;
+  selectItem: (itemId: string | null) => void;
+  selectedId: string | null;
+  selectedItem: DetailLayoutItem | null;
+  updateItem: (itemId: string, patch: Partial<Omit<DetailLayoutItem, 'id' | 'type'>> & { parentId?: string | null }) => void;
+  updateSelectedItem: (patch: Partial<Omit<DetailLayoutItem, 'id' | 'type'>> & { parentId?: string | null }) => void;
+};
+
 type DetailLayoutDesignerProps = {
   allowFieldEdit?: boolean;
   allowParentIdEdit?: boolean;
@@ -25,13 +41,11 @@ type DetailLayoutDesignerProps = {
   paletteTitle?: string;
   paletteDescription?: string;
   paletteVariant?: 'cards' | 'plain';
+  panelLayoutClassName?: string;
+  renderPropertyPanel?: (helpers: DetailLayoutDesignerRenderHelpers) => ReactNode;
   renderItemContent?: (item: DetailLayoutItem) => ReactNode;
-  toolbarActions?: ReactNode | ((helpers: {
-    addPaletteItem: (paletteItem: DetailLayoutPaletteItem) => void;
-    itemCount: number;
-    selectedId: string | null;
-    selectedItem: DetailLayoutItem | null;
-  }) => ReactNode);
+  renderSidebar?: (helpers: DetailLayoutDesignerRenderHelpers) => ReactNode;
+  toolbarActions?: ReactNode | ((helpers: DetailLayoutDesignerRenderHelpers) => ReactNode);
 };
 
 export function DetailLayoutDesigner({
@@ -48,7 +62,10 @@ export function DetailLayoutDesigner({
   paletteTitle,
   paletteDescription,
   paletteVariant = 'cards',
+  panelLayoutClassName,
+  renderPropertyPanel,
   renderItemContent,
+  renderSidebar,
   toolbarActions,
 }: DetailLayoutDesignerProps) {
   const layoutState = useDetailLayoutState({
@@ -61,6 +78,7 @@ export function DetailLayoutDesigner({
     beginResizing,
     clearSelection,
     commitItemRect,
+    deleteItem,
     deleteSelectedItem,
     document: layoutDocument,
     endInteraction,
@@ -72,6 +90,7 @@ export function DetailLayoutDesigner({
     setActiveParentId,
     setHoveringId,
     ui,
+    updateItem,
     updateSelectedItem,
   } = layoutState;
   const onDocumentChangeRef = useRef(onDocumentChange);
@@ -135,13 +154,23 @@ export function DetailLayoutDesigner({
   const handleAddPaletteItem = (paletteItem: DetailLayoutPaletteItem) => {
     addItem(paletteItem.type, paletteItem.template);
   };
+  const renderHelpers: DetailLayoutDesignerRenderHelpers = {
+    addItem,
+    addPaletteItem: handleAddPaletteItem,
+    clearSelection,
+    deleteItem,
+    deleteSelectedItem,
+    document: layoutDocument,
+    itemCount: layoutDocument.items.length,
+    replaceDocument,
+    selectItem,
+    selectedId,
+    selectedItem,
+    updateItem,
+    updateSelectedItem,
+  };
   const resolvedToolbarActions = typeof toolbarActions === 'function'
-    ? toolbarActions({
-        addPaletteItem: handleAddPaletteItem,
-        itemCount: layoutDocument.items.length,
-        selectedId,
-        selectedItem,
-      })
+    ? toolbarActions(renderHelpers)
     : toolbarActions;
 
   const detailDnD = useDetailDnD({
@@ -171,15 +200,17 @@ export function DetailLayoutDesigner({
       sensors={detailDnD.sensors}
     >
       <section className={clsx('flex h-full min-h-0 flex-col', className)}>
-        <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_340px] 2xl:grid-cols-[240px_minmax(0,1fr)_360px]">
-          <DetailPalette
-            className="min-h-0 overflow-auto"
-            description={paletteDescription}
-            items={paletteItems}
-            onAddItem={handleAddPaletteItem}
-            title={paletteTitle}
-            variant={paletteVariant}
-          />
+        <div className={clsx('grid h-full min-h-0 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_340px] 2xl:grid-cols-[240px_minmax(0,1fr)_360px]', panelLayoutClassName)}>
+          {renderSidebar ? renderSidebar(renderHelpers) : (
+            <DetailPalette
+              className="min-h-0 overflow-auto"
+              description={paletteDescription}
+              items={paletteItems}
+              onAddItem={handleAddPaletteItem}
+              title={paletteTitle}
+              variant={paletteVariant}
+            />
+          )}
 
           <div className="flex min-h-0 flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200/80 bg-white/88 px-4 py-3 shadow-[0_20px_36px_-32px_rgba(15,23,42,0.25)]">
@@ -247,15 +278,17 @@ export function DetailLayoutDesigner({
             />
           </div>
 
-          <DetailPropertyPanel
-            allowFieldEdit={allowFieldEdit}
-            allowParentIdEdit={allowParentIdEdit}
-            className="min-h-0"
-            fieldOptions={fieldOptions}
-            item={selectedItem}
-            mode={ui.mode}
-            onChange={updateSelectedItem}
-          />
+          {renderPropertyPanel ? renderPropertyPanel(renderHelpers) : (
+            <DetailPropertyPanel
+              allowFieldEdit={allowFieldEdit}
+              allowParentIdEdit={allowParentIdEdit}
+              className="min-h-0"
+              fieldOptions={fieldOptions}
+              item={selectedItem}
+              mode={ui.mode}
+              onChange={updateSelectedItem}
+            />
+          )}
         </div>
       </section>
 

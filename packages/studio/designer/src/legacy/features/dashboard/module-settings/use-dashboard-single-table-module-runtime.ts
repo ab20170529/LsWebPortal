@@ -9,6 +9,7 @@ import { useDashboardSingleTableTreeResources } from './use-dashboard-single-tab
 import { useDetailGridSourceConfig } from './use-detail-grid-source-config';
 import { useLatestValue } from './use-latest-value';
 import { useSingleTableModuleSettingsSave } from './use-single-table-module-settings-save';
+import { type BillSourceEntry } from './use-bill-source-state';
 
 type UseDashboardSingleTableModuleRuntimeOptions = {
   builders: {
@@ -42,6 +43,7 @@ type UseDashboardSingleTableModuleRuntimeOptions = {
     moduleSettingStep: number;
     parsedTreeSourceFields: string[];
     restrictionTopStructures: any[];
+    shouldLoadBillSources: boolean;
     treeRelationColumn: any;
   };
   helpers: {
@@ -105,6 +107,7 @@ type UseDashboardSingleTableModuleRuntimeOptions = {
     setSelectedLeftForDelete: Dispatch<SetStateAction<string[]>>;
     setSelectedMainFiltersForDelete: Dispatch<SetStateAction<string[]>>;
     setSelectedMainForDelete: Dispatch<SetStateAction<string[]>>;
+    hydrateBillSources: (sources: BillSourceEntry[]) => void;
   };
 };
 
@@ -281,6 +284,7 @@ export function useDashboardSingleTableModuleRuntime({
     configStep: config.configStep,
     getDashboardErrorMessage: helpers.getDashboardErrorMessage,
     getRecordFieldValue: helpers.getRecordFieldValue,
+    hydrateBillSources: setters.hydrateBillSources,
     isConfigOpen: config.isConfigOpen,
     mainResourceScopeKey: `${String(config.activeConfigMenu?.moduleType ?? '').trim().toLowerCase()}:${config.activeConfigModuleKey}`,
     mapSingleTableColorRule: mappings.mapSingleTableColorRule,
@@ -300,6 +304,7 @@ export function useDashboardSingleTableModuleRuntime({
     setSelectedDetailForDelete: setters.setSelectedDetailForDelete,
     setSelectedMainFiltersForDelete: setters.setSelectedMainFiltersForDelete,
     setSelectedMainForDelete: setters.setSelectedMainForDelete,
+    shouldLoadBillSources: config.shouldLoadBillSources,
     showToast: helpers.showToast,
     toRecordNumber: helpers.toRecordNumber,
     toRecordText: helpers.toRecordText,

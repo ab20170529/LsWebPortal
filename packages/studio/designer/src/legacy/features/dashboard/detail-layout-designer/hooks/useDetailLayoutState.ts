@@ -78,6 +78,17 @@ export function useDetailLayoutState(options: UseDetailLayoutStateOptions = {}) 
     selection.clearSelection();
   }, [history, selection]);
 
+  const deleteItem = useCallback((itemId: string) => {
+    history.setPresent((current) => removeDetailLayoutItem(current, itemId));
+    setHoveringId((current) => (current === itemId ? null : current));
+    setActiveParentId((current) => (current === itemId ? null : current));
+    setDraggingId((current) => (current === itemId ? null : current));
+    setResizingId((current) => (current === itemId ? null : current));
+    if (selection.selectedId === itemId) {
+      selection.clearSelection();
+    }
+  }, [history, selection]);
+
   const replaceDocument = useCallback((nextDocument: DetailLayoutDocument) => {
     history.reset(nextDocument);
     setHoveringId(null);
@@ -129,6 +140,7 @@ export function useDetailLayoutState(options: UseDetailLayoutStateOptions = {}) 
     beginResizing,
     clearSelection: selection.clearSelection,
     commitItemRect,
+    deleteItem,
     deleteSelectedItem,
     document: history.present,
     endInteraction,

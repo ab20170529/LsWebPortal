@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
+  getShadcnInspectorListBadgeClass,
+  getShadcnInspectorListItemClass,
   shadcnFieldClass,
+  shadcnInspectorListClass,
   shadcnMutedLabelClass,
   shadcnTextareaClass,
 } from '../../../components/ui/shadcn-inspector';
@@ -67,7 +71,7 @@ function PopupMenuEditModal({
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  return (
+  const modalContent = (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-[3px]"
       onClick={handleBackdropClick}
@@ -260,6 +264,12 @@ function PopupMenuEditModal({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(modalContent, document.body);
 }
 
 export const PopupMenuManager = React.memo(function PopupMenuManager({
@@ -277,7 +287,11 @@ export const PopupMenuManager = React.memo(function PopupMenuManager({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const editingItem = editingItemId ? contextMenuItems.find((i) => i.id === editingItemId) ?? null : null;
 
-  const handleItemClick = (itemId: string) => {
+  const handleItemSelect = (itemId: string) => {
+    onSelectItem(itemId);
+  };
+
+  const handleItemDoubleClick = (itemId: string) => {
     onSelectItem(itemId);
     setEditingItemId(itemId);
   };
@@ -310,63 +324,53 @@ export const PopupMenuManager = React.memo(function PopupMenuManager({
           </div>
         </div>
 
-        <div className="space-y-1.5">
+        <div className={shadcnInspectorListClass}>
           {contextMenuItems.length > 0 ? contextMenuItems.map((item, index) => {
             const isSelected = selectedItem?.id === item.id;
-            const iconName = getPopupMenuIconName(item.defailtimage);
             const isDisabled = Boolean(item.disabled);
 
             return (
               <div
                 key={item.id}
-                className={`group flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-all ${
-                  isSelected
-                    ? 'border-[color:var(--workspace-accent)]/30 bg-[color:var(--workspace-accent-soft)]/60 shadow-sm'
-                    : 'border-transparent bg-slate-50/80 hover:border-slate-200/80 hover:bg-white dark:bg-slate-800/40 dark:hover:border-slate-700 dark:hover:bg-slate-800/70'
-                }`}
+                className={getShadcnInspectorListItemClass(isSelected)}
               >
                 <button
                   type="button"
-                  onClick={() => handleItemClick(item.id)}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                  onClick={() => handleItemSelect(item.id)}
+                  onDoubleClick={() => handleItemDoubleClick(item.id)}
+                  className="min-w-0 flex-1 text-left"
                 >
-                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-                    isSelected
-                      ? 'border-[color:var(--workspace-accent)] bg-[color:var(--workspace-accent)] text-white'
-                      : 'border-[color:var(--workspace-accent-border)] bg-[color:var(--workspace-accent-soft)] text-[color:var(--workspace-accent-strong)]'
-                  }`}>
-                    <span className="material-symbols-outlined text-[15px]">{iconName}</span>
+                  <div className={`truncate text-[13px] ${isSelected ? 'font-bold text-slate-900 dark:text-slate-100' : 'font-medium'}`}>
+                    {item.menuname || item.label || `菜单 ${index + 1}`}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] font-semibold text-slate-700 dark:text-slate-100">
-                      {item.menuname || item.label || `菜单 ${index + 1}`}
+                  {item.dllname ? (
+                    <div className={`mt-0.5 truncate text-[11px] ${isSelected ? 'text-slate-500 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                      {item.dllname}
                     </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-400">
-                      {item.dllname && <span className="truncate font-mono">{item.dllname}</span>}
-                      {isDisabled && <span className="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">禁用</span>}
-                    </div>
-                  </div>
+                  ) : null}
                 </button>
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onToggleItemDisabled(item.id, !isDisabled); }}
-                    className={`inline-flex size-7 items-center justify-center rounded-lg text-[14px] transition-colors ${
-                      !isDisabled
-                        ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'
-                        : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-colors ${
+                      isDisabled
+                        ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300'
+                        : isSelected
+                          ? getShadcnInspectorListBadgeClass(true)
+                          : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300'
                     }`}
                     title={isDisabled ? '启用' : '禁用'}
                   >
-                    <span className="material-symbols-outlined text-[16px]">{isDisabled ? 'toggle_off' : 'toggle_on'}</span>
+                    {isDisabled ? '已禁用' : '已启用'}
                   </button>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
-                    className="inline-flex size-7 items-center justify-center rounded-lg text-rose-400 transition-colors hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10"
+                    className="text-[11px] font-semibold text-rose-500 transition-colors hover:text-rose-600 dark:text-rose-300 dark:hover:text-rose-200"
                     title="删除"
                   >
-                    <span className="material-symbols-outlined text-[15px]">delete</span>
+                    删除
                   </button>
                 </div>
               </div>

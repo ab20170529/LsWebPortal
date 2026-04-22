@@ -34,7 +34,6 @@ export function buildDashboardModuleScreenProps({
   menuLoadError,
   onDeleteMenu,
   onLogout,
-  onSwitchCompany,
   onOpenFunctionFlowDesign,
   onOpenServerPermission,
   onOpenResearchRecord,
@@ -73,7 +72,6 @@ export function buildDashboardModuleScreenProps({
   menuLoadError: DashboardModuleScreenSidebarProps['menuLoadError'];
   onDeleteMenu: DashboardModuleScreenOverviewProps['onDeleteMenu'];
   onLogout: DashboardModuleScreenSidebarProps['onLogout'];
-  onSwitchCompany?: DashboardModuleScreenSidebarProps['onSwitchCompany'];
   onOpenFunctionFlowDesign: DashboardModuleScreenSidebarProps['onOpenFunctionFlowDesign'];
   onOpenServerPermission: DashboardModuleScreenSidebarProps['onOpenServerPermission'];
   onOpenResearchRecord: DashboardModuleScreenSidebarProps['onOpenResearchRecord'];
@@ -129,7 +127,6 @@ export function buildDashboardModuleScreenProps({
       isToolFeedbackActive,
       menuLoadError,
       onLogout,
-      onSwitchCompany,
       onOpenFunctionFlowDesign,
       onOpenServerPermission,
       onOpenResearchRecord,

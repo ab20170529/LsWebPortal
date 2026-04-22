@@ -18,6 +18,8 @@ import {
   type BusinessType,
   type ModuleMenuDraft,
 } from './dashboard-menu-config-helpers';
+import { MODULE_SETTING_STEP } from './dashboard-shell-constants';
+import type { DashboardWorkbench } from '../dashboard-workbench-types';
 
 type SyncWorkspaceUrlState = (patch: Partial<{
   configOpen: boolean;
@@ -26,7 +28,7 @@ type SyncWorkspaceUrlState = (patch: Partial<{
   mode: string | null;
   moduleCode: string | null;
   theme: string | null;
-  workbench: 'modules' | 'research-record' | null;
+  workbench: DashboardWorkbench | null;
 }>, options?: { replace?: boolean }) => void;
 
 function normalizeMenuTitle(value?: string) {
@@ -73,7 +75,7 @@ export function useDashboardMenuConfigIo({
   }) => void;
   selectedSubsystem: BackendSubsystemNode | null;
   setActiveConfigMenu: Dispatch<SetStateAction<BackendMenuNode | null>>;
-  setActiveWorkbench: Dispatch<SetStateAction<'modules' | 'research-record'>>;
+  setActiveWorkbench: Dispatch<SetStateAction<DashboardWorkbench>>;
   setIsMenuInfoLoading: Dispatch<SetStateAction<boolean>>;
   setIsMenuInfoSaving: Dispatch<SetStateAction<boolean>>;
   setMenuConfigDraft: Dispatch<SetStateAction<ModuleMenuDraft>>;
@@ -152,8 +154,8 @@ export function useDashboardMenuConfigIo({
     setIsMenuInfoSaving(false);
     setMenuConfigDraft(buildMenuConfigDraftDefaults(nextType));
     openModuleGuide(nextType, {
-      completedSteps: [1],
-      initialStep: 2,
+      completedSteps: [1, 2],
+      initialStep: MODULE_SETTING_STEP,
       moduleCode: resolveMenuNodeModuleCode(menu),
     });
     void loadMenuInfoForMenu(menu);

@@ -6,21 +6,17 @@ import { DesignModulePage } from './routes/design-module-page';
 import { DesignSettingsPage } from './routes/design-settings-page';
 
 type DesignPlatformAppProps = {
-  activeCompanyTitle?: string;
   currentPath: string;
   currentUserName: string;
   onLogout: () => void;
-  onSwitchCompany?: () => void;
   platform: PlatformDefinition;
   route: DesignFixedRoute;
 };
 
 export function DesignPlatformApp({
-  activeCompanyTitle,
   currentPath,
   currentUserName,
   onLogout,
-  onSwitchCompany,
   platform,
   route,
 }: DesignPlatformAppProps) {
@@ -28,11 +24,9 @@ export function DesignPlatformApp({
     case 'workspace':
       return (
         <DesignPlatformLegacyWorkspaceEntry
-          activeCompanyTitle={activeCompanyTitle}
           currentPath={currentPath}
           currentUserName={currentUserName}
           onLogout={onLogout}
-          onSwitchCompany={onSwitchCompany}
           platform={platform}
           route={route}
         />

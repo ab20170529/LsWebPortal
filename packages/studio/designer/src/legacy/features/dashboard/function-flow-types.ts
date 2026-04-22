@@ -143,20 +143,41 @@ export type FunctionFlowPreviewResult = {
   validationMessages: string[];
 };
 
-export type FunctionFlowDetail = {
-  bizType?: string;
-  drawioXml: string;
+export type FunctionFlowSummary = {
+  editorType?: string;
   flowCode: string;
   flowName: string;
+  id: string;
+  rowVersion?: number | string | null;
+  status?: string;
+  subsystemId: string;
+  updatedAt?: number | string | null;
+  updatedBy?: string | null;
+  updatedName?: string | null;
+  xmlSize?: number | null;
+};
+
+export type FunctionFlowDetail = {
+  bizType?: string;
+  drawioXml?: string;
+  editorType?: string;
+  editorXml?: string;
+  flowCode: string;
+  flowName: string;
+  id: string;
   generatedArtifacts?: (FunctionFlowGeneratedArtifacts & {
     createdAt?: number | null;
     validationMessages?: string[];
     versionNo?: number | null;
   }) | null;
-  graphJson: FunctionFlowGraphJson;
+  graphJson?: FunctionFlowGraphJson;
+  rowVersion?: number | string | null;
   status?: string;
-  updatedAt?: number | null;
-  updatedBy?: string;
+  subsystemId: string;
+  updatedAt?: number | string | null;
+  updatedBy?: string | null;
+  updatedName?: string | null;
+  xmlSize?: number | null;
 };
 
 export function createEmptyFunctionFlowGeneratedArtifacts(): FunctionFlowGeneratedArtifacts {

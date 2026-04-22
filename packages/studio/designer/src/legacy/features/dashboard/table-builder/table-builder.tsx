@@ -28,9 +28,11 @@ export type TableBuilderOptions = {
   normalizedDetailBoardConfig?: any;
   renderableColumns?: any[];
   onCanvasDoubleClick?: () => void;
+  onHeaderDoubleClick?: (columnId: string) => void;
   density?: 'default' | 'compact';
   surfaceVariant?: 'glass' | 'solid';
   surfaceShape?: 'rounded' | 'square';
+  hostSurface?: 'standalone' | 'embedded';
   previewReadableMinWidth?: number;
   layoutVersion?: string;
 };
@@ -353,6 +355,8 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
   const useSolidSurface = surfaceVariant === 'solid';
   const surfaceShape = options?.surfaceShape ?? 'rounded';
   const useSquareSurface = useSolidSurface && surfaceShape === 'square';
+  const hostSurface = options?.hostSurface ?? 'standalone';
+  const useEmbeddedSurface = hostSurface === 'embedded';
   const isCompactCanvas = density === 'compact';
   const showCanvasSelectionCard = backgroundSelectable;
   const selectedForDeleteSet = useMemo(() => new Set(selectedForDelete), [selectedForDelete]);
@@ -471,18 +475,28 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
   ), [metrics.resizeMaxWidth, metrics.resizeMinWidth]);
 
   const addColumnWidth = isCompactModuleSetting ? 58 : 74;
-  const tableSurfaceRadiusClass = useSquareSurface ? 'rounded-none' : 'rounded-[20px]';
-  const tableSurfaceClass = useSolidSurface
+  const tableSurfaceRadiusClass = useEmbeddedSurface
+    ? 'rounded-none'
+    : useSquareSurface
+      ? 'rounded-none'
+      : 'rounded-[20px]';
+  const tableSurfaceClass = useEmbeddedSurface
     ? (
         tableSelected
-          ? `${tableSurfaceRadiusClass} border border-[color:var(--workspace-accent-border)] bg-[color:var(--workspace-accent-surface)] shadow-none`
-          : `${tableSurfaceRadiusClass} border border-[#d9e3ef] bg-white shadow-none`
+          ? `${tableSurfaceRadiusClass} border-0 bg-[color:var(--workspace-accent-surface)] shadow-none`
+          : `${tableSurfaceRadiusClass} border-0 bg-transparent shadow-none`
       )
-    : (
-        tableSelected
-          ? 'cloudy-glass-panel bg-[color:var(--workspace-accent-surface)] shadow-none'
-          : 'cloudy-glass-panel'
-      );
+    : useSolidSurface
+      ? (
+          tableSelected
+            ? `${tableSurfaceRadiusClass} border border-[color:var(--workspace-accent-border)] bg-[color:var(--workspace-accent-surface)] shadow-none`
+            : `${tableSurfaceRadiusClass} border border-[#d9e3ef] bg-white shadow-none`
+        )
+      : (
+          tableSelected
+            ? 'cloudy-glass-panel bg-[color:var(--workspace-accent-surface)] shadow-none'
+            : 'cloudy-glass-panel'
+        );
   const headerDividerClass = tableSelected
     ? 'border-[#d7e2f0] dark:border-slate-700/80'
     : 'border-[#e6edf5] dark:border-slate-700/80';
@@ -592,6 +606,10 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
     event.stopPropagation();
     onCanvasDoubleClick?.();
   }, [onCanvasDoubleClick]);
+  const handleColumnHeaderDoubleClick = useCallback((event: React.MouseEvent, columnId: string) => {
+    event.stopPropagation();
+    options?.onHeaderDoubleClick?.(columnId);
+  }, [options]);
   const handlePreviewTableRowClick = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
     onSelectTable?.();
@@ -638,11 +656,12 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
   const canvasSelectionPanelShellClass = cn(
     'flex h-full w-full items-center justify-center bg-white shadow-none',
   );
+  const canvasSelectionSurfaceRadiusClass = useEmbeddedSurface || useSquareSurface ? 'rounded-none' : 'rounded-[18px]';
 
   const tableWrapperClass = cn(
     'relative flex h-full min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden',
     tableSurfaceClass,
-    backgroundSelectable && (isCompactCanvas ? 'min-h-[184px]' : 'min-h-[260px]'),
+    backgroundSelectable && !useEmbeddedSurface && (isCompactCanvas ? 'min-h-[184px]' : 'min-h-[260px]'),
   );
   const activePreviewHeaderColumn = useMemo(
     () => previewHeaderColumns.find(({ col }) => String(col.id) === previewDraggingColumnId) ?? null,
@@ -720,7 +739,10 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
       <div
         ref={info.ref as React.Ref<HTMLDivElement>}
         onScroll={(event) => info.onScroll({ currentTarget: event.currentTarget })}
-        className="dashboard-table-builder-ant-preview-scroll-body"
+        className={cn(
+          'dashboard-table-builder-ant-preview-scroll-body',
+          scope === 'detail' && 'dashboard-table-builder-ant-preview-scroll-body-detail',
+        )}
       >
         <Flex
           vertical
@@ -790,6 +812,7 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
             <button
               type="button"
               onClick={(event) => handleColumnHeaderClick(event, col.id)}
+              onDoubleClick={(event) => handleColumnHeaderDoubleClick(event, String(col.id))}
               onContextMenu={(event) => handleColumnHeaderContextMenu(event, col.id)}
               className={cn(
                 `relative flex h-full w-full items-center overflow-hidden text-left transition-all ${getHeaderCornerClass(index)} ${isCollapsedHeader ? 'min-h-[34px] px-0 pr-1.5 py-0' : isCompactModuleSetting ? 'min-h-[32px] px-1.5 pr-3 py-0' : 'min-h-[38px] px-2 pr-3.5 py-0'} ${getHeaderButtonClass(isActive, isMarkedForDelete, isTreeRelation)}`,
@@ -894,6 +917,7 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
     getHeaderResizeRailClass,
     handleAddColumn,
     handleColumnHeaderClick,
+    handleColumnHeaderDoubleClick,
     handleColumnHeaderContextMenu,
     handleColumnResizeStart,
     handleColumnResizeStop,
@@ -920,8 +944,8 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
           onClick={onSelectTable}
           onDoubleClick={handleCanvasDoubleClick}
           className={cn(
-            'relative flex h-full min-h-0 w-full items-stretch justify-stretch overflow-hidden rounded-[18px] bg-[#fcfdff] text-center transition-colors hover:bg-[#f8fbff]',
-            isCompactCanvas ? 'min-h-[164px]' : 'min-h-[240px]',
+            `relative flex h-full min-h-0 w-full items-stretch justify-stretch overflow-hidden ${canvasSelectionSurfaceRadiusClass} bg-[#fcfdff] text-center transition-colors hover:bg-[#f8fbff]`,
+            !useEmbeddedSurface && (isCompactCanvas ? 'min-h-[164px]' : 'min-h-[240px]'),
           )}
         >
           <Flex vertical align="center" justify="center" className={canvasSelectionPanelShellClass}>
@@ -932,7 +956,19 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
     }
 
     return (
-      <Flex vertical align="center" justify="center" className={`h-full min-h-0 px-6 text-center text-slate-400 ${isCompactCanvas ? 'min-h-[164px] py-6' : 'min-h-[240px]'}`}>
+      <Flex
+        vertical
+        align="center"
+        justify="center"
+        className={cn(
+          'h-full min-h-0 px-6 text-center text-slate-400',
+          useEmbeddedSurface
+            ? 'py-6'
+            : isCompactCanvas
+              ? 'min-h-[164px] py-6'
+              : 'min-h-[240px]',
+        )}
+      >
         <Flex vertical align="center" gap={12}>
           <div className="cloudy-glass-orb flex size-14 items-center justify-center rounded-3xl">
             <span className="material-symbols-outlined text-[24px] text-slate-300 dark:text-slate-500">data_object</span>
@@ -959,6 +995,7 @@ export const MemoTableBuilder = React.memo(function TableBuilder({
         <Table
           className={cn(
             'dashboard-table-builder-ant-table min-h-0 flex-1',
+            `dashboard-table-builder-ant-table-${scope}`,
             backgroundSelectable && 'dashboard-table-builder-ant-table-fill-body',
             backgroundSelectable && 'dashboard-table-builder-ant-table-no-vertical-scroll',
           )}

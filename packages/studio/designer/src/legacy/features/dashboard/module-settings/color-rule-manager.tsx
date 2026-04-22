@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
+  getShadcnInspectorListBadgeClass,
+  getShadcnInspectorListItemClass,
   shadcnFieldClass,
+  shadcnInspectorListClass,
   shadcnMutedLabelClass,
   shadcnTextareaClass,
 } from '../../../components/ui/shadcn-inspector';
@@ -98,7 +102,7 @@ function ColorRuleEditModal({
     { key: 'ifUnderLine' as const, label: 'U', title: '下划线', style: 'underline' },
   ];
 
-  return (
+  const modalContent = (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-[3px]"
       onClick={handleBackdropClick}
@@ -327,6 +331,12 @@ function ColorRuleEditModal({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(modalContent, document.body);
 }
 
 export const ColorRuleManager = React.memo(function ColorRuleManager({
@@ -342,7 +352,11 @@ export const ColorRuleManager = React.memo(function ColorRuleManager({
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const editingRule = editingRuleId ? colorRules.find((r) => r.id === editingRuleId) ?? null : null;
 
-  const handleRuleClick = (ruleId: string) => {
+  const handleRuleSelect = (ruleId: string) => {
+    onSelectRule(ruleId);
+  };
+
+  const handleRuleDoubleClick = (ruleId: string) => {
     onSelectRule(ruleId);
     setEditingRuleId(ruleId);
   };
@@ -375,62 +389,50 @@ export const ColorRuleManager = React.memo(function ColorRuleManager({
           </div>
         </div>
 
-        <div className="space-y-1.5">
+        <div className={shadcnInspectorListClass}>
           {colorRules.length > 0 ? colorRules.map((rule, index) => {
-            const previewTextColor = rule.forcecolor || rule.textColor || '#9f1239';
-            const previewBackgroundColor = rule.backcolor || rule.backgroundColor || '#ffe4e6';
             const enabled = resolveBooleanFlag(rule.useflag, !(rule.disabled ?? false));
             const isSelected = selectedRule?.id === rule.id;
             return (
               <div
                 key={rule.id}
-                className={`group flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-all ${
-                  isSelected
-                    ? 'border-[color:var(--workspace-accent)]/30 bg-[color:var(--workspace-accent-soft)]/60 shadow-sm'
-                    : 'border-transparent bg-slate-50/80 hover:border-slate-200/80 hover:bg-white dark:bg-slate-800/40 dark:hover:border-slate-700 dark:hover:bg-slate-800/70'
-                }`}
+                className={getShadcnInspectorListItemClass(isSelected)}
               >
                 <button
                   type="button"
-                  onClick={() => handleRuleClick(rule.id)}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                  onClick={() => handleRuleSelect(rule.id)}
+                  onDoubleClick={() => handleRuleDoubleClick(rule.id)}
+                  className="min-w-0 flex-1 text-left"
                 >
-                  <div
-                    className="flex size-8 shrink-0 items-center justify-center rounded-lg border text-[11px] font-black"
-                    style={{ color: previewTextColor, backgroundColor: previewBackgroundColor, borderColor: `${previewBackgroundColor}cc` }}
-                  >
-                    {index + 1}
+                  <div className={`truncate text-[13px] ${isSelected ? 'font-bold text-slate-900 dark:text-slate-100' : 'font-medium'}`}>
+                    {rule.condition || rule.label || `颜色规则 ${index + 1}`}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] font-semibold text-slate-700 dark:text-slate-100">
-                      {rule.condition || rule.label || `颜色规则 ${index + 1}`}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-400">
-                      <span>#{index + 1}</span>
-                      {!enabled && <span className="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">停用</span>}
-                    </div>
+                  <div className={`mt-0.5 text-[11px] ${isSelected ? 'text-slate-500 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                    规则 {index + 1}
                   </div>
                 </button>
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onToggleRuleDisabled(rule.id, !rule.disabled); }}
-                    className={`inline-flex size-7 items-center justify-center rounded-lg text-[14px] transition-colors ${
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-colors ${
                       enabled
-                        ? 'text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'
-                        : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        ? isSelected
+                          ? getShadcnInspectorListBadgeClass(true)
+                          : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300'
+                        : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300'
                     }`}
                     title={enabled ? '停用' : '启用'}
                   >
-                    <span className="material-symbols-outlined text-[16px]">{enabled ? 'toggle_on' : 'toggle_off'}</span>
+                    {enabled ? '已启用' : '已停用'}
                   </button>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onDeleteRule(rule.id); }}
-                    className="inline-flex size-7 items-center justify-center rounded-lg text-rose-400 transition-colors hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10"
+                    className="text-[11px] font-semibold text-rose-500 transition-colors hover:text-rose-600 dark:text-rose-300 dark:hover:text-rose-200"
                     title="删除"
                   >
-                    <span className="material-symbols-outlined text-[15px]">delete</span>
+                    删除
                   </button>
                 </div>
               </div>

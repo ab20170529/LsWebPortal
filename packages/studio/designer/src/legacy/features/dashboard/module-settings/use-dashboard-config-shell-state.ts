@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import type { BackendMenuNode } from '../../../lib/backend-menus';
+import type { DashboardWorkbench } from '../dashboard-workbench-types';
 import {
   BUSINESS_TYPE_OPTIONS,
   MENU_DEFAULT_COMMON_FIELD_KEYS,
@@ -14,7 +15,7 @@ type UseDashboardConfigShellStateInput = {
   initialBusinessType: BusinessType;
   initialConfigOpen: boolean;
   initialConfigStep: number;
-  initialWorkbench?: 'modules' | 'research-record' | 'tool-feedback';
+  initialWorkbench?: DashboardWorkbench;
 };
 
 export function useDashboardConfigShellState({
@@ -23,7 +24,7 @@ export function useDashboardConfigShellState({
   initialConfigStep,
   initialWorkbench,
 }: UseDashboardConfigShellStateInput) {
-  const [activeWorkbench, setActiveWorkbench] = useState<'modules' | 'research-record' | 'tool-feedback'>(initialWorkbench ?? 'modules');
+  const [activeWorkbench, setActiveWorkbench] = useState<DashboardWorkbench>(initialWorkbench ?? 'modules');
   const [isConfigOpen, setIsConfigOpen] = useState(initialConfigOpen);
   const [isSubsystemSidebarOpen, setIsSubsystemSidebarOpen] = useState(true);
   const [configStep, setConfigStep] = useState(initialConfigStep);

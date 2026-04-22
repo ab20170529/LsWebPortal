@@ -78,6 +78,7 @@ export type BillDocumentWorkbenchProps = {
     commitBillHeaderFields: (updater: (fields: any[]) => any[]) => void;
     deleteSelectedColumns: (scope: 'left' | 'main' | 'detail', ids: string[]) => void;
     moveBillHeaderField: (fieldId: string, rowNumber: number, beforeId?: string | null) => void;
+    openBillMainFieldSettings: (fieldId?: string | null) => void;
     setBillDocumentTone: (tone: 'blue' | 'red') => void;
     setBillHeaderWorkbenchDrag: (value: { id: string; scope: BillCanvasFieldScope } | null) => void;
     setBillHeaderWorkbenchDropTarget: (value: { row: number; beforeId: string | null } | null) => void;
@@ -617,6 +618,10 @@ export function BillDocumentWorkbench({
                                           onClick={(event: React.MouseEvent<HTMLDivElement>) => {
                                             event.stopPropagation();
                                             handleBillFieldSelect(event, column.id);
+                                          }}
+                                          onDoubleClick={(event: React.MouseEvent<HTMLDivElement>) => {
+                                            event.stopPropagation();
+                                            actions.openBillMainFieldSettings(column.id);
                                           }}
                                           onContextMenu={(event: React.MouseEvent<HTMLDivElement>) => handleBillFieldContextMenu(event, column.id)}
                                           onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => {

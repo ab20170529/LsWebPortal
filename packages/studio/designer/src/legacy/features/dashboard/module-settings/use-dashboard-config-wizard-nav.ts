@@ -1,6 +1,7 @@
 import { type Dispatch, type SetStateAction, useCallback } from 'react';
 
 import { updateCurrentDesignSearch } from '../../../platforms/design/navigation/design-navigation';
+import type { DashboardWorkbench } from '../dashboard-workbench-types';
 
 type SyncWorkspaceUrlState = (patch: Partial<{
   configOpen: boolean;
@@ -9,7 +10,7 @@ type SyncWorkspaceUrlState = (patch: Partial<{
   mode: string | null;
   moduleCode: string | null;
   theme: string | null;
-  workbench: 'modules' | 'research-record' | null;
+  workbench: DashboardWorkbench | null;
 }>, options?: { replace?: boolean }) => void;
 
 export function useDashboardConfigWizardNav({

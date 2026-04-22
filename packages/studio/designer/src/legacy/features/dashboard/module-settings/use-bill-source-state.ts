@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 export type BillSourceEntry = {
   id: string;
   configType: string;
+  disabled: boolean;
   sourceName: string;
   sourceSql: string;
   sourceDetail: string;
@@ -28,6 +29,7 @@ export function useBillSourceState({ showToast }: UseBillSourceStateOptions) {
   const buildBillSourceEntry = useCallback((index: number, overrides: Partial<BillSourceEntry> = {}): BillSourceEntry => ({
     id: `bill-source-${Date.now()}-${index}`,
     configType: '普通来源',
+    disabled: false,
     sourceName: '',
     sourceSql: '',
     sourceDetail: '',
@@ -84,6 +86,52 @@ export function useBillSourceState({ showToast }: UseBillSourceStateOptions) {
     setBillSourceDraft((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  const updateBillSourceById = useCallback((sourceId: string, patch: Partial<BillSourceEntry>) => {
+    setBillSources((prev) => prev.map((item) => (
+      item.id === sourceId ? { ...item, ...patch } : item
+    )));
+    setBillSourceDraft((prev) => (
+      prev.id === sourceId ? { ...prev, ...patch } : prev
+    ));
+  }, []);
+
+  const deleteBillSourceById = useCallback((sourceId: string) => {
+    setBillSources((prev) => {
+      const nextSources = prev.filter((item) => item.id !== sourceId);
+      const nextActiveSource = nextSources[0] ?? null;
+
+      setActiveBillSourceId(nextActiveSource?.id ?? '');
+
+      if (nextActiveSource) {
+        setBillSourceDraft({ ...nextActiveSource });
+        setBillSourceDraftMode('edit');
+      } else {
+        setBillSourceDraft(buildBillSourceEntry(1));
+        setBillSourceDraftMode('create');
+      }
+
+      return nextSources;
+    });
+    showToast('来源已删除');
+  }, [buildBillSourceEntry, showToast]);
+
+  const hydrateBillSources = useCallback((nextSources: BillSourceEntry[]) => {
+    const availableSources = Array.isArray(nextSources) ? nextSources : [];
+    const nextActiveSource = availableSources.find((item) => item.id === activeBillSourceId) ?? availableSources[0] ?? null;
+
+    setBillSources(availableSources);
+    setActiveBillSourceId(nextActiveSource?.id ?? '');
+
+    if (nextActiveSource) {
+      setBillSourceDraft({ ...nextActiveSource });
+      setBillSourceDraftMode('edit');
+      return;
+    }
+
+    setBillSourceDraft(buildBillSourceEntry(availableSources.length + 1));
+    setBillSourceDraftMode('create');
+  }, [activeBillSourceId, buildBillSourceEntry]);
+
   const resetBillSourceState = useCallback(() => {
     setBillSources([]);
     setActiveBillSourceId('');
@@ -99,10 +147,13 @@ export function useBillSourceState({ showToast }: UseBillSourceStateOptions) {
     billSources,
     buildBillSourceEntry,
     createBillSourceDraft,
+    deleteBillSourceById,
+    hydrateBillSources,
     resetBillSourceState,
     saveBillSourceDraft,
     selectBillSourceDraft,
     setBillSourceDraft,
+    updateBillSourceById,
     updateBillSourceDraft,
   };
 }

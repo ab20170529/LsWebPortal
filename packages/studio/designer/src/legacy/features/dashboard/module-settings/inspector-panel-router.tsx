@@ -73,12 +73,6 @@ export function InspectorPanelRouter({
         ) === '表格'
       )
     );
-  const documentScopedGridContextMenuCount = isDocumentScopedGridInspector
-    ? (selectedColumnContext.column?.contextMenuItems ?? []).length
-    : 0;
-  const documentScopedGridColorRuleCount = isDocumentScopedGridInspector
-    ? (selectedColumnContext.column?.colorRules ?? []).length
-    : 0;
   const isBillFieldInspector = businessType === 'table'
     && selectedColumnContext.kind === 'column'
     && (
@@ -97,7 +91,7 @@ export function InspectorPanelRouter({
       ? '明细表'
       : '主表';
   const shouldHideBillInspectorTabs = isBillFieldInspector || isBillGridInspector;
-  const inspectorTabs: Array<{ count?: number; icon: string; id: InspectorTabId; label: string }> = selectedColumnContext.kind === 'grid-action'
+  const inspectorTabs: Array<{ icon: string; id: InspectorTabId; label: string }> = selectedColumnContext.kind === 'grid-action'
     ? [
         { id: 'common', label: '核心配置', icon: 'dashboard_customize' },
       ]
@@ -108,14 +102,12 @@ export function InspectorPanelRouter({
     : isDocumentScopedGridInspector
       ? [
           { id: 'common', label: documentScopedGridLabel, icon: 'dashboard_customize' },
-          { id: 'columns', label: '列数据', icon: 'table_rows' },
           { id: 'advanced', label: '布局', icon: 'view_stream' },
-          { id: 'contextmenu', label: '右键', icon: 'right_click', count: documentScopedGridContextMenuCount },
-          { id: 'color', label: '颜色', icon: 'palette', count: documentScopedGridColorRuleCount },
+          { id: 'contextmenu', label: '右键', icon: 'right_click' },
+          { id: 'color', label: '颜色', icon: 'palette' },
         ]
       : [
           { id: 'common', label: '核心配置', icon: 'dashboard_customize' },
-          { id: 'advanced', label: '扩展配置', icon: 'network_node' },
         ];
   const currentInspectorTab = inspectorTabs.some((tab) => tab.id === inspectorPanelTab) ? inspectorPanelTab : 'common';
   const isCommonPanelTab = currentInspectorTab === 'common';
@@ -123,14 +115,12 @@ export function InspectorPanelRouter({
   const isContextMenuPanelTab = currentInspectorTab === 'contextmenu';
   const isColorPanelTab = currentInspectorTab === 'color';
   const useIconOnlyInspectorTabs = isDocumentScopedGridInspector;
-  const inspectorCountBadgeClass = 'absolute -right-1 -top-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full border border-white bg-[#e04f5f] px-1 text-[9px] font-black leading-none text-white shadow-[0_10px_18px_-14px_rgba(224,79,95,0.78)] dark:border-slate-950';
-  const inspectorTabsNode = shouldHideBillInspectorTabs
+  const inspectorTabsNode = shouldHideBillInspectorTabs || inspectorTabs.length <= 1
     ? null
     : (
         <div className={useIconOnlyInspectorTabs ? 'inline-flex items-center gap-1 rounded-md border border-slate-200/80 bg-slate-100/90 p-0.5 dark:border-slate-800 dark:bg-slate-900' : shadcnTabListClass}>
           {inspectorTabs.map((tab) => {
             const isActive = currentInspectorTab === tab.id;
-            const hasCountBadge = typeof tab.count === 'number' && tab.count > 0;
 
             return (
               <button
@@ -149,11 +139,6 @@ export function InspectorPanelRouter({
               >
                 <span className={`material-symbols-outlined text-[18px] ${isActive ? 'text-[#1686e3]' : 'text-slate-400 dark:text-slate-500'}`}>{tab.icon}</span>
                 {useIconOnlyInspectorTabs ? <span className="sr-only">{tab.label}</span> : <span className="truncate">{tab.label}</span>}
-                {hasCountBadge ? (
-                  <span className={inspectorCountBadgeClass}>
-                    {tab.count! > 9 ? '9+' : tab.count}
-                  </span>
-                ) : null}
               </button>
             );
           })}
@@ -172,8 +157,6 @@ export function InspectorPanelRouter({
     return (
       <DetailTabInspector
         {...(detailTabProps as any)}
-        inspectorTabsNode={inspectorTabsNode}
-        isCommonPanelTab={isCommonPanelTab}
       />
     );
   }
@@ -182,8 +165,6 @@ export function InspectorPanelRouter({
     return (
       <ContextMenuInspector
         {...(contextMenuProps as any)}
-        inspectorTabsNode={inspectorTabsNode}
-        isCommonPanelTab={isCommonPanelTab}
       />
     );
   }
@@ -212,8 +193,6 @@ export function InspectorPanelRouter({
   return (
     <FieldInspectorController
       {...(fieldProps as any)}
-      isCommonPanelTab={isCommonPanelTab}
-      renderInspectorTabsNode={inspectorTabsNode}
     />
   );
 }

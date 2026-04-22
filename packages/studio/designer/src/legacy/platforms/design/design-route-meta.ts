@@ -10,7 +10,7 @@ export type DesignRouteMeta = {
 
 export const DESIGN_FIXED_ROUTE_META: readonly DesignRouteMeta[] = [
   {
-    href: '/designer/workspace',
+    href: '/design/workspace',
     key: 'workspace',
     migrationTargets: [
       'Keep the existing dashboard online as the active production workbench.',
@@ -21,7 +21,7 @@ export const DESIGN_FIXED_ROUTE_META: readonly DesignRouteMeta[] = [
     title: '旧工作区',
   },
   {
-    href: '/designer/module',
+    href: '/design/module',
     key: 'module',
     migrationTargets: [
       'Move module overview, module settings, and condition workbench flows here.',
@@ -32,7 +32,7 @@ export const DESIGN_FIXED_ROUTE_META: readonly DesignRouteMeta[] = [
     title: '模块设计',
   },
   {
-    href: '/designer/bill',
+    href: '/design/bill',
     key: 'bill',
     migrationTargets: [
       'Move bill document layout, bill header workbench, and detail-board editing here.',
@@ -43,7 +43,7 @@ export const DESIGN_FIXED_ROUTE_META: readonly DesignRouteMeta[] = [
     title: '布局设计',
   },
   {
-    href: '/designer/settings',
+    href: '/design/settings',
     key: 'settings',
     migrationTargets: [
       'Collect studio-level publish rules, governance toggles, and naming conventions.',

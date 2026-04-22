@@ -1,5 +1,7 @@
 import React from 'react';
+import { shadcnInspectorSectionClass, shadcnPanelBodyClass } from '../../../components/ui/shadcn-inspector';
 
+import type { GridFieldSettingsPreferenceScope } from '../../../lib/backend-grid-field-settings-preferences';
 import { saveSingleTableModuleConfig } from '../../../lib/backend-module-config';
 import {
   requestAiCreateMainTable,
@@ -26,7 +28,12 @@ import {
   GridSqlConfigSection,
   LeftGridMappingSection,
 } from './grid-overview-sections';
+import {
+  type GridFieldSettingsModalMode,
+  type GridFieldSettingsOpenRequest,
+} from './grid-field-settings-modal-types';
 import { PopupMenuManager } from './popup-menu-manager';
+import { SingleTableMainFieldSettingsModal } from './single-table-main-field-settings-modal';
 
 function isLowQualityTranslatedIdentifier(value: string) {
   return /^(?:field|column|col|unknown|temp|tmp)(?:_\d+)?$/i.test(String(value || '').trim());
@@ -56,7 +63,7 @@ type GridInspectorControllerProps = {
   buildGridColorRule: (index: number, overrides?: Record<string, any>) => any;
   businessType: string;
   compactCardClass: string;
-  compactInfoCardClass: string;
+  consumeFieldSettingsOpenRequest: () => void;
   context: any;
   currentMenuDraft: Record<string, any>;
   currentModuleCode: string;
@@ -83,6 +90,8 @@ type GridInspectorControllerProps = {
   isGeneratingSqlDraft: boolean;
   isTranslatingIdentifiers: boolean;
   leftFilterFields: any[];
+  fieldSettingsOpenRequest: GridFieldSettingsOpenRequest;
+  mainTableColumns: any[];
   loadSingleTableDetailResourcesById: (tabId: string, fillType: string) => Promise<any>;
   mainTableHiddenColumnsCount: number;
   fieldClass: string;
@@ -105,7 +114,6 @@ type GridInspectorControllerProps = {
   onStartDetailBoardFieldResize: (groupId: string, columnId: string, dimension: 'width' | 'height', event: React.PointerEvent) => void;
   onUpdateGridColumns: (scope: string, updater: React.SetStateAction<any[]>) => void;
   onUpdateBillHeaderWorkbenchRows: (rows: number) => void;
-  panelBadgeClass: string;
   panelHeaderClass: string;
   panelIconShellClass: string;
   panelShellClass: string;
@@ -163,7 +171,7 @@ export function GridInspectorController({
   buildGridColorRule,
   businessType,
   compactCardClass,
-  compactInfoCardClass,
+  consumeFieldSettingsOpenRequest,
   context,
   currentMenuDraft,
   currentModuleCode,
@@ -188,6 +196,8 @@ export function GridInspectorController({
   isGeneratingSqlDraft,
   isTranslatingIdentifiers,
   leftFilterFields,
+  fieldSettingsOpenRequest,
+  mainTableColumns,
   mainTableHiddenColumnsCount,
   fieldClass,
   getBillHeaderRowCount,
@@ -207,7 +217,6 @@ export function GridInspectorController({
   onStartDetailBoardFieldResize,
   onUpdateGridColumns,
   onUpdateBillHeaderWorkbenchRows,
-  panelBadgeClass,
   panelHeaderClass,
   panelIconShellClass,
   panelShellClass,
@@ -244,7 +253,7 @@ export function GridInspectorController({
   updateDetailTabConfigById,
   workspaceTheme,
 }: GridInspectorControllerProps) {
-  const availableGridColumns = context.availableColumns ?? [];
+  const availableGridColumns = React.useMemo(() => context.availableColumns ?? [], [context.availableColumns]);
   const currentGridConfig = context.column;
   const currentDetailBoard = normalizeDetailBoardConfig(currentGridConfig.detailBoard, availableGridColumns);
   const detailBoardTheme = getDetailBoardTheme(workspaceTheme);
@@ -336,6 +345,12 @@ export function GridInspectorController({
     : canManageDetailGridDecorations
       ? setSelectedDetailColorRuleId
       : setSelectedMainColorRuleId;
+  const [fieldSettingsModalState, setFieldSettingsModalState] = React.useState<{
+    initialFieldId?: string | null;
+    mode: GridFieldSettingsModalMode;
+  } | null>(null);
+  const [selectedColumnListItemId, setSelectedColumnListItemId] = React.useState<string | null>(null);
+  const handledFieldSettingsOpenRequestRef = React.useRef(0);
 
   const updateGridConfig = (patch: Record<string, any>) => {
     context.setCols((prev: Record<string, any>) => ({
@@ -344,23 +359,146 @@ export function GridInspectorController({
     }));
   };
 
-  const openGridColumnInspector = (columnId: string) => {
-    if (!columnId) {
-      return;
-    }
+  const canOpenFieldSettings = !isLeftGridConfig && (isMainGridConfig || isDocumentDetailGrid || isBillDetailGridConfig);
+  const selectedGridColumnId = isLeftGridConfig
+    ? (inspectorTarget.kind === 'left-col' ? inspectorTarget.id ?? null : null)
+    : isMainGridConfig
+      ? (inspectorTarget.kind === 'main-col' ? inspectorTarget.id ?? null : null)
+    : isDocumentDetailGrid || isBillDetailGridConfig
+      ? (inspectorTarget.kind === 'detail-col' ? inspectorTarget.id ?? null : null)
+      : null;
+  const displayedGridColumnListSelectionId = selectedColumnListItemId ?? selectedGridColumnId;
 
+  React.useEffect(() => {
+    setSelectedColumnListItemId(selectedGridColumnId);
+  }, [selectedGridColumnId, activeTab, context.scope]);
+
+  const resolveFieldSettingsModeForCurrentScope = React.useCallback((): GridFieldSettingsModalMode | null => {
     if (isLeftGridConfig) {
-      activateColumnSelection('left', columnId);
+      return null;
+    }
+
+    if (isBillHeadGridConfig) {
+      return 'bill-main';
+    }
+
+    if (isBillDetailGridConfig) {
+      return 'bill-detail';
+    }
+
+    if (isDocumentDetailGrid) {
+      return 'single-table-detail';
+    }
+
+    if (isMainGridConfig) {
+      return 'single-table-main';
+    }
+
+    return null;
+  }, [isBillDetailGridConfig, isBillHeadGridConfig, isDocumentDetailGrid, isLeftGridConfig, isMainGridConfig]);
+
+  const openFieldSettingsModal = React.useCallback((mode: GridFieldSettingsModalMode, fieldId?: string | null) => {
+    setFieldSettingsModalState({
+      initialFieldId: fieldId ?? null,
+      mode,
+    });
+  }, []);
+
+  const handleColumnListItemDoubleClick = React.useCallback((columnId: string) => {
+    const modalMode = resolveFieldSettingsModeForCurrentScope();
+    if (!modalMode) {
       return;
     }
 
-    if (isDocumentDetailGrid || isBillDetailGridConfig) {
-      activateColumnSelection('detail', columnId);
+    openFieldSettingsModal(modalMode, columnId);
+  }, [openFieldSettingsModal, resolveFieldSettingsModeForCurrentScope]);
+
+  React.useEffect(() => {
+    if (!fieldSettingsOpenRequest || fieldSettingsOpenRequest.key <= 0) {
       return;
     }
 
-    activateColumnSelection('main', columnId);
-  };
+    if (handledFieldSettingsOpenRequestRef.current === fieldSettingsOpenRequest.key) {
+      return;
+    }
+
+    handledFieldSettingsOpenRequestRef.current = fieldSettingsOpenRequest.key;
+    openFieldSettingsModal(fieldSettingsOpenRequest.mode, fieldSettingsOpenRequest.fieldId);
+    consumeFieldSettingsOpenRequest();
+  }, [consumeFieldSettingsOpenRequest, fieldSettingsOpenRequest, openFieldSettingsModal]);
+
+  const saveFieldSettings = React.useCallback(async (rows: any[]) => {
+    const currentMode = fieldSettingsModalState?.mode;
+    const saveScope = currentMode === 'single-table-detail' || currentMode === 'bill-detail'
+      ? 'detail-grid'
+      : 'main-grid';
+    const saveTabId = currentMode === 'single-table-detail' ? activeTab : undefined;
+
+    if (onSaveCurrentPage) {
+      return onSaveCurrentPage({
+        gridColumnsOverride: {
+          rows,
+          scope: saveScope,
+          ...(saveTabId ? { tabId: saveTabId } : {}),
+        },
+      });
+    }
+
+    onUpdateGridColumns(saveScope, rows);
+    return true;
+  }, [activeTab, fieldSettingsModalState?.mode, onSaveCurrentPage, onUpdateGridColumns]);
+
+  const modalRows = React.useMemo(() => {
+    const currentMode = fieldSettingsModalState?.mode;
+    if (currentMode === 'single-table-detail' || currentMode === 'bill-detail') {
+      return availableGridColumns;
+    }
+
+    if (currentMode === 'bill-main') {
+      return availableGridColumns.length > 0 ? availableGridColumns : mainTableColumns;
+    }
+
+    return mainTableColumns;
+  }, [availableGridColumns, fieldSettingsModalState?.mode, mainTableColumns]);
+
+  const modalTableLabel = React.useMemo(() => {
+    switch (fieldSettingsModalState?.mode) {
+      case 'single-table-detail':
+        return currentDetailTabName || context.title || '当前明细表';
+      case 'bill-main':
+        return currentModuleName || context.title || '单据主表';
+      case 'bill-detail':
+        return context.title || '单据明细表';
+      case 'single-table-main':
+      default:
+        return context.title || currentModuleName || '主表';
+    }
+  }, [context.title, currentDetailTabName, currentModuleName, fieldSettingsModalState?.mode]);
+  const fieldSettingsPreferenceScope = React.useMemo<GridFieldSettingsPreferenceScope | null>(() => {
+    const currentMode = fieldSettingsModalState?.mode;
+    const isBillMode = currentMode?.startsWith('bill') === true;
+    const ownerCode = isBillMode
+      ? String(currentGridConfig?.typeCode || currentGridConfig?.dllCoId || currentModuleCode || '').trim()
+      : String(currentModuleCode ?? '').trim();
+    if (!currentMode || !ownerCode) {
+      return null;
+    }
+
+    const viewScope = isBillMode
+      ? 'main'
+      : (currentMode.endsWith('detail') ? 'detail' : 'main');
+    return {
+      detailTabKey: viewScope === 'detail'
+        ? String(currentDetailTabConfig?.tabKey || activeTab || '').trim() || null
+        : null,
+      ownerCode,
+      ownerType: isBillMode ? 'bill' : 'single-table',
+      viewScope,
+    };
+  }, [activeTab, currentDetailTabConfig?.tabKey, currentGridConfig?.dllCoId, currentGridConfig?.typeCode, currentModuleCode, fieldSettingsModalState?.mode]);
+  const fieldSettingsModuleCode = React.useMemo(() => (
+    fieldSettingsPreferenceScope?.ownerCode || String(currentModuleCode ?? '').trim()
+  ), [currentModuleCode, fieldSettingsPreferenceScope?.ownerCode]);
 
   const updateActiveDetailTabConfig = (patch: Record<string, any>) => {
     if (!isDocumentDetailGrid) return;
@@ -672,7 +810,7 @@ export function GridInspectorController({
 
   return (
     <div className={panelShellClass}>
-      <div className={useQuietDocumentInspector ? 'shrink-0 border-b border-slate-200/80 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-950' : panelHeaderClass}>
+      <div className={useQuietDocumentInspector ? 'shrink-0 border-b border-slate-200/60 bg-white/80 px-3 py-2 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80' : panelHeaderClass}>
         {useQuietDocumentInspector ? (
           <div className="flex min-w-0 flex-col gap-1.5">
             <div className="flex min-w-0 items-center justify-between gap-2">
@@ -684,11 +822,6 @@ export function GridInspectorController({
                   {context.title}
                 </div>
               </div>
-              {isDetailChartInspector ? (
-                <span className="inline-flex items-center rounded-full border border-[#1686e3]/18 bg-[#1686e3]/8 px-2 py-0.5 text-[10px] font-bold text-[#1686e3]">
-                  p_systemdlltabchart
-                </span>
-              ) : null}
             </div>
             {hasInspectorTabs ? (
               <div className="flex min-w-0 items-center">
@@ -698,20 +831,12 @@ export function GridInspectorController({
           </div>
         ) : (
           <>
-            <div className={`flex min-w-0 gap-3 ${useCenteredBillGridHeader ? 'items-center' : 'items-start'}`}>
+            <div className={`flex min-w-0 gap-3 ${useCenteredBillGridHeader ? 'items-center' : 'items-center'}`}>
               <div className={`${panelIconShellClass} ${context.iconClass}`}>
                 <span className="material-symbols-outlined text-[18px]">{context.icon}</span>
               </div>
               <div className={`min-w-0 flex-1 ${useCenteredBillGridHeader ? 'flex min-h-10 items-center' : ''}`}>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className={panelTitleClass}>{context.title}</h3>
-                  {!useQuietDocumentInspector && !useCenteredBillGridHeader ? <span className={panelBadgeClass}>{isDocumentDetailGrid ? '明细页签' : '表格级配置'}</span> : null}
-                  {isDetailChartInspector ? (
-                    <span className="inline-flex items-center rounded-full border border-[#1686e3]/18 bg-[#1686e3]/8 px-2.5 py-1 text-[10px] font-bold text-[#1686e3]">
-                      p_systemdlltabchart
-                    </span>
-                  ) : null}
-                </div>
+                <h3 className={panelTitleClass}>{context.title}</h3>
               </div>
             </div>
             {showConditionWorkbenchAction ? (
@@ -733,7 +858,7 @@ export function GridInspectorController({
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-0 py-0">
+      <div className={shadcnPanelBodyClass}>
         {isContextMenuPanelTab && isGridDecorationManagerAvailable ? (
           <PopupMenuManager
             contextMenuItems={contextMenuItems}
@@ -785,16 +910,33 @@ export function GridInspectorController({
         ) : isColumnsPanelTab ? (
           <div className="space-y-0">
             <GridColumnDataSection
+              actionNode={canOpenFieldSettings ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const modalMode = resolveFieldSettingsModeForCurrentScope();
+                    if (modalMode) {
+                      openFieldSettingsModal(modalMode, displayedGridColumnListSelectionId);
+                    }
+                  }}
+                  className={`${quietDocumentInspectorActionClass} shrink-0`}
+                >
+                  <span className="material-symbols-outlined text-[14px]">table_view</span>
+                  详细设置
+                </button>
+              ) : null}
               title={documentGridColumnDataTitle}
               availableGridColumns={availableGridColumns}
               normalizeColumn={normalizeColumn}
-              onSelectColumn={openGridColumnInspector}
+              onDoubleClickColumn={handleColumnListItemDoubleClick}
+              onSelectColumn={setSelectedColumnListItemId}
+              selectedColumnId={displayedGridColumnListSelectionId}
             />
           </div>
         ) : isCommonPanelTab ? (
           isBillHeadGridConfig ? (
             <div className="space-y-0">
-              <section className={`${compactCardClass} w-full`}>
+              <section className={shadcnInspectorSectionClass}>
                 <div className="flex flex-wrap items-start gap-3">
                   <div className={sectionTitleClass}>
                     <span className="material-symbols-outlined text-[18px] text-[color:var(--workspace-accent)]">dashboard_customize</span>
@@ -834,6 +976,7 @@ export function GridInspectorController({
                 conditionValue={isDocumentDetailGrid ? (currentGridConfig.sourceCondition || currentGridConfig.defaultQuery || '') : (currentGridConfig.defaultQuery || '')}
                 hideConditionInput
                 isGeneratingSqlDraft={isGeneratingSqlDraft}
+                layoutMode="section"
                 onGenerateSqlDraft={generateGridSqlDraft}
                 onUpdateSqlPrompt={(value) => updateGridConfig({ sqlPrompt: value })}
                 onUpdateMainSql={(value) => updateGridConfig({ mainSql: value })}
@@ -868,6 +1011,7 @@ export function GridInspectorController({
                 conditionValue={useDetailSqlConfig ? (currentGridConfig.sourceCondition || currentGridConfig.defaultQuery || '') : (currentGridConfig.defaultQuery || '')}
                 mainSqlLabel="明细 SQL"
                 isGeneratingSqlDraft={isGeneratingSqlDraft}
+                layoutMode="section"
                 onGenerateSqlDraft={generateGridSqlDraft}
                 onUpdateSqlPrompt={(value) => updateGridConfig({ sqlPrompt: value })}
                 onUpdateMainSql={(value) => updateGridConfig({ mainSql: value })}
@@ -1054,12 +1198,12 @@ export function GridInspectorController({
             </div>
           ) : isLeftGridConfig ? (
             <div className="space-y-3">
-              <section className="rounded-[18px] border border-slate-200/75 bg-white/94 p-4 shadow-[0_16px_28px_-24px_rgba(15,23,42,0.16)] dark:border-slate-700 dark:bg-slate-900/55">
+              <section className={compactCardClass}>
                 <div className="flex items-center gap-2 text-[12px] font-bold text-slate-700 dark:text-slate-100">
                   <span className="material-symbols-outlined text-[17px] text-[color:var(--workspace-accent)]">view_stream</span>
                   <h4>左侧布局</h4>
                 </div>
-                <div className="mt-3 rounded-[16px] border border-dashed border-slate-200/80 bg-slate-50/80 px-4 py-6 text-[12px] leading-6 text-slate-500 dark:border-slate-700 dark:bg-slate-900/45 dark:text-slate-300">
+                <div className="mt-3 rounded-[16px] border border-dashed border-slate-200/60 bg-white/70 px-4 py-6 text-[12px] leading-6 text-slate-500 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
                   左侧树表暂不启用详情分组布局。列、条件、右键和颜色请分别在对应页签维护，动态 SQL 直接在所属树形字段的“基础定义”里配置。
                 </div>
               </section>
@@ -1069,12 +1213,13 @@ export function GridInspectorController({
               <ArchiveLayoutSummarySection
                 availableGridColumnCount={availableGridColumns.length}
                 compactCardClass={compactCardClass}
-                compactInfoCardClass={compactInfoCardClass}
                 groups={currentDetailBoard.groups}
                 onOpenConditionEditor={() => onOpenConditionWorkbench(isLeftGridConfig ? 'left' : 'main')}
                 onOpenEditor={onOpenArchiveLayoutEditor}
                 onOpenPreview={() => onOpenDetailBoardPreview(1, currentDetailBoard.sortColumnId)}
+                onSelectGroup={setSelectedDetailBoardGroupId}
                 sectionTitleClass={sectionTitleClass}
+                selectedGroupId={selectedDetailBoardGroupId}
               />
             </div>
           ) : isDocumentDetailGrid && isDetailChartInspector ? (
@@ -1089,7 +1234,6 @@ export function GridInspectorController({
                 activeDetailBoardResize={activeDetailBoardResize}
                 availableGridColumns={availableGridColumns}
                 compactCardClass={compactCardClass}
-                compactInfoCardClass={compactInfoCardClass}
                 currentDetailBoard={currentDetailBoard}
                 designerWorkbenchSensors={designerWorkbenchSensors}
                 detailBoardClipboardIds={detailBoardClipboardIds}
@@ -1113,6 +1257,18 @@ export function GridInspectorController({
           )
         )}
       </div>
+      <SingleTableMainFieldSettingsModal
+        currentModuleCode={fieldSettingsModuleCode}
+        initialFieldId={fieldSettingsModalState?.initialFieldId ?? null}
+        isOpen={fieldSettingsModalState != null}
+        mode={fieldSettingsModalState?.mode ?? 'single-table-main'}
+        onClose={() => setFieldSettingsModalState(null)}
+        onPreferenceError={showToast}
+        onSave={saveFieldSettings}
+        preferenceScope={fieldSettingsPreferenceScope}
+        rows={modalRows}
+        tableLabel={modalTableLabel}
+      />
     </div>
   );
 }

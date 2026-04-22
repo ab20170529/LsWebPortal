@@ -13,7 +13,6 @@ type DetailBoardLayoutManagerContainerProps = {
   } | null;
   availableGridColumns: Record<string, any>[];
   compactCardClass: string;
-  compactInfoCardClass: string;
   currentDetailBoard: Record<string, any>;
   designerWorkbenchSensors: any;
   detailBoardClipboardIds: string[];
@@ -40,7 +39,6 @@ type DetailBoardLayoutManagerContainerProps = {
 export const DetailBoardLayoutManagerContainer = React.memo(function DetailBoardLayoutManagerContainer({
   availableGridColumns,
   compactCardClass,
-  compactInfoCardClass,
   currentDetailBoard,
   emptyFieldsNode,
   normalizeColumn,
@@ -61,13 +59,14 @@ export const DetailBoardLayoutManagerContainer = React.memo(function DetailBoard
       <ArchiveLayoutSummarySection
         availableGridColumnCount={availableGridColumns.length}
         compactCardClass={compactCardClass}
-        compactInfoCardClass={compactInfoCardClass}
         emptyStateText="还没有明细分组"
         groupSummaryTitle="明细分组"
         groups={Array.isArray(currentDetailBoard?.groups) ? currentDetailBoard.groups : []}
         onOpenEditor={() => setIsEditorOpen(true)}
         onOpenPreview={() => onOpenDetailBoardPreview(1, currentDetailBoard.sortColumnId)}
+        onSelectGroup={setSelectedDetailBoardGroupId}
         sectionTitleClass={sectionTitleClass}
+        selectedGroupId={selectedDetailBoardGroupId}
         title="明细表格布局"
       />
 

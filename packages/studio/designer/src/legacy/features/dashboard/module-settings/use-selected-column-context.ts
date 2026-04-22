@@ -1,4 +1,4 @@
-import { useMemo, type Dispatch, type SetStateAction } from 'react';
+﻿import { useMemo, type Dispatch, type SetStateAction } from 'react';
 import {
   getGridOperationDefinition,
   getGridOperationEnabled,
@@ -184,7 +184,7 @@ export function useSelectedColumnContext({
             kind: 'condition' as const,
             scope: 'left-filter' as const,
             title: '左侧条件',
-            description: '控制左侧树表顶部条件区，配置会写入左边条件表并关联到所属树形字段。',
+            description: '控制左侧树表顶部条件区，配置会写入左侧条件表并关联到所属树形字段。',
             icon: 'filter_alt',
             iconClass: 'bg-indigo-500/12 text-indigo-500',
             column: condition,
@@ -285,8 +285,8 @@ export function useSelectedColumnContext({
       return buildGridActionContext(
         'main-grid-action',
         selectedMainGridActionId,
-        '涓昏〃鎿嶄綔鎸夐挳',
-        '閰嶇疆涓昏〃鍖哄煙鐨勫鍔犮€佸垹闄ゃ€佷慨鏀广€佷繚瀛樻寜閽€?',
+        '主表区操作按钮',
+        '配置主表区域的增加、删除、修改、保存按钮。',
         'bg-cyan-500/12 text-cyan-500',
         mainTableConfig,
         setMainTableConfig,
@@ -300,8 +300,8 @@ export function useSelectedColumnContext({
         return buildGridActionContext(
           'detail-grid-action',
           selectedDetailGridActionId,
-          `鏄庣粏鎿嶄綔鎸夐挳 路 ${activeDetailTabName}`,
-          '閰嶇疆褰撳墠鏄庣粏鎵€缁ф壙妯″潡鐨勫鍔犮€佸垹闄ゃ€佷慨鏀广€佷繚瀛樻寜閽€?',
+          `明细区操作按钮 · ${activeDetailTabName}`,
+          '配置当前明细所继承模块的增加、删除、修改、保存按钮。',
           'bg-sky-500/12 text-sky-500',
           detailGridConfig,
           (updater: SetStateAction<any>) => {
@@ -438,7 +438,7 @@ export function useSelectedColumnContext({
       return {
         kind: 'grid' as const,
         scope: 'detail-grid' as const,
-        title: `${detailGridLabel} · ${activeDetailTabName}`,
+        title: `${detailGridLabel} 路 ${activeDetailTabName}`,
         description: '',
         icon: selectedDetailInspectorMeta.icon,
         iconClass: 'bg-sky-500/12 text-sky-500',

@@ -12,8 +12,6 @@ import {
   getInitialAuthSession,
 } from './app/providers/auth-session-provider';
 import Login from './components/Login';
-import { persistAuthSession } from './shared/auth/session';
-import { fetchCurrentUserProfile } from './shared/api/auth';
 import { clearTransientLoginContext } from './shared/auth/login-context';
 
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -85,48 +83,6 @@ export default function App() {
       window.removeEventListener('hashchange', handleLocationChange);
     };
   }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    async function refreshCurrentSession() {
-      if (!session?.accessToken) {
-        return;
-      }
-
-      try {
-        const profile = await fetchCurrentUserProfile();
-        if (!active) {
-          return;
-        }
-
-        const refreshedSession: AuthSession = {
-          ...session,
-          companyKey: profile.companyKey || session.companyKey,
-          companyTitle: profile.companyTitle || session.companyTitle,
-          datasourceCode: profile.datasourceCode || session.datasourceCode,
-          departmentId: profile.departmentId || session.departmentId,
-          employeeId: profile.employeeId || session.employeeId,
-          employeeName: profile.employeeName || session.employeeName,
-          isAdmin: profile.isAdmin,
-          tokenVersion: profile.tokenVersion || session.tokenVersion,
-          username: profile.username || session.username,
-        };
-
-        setSession(refreshedSession);
-        const remember = typeof window !== 'undefined' && window.localStorage.getItem('ls-ai-tool-auth-session') !== null;
-        persistAuthSession(refreshedSession, remember);
-      } catch {
-        // Keep the stored session when profile refresh fails to avoid boot-looping the app.
-      }
-    }
-
-    void refreshCurrentSession();
-
-    return () => {
-      active = false;
-    };
-  }, [session?.accessToken]);
 
   const handleLogout = () => {
     clearCurrentAuthSession();

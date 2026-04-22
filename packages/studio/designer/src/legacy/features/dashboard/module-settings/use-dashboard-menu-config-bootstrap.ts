@@ -8,6 +8,7 @@ import {
   type BusinessType,
   type ModuleMenuDraft,
 } from './dashboard-menu-config-helpers';
+import { MODULE_SETTING_STEP } from './dashboard-shell-constants';
 
 function normalizeMenuCode(value?: string) {
   return value?.trim() || '';
@@ -66,8 +67,8 @@ export function useDashboardMenuConfigBootstrap({
     setIsMenuInfoSaving(false);
     setMenuConfigDraft(buildMenuConfigDraftDefaults(nextType));
     openModuleGuide(nextType, {
-      completedSteps: [1],
-      initialStep: Math.max(2, initialConfigStep),
+      completedSteps: [1, 2],
+      initialStep: Math.max(MODULE_SETTING_STEP, initialConfigStep),
       moduleCode: resolveMenuNodeModuleCode(nextMenu),
     });
     void loadMenuInfoForMenu(nextMenu);

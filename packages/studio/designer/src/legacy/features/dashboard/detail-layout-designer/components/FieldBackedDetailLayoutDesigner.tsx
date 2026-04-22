@@ -7,7 +7,14 @@ import type {
   DetailLayoutItem,
 } from '../types';
 import { buildFieldBackedPaletteItems } from '../utils/field-layout';
-import { DetailLayoutDesigner } from './DetailLayoutDesigner';
+import { DetailLayoutDesigner, type DetailLayoutDesignerRenderHelpers } from './DetailLayoutDesigner';
+
+export type FieldBackedDetailLayoutDesignerHelpers<T = any> = DetailLayoutDesignerRenderHelpers & {
+  addFieldOption: (fieldValue: string, overrides?: Partial<DetailLayoutItem>) => DetailLayoutItem | null;
+  fieldMap: Map<string, T>;
+  fieldOptions: DetailLayoutFieldOption<T>[];
+  findFieldOption: (fieldValue: string) => DetailLayoutFieldOption<T> | null;
+};
 
 type FieldBackedDetailLayoutDesignerProps<T = any> = {
   allowFieldEdit?: boolean;
@@ -28,13 +35,11 @@ type FieldBackedDetailLayoutDesignerProps<T = any> = {
   }>;
   paletteTitle?: string;
   paletteVariant?: 'cards' | 'plain';
+  panelLayoutClassName?: string;
+  renderPropertyPanel?: (helpers: FieldBackedDetailLayoutDesignerHelpers<T>) => React.ReactNode;
   renderFieldPreview: (field: T, index: number, scope: string) => React.ReactNode;
-  toolbarActions?: React.ReactNode | ((helpers: {
-    addPaletteItem: (paletteItem: any) => void;
-    itemCount: number;
-    selectedId: string | null;
-    selectedItem: DetailLayoutItem | null;
-  }) => React.ReactNode);
+  renderSidebar?: (helpers: FieldBackedDetailLayoutDesignerHelpers<T>) => React.ReactNode;
+  toolbarActions?: React.ReactNode | ((helpers: FieldBackedDetailLayoutDesignerHelpers<T>) => React.ReactNode);
 };
 
 export function FieldBackedDetailLayoutDesigner<T = any>({
@@ -50,7 +55,10 @@ export function FieldBackedDetailLayoutDesigner<T = any>({
   paletteLeadItems,
   paletteTitle,
   paletteVariant,
+  panelLayoutClassName,
+  renderPropertyPanel,
   renderFieldPreview,
+  renderSidebar,
   toolbarActions,
 }: FieldBackedDetailLayoutDesignerProps<T>) {
   const fieldMap = useMemo(
@@ -70,6 +78,10 @@ export function FieldBackedDetailLayoutDesigner<T = any>({
   }), [document, fieldOptions, getDefaultSize, paletteLeadItems]);
   const basicFieldOptions = useMemo(
     () => fieldOptions.map((fieldOption) => ({ label: fieldOption.label, value: fieldOption.value })),
+    [fieldOptions],
+  );
+  const fieldOptionMap = useMemo(
+    () => new Map(fieldOptions.map((fieldOption) => [fieldOption.value, fieldOption])),
     [fieldOptions],
   );
 
@@ -97,6 +109,35 @@ export function FieldBackedDetailLayoutDesigner<T = any>({
     );
   }, [fieldMap, renderFieldPreview]);
 
+  const buildRenderHelpers = useCallback((helpers: DetailLayoutDesignerRenderHelpers): FieldBackedDetailLayoutDesignerHelpers<T> => {
+    const findFieldOption = (fieldValue: string) => fieldOptionMap.get(fieldValue) ?? null;
+    const addFieldOption = (fieldValue: string, overrides: Partial<DetailLayoutItem> = {}) => {
+      const fieldOption = findFieldOption(fieldValue);
+      if (!fieldOption) {
+        return null;
+      }
+
+      const defaultSize = getDefaultSize(fieldOption.rawField);
+      return helpers.addItem(fieldOption.itemType, {
+        field: fieldOption.value,
+        h: defaultSize.h,
+        readOnly: Boolean(fieldOption.readOnly),
+        required: Boolean(fieldOption.required),
+        title: fieldOption.title ?? fieldOption.label,
+        w: defaultSize.w,
+        ...overrides,
+      });
+    };
+
+    return {
+      ...helpers,
+      addFieldOption,
+      fieldMap,
+      fieldOptions,
+      findFieldOption,
+    };
+  }, [fieldMap, fieldOptionMap, fieldOptions, getDefaultSize]);
+
   return (
     <DetailLayoutDesigner
       allowFieldEdit={allowFieldEdit}
@@ -110,8 +151,11 @@ export function FieldBackedDetailLayoutDesigner<T = any>({
       paletteDescription={paletteDescription}
       paletteTitle={paletteTitle}
       paletteVariant={paletteVariant}
+      panelLayoutClassName={panelLayoutClassName}
+      renderPropertyPanel={renderPropertyPanel ? (helpers) => renderPropertyPanel(buildRenderHelpers(helpers)) : undefined}
       renderItemContent={renderItemContent}
-      toolbarActions={toolbarActions}
+      renderSidebar={renderSidebar ? (helpers) => renderSidebar(buildRenderHelpers(helpers)) : undefined}
+      toolbarActions={typeof toolbarActions === 'function' ? (helpers) => toolbarActions(buildRenderHelpers(helpers)) : toolbarActions}
     />
   );
 }

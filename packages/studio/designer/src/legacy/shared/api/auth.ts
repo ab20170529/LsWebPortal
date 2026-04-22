@@ -6,12 +6,6 @@ const FIXED_EMPLOYEE_DIRECTORY_QUERY = {
   serverport: 16890,
 } as const;
 
-export interface AuthActiveCompany {
-  companyKey: string;
-  datasourceCode?: string;
-  title?: string;
-}
-
 export interface ServerOption {
   basename: string;
   companyKey: string;
@@ -38,74 +32,18 @@ export interface LoginPayload {
 
 export interface AuthSession {
   accessToken: string;
-  activeCompany?: AuthActiveCompany | null;
-  companyKey?: string;
-  companyTitle?: string;
-  datasourceCode?: string;
-  departmentId?: string;
+  companyKey: string;
+  companyTitle: string;
+  datasourceCode: string;
+  departmentId: string;
   employeeId: number;
   employeeName: string;
-  expiresAt?: string;
+  expiresAt: string;
+  tokenType: string;
+  tokenVersion: number;
+  username: string;
   isAdmin?: boolean;
-  loginStage: 'identity' | 'company';
   selectedCompanyOptionKey?: string;
-  tokenType?: string;
-  tokenVersion?: number;
-  username: string;
-}
-
-export interface AuthMeProfile {
-  activeCompany?: AuthActiveCompany | null;
-  companyKey?: string;
-  companyTitle?: string;
-  datasourceCode?: string;
-  departmentId?: string;
-  employeeId: number;
-  employeeName: string;
-  isAdmin?: boolean;
-  loginStage?: 'identity' | 'company';
-  tokenVersion?: number;
-  username: string;
-}
-
-type AuthSessionResponse = Omit<AuthSession, 'activeCompany' | 'loginStage' | 'isAdmin'> & {
-  activeCompany?: AuthActiveCompany | null;
-  admin?: boolean;
-  isAdmin?: boolean;
-  loginStage?: 'identity' | 'company';
-};
-
-function normalizeActiveCompany(session: AuthSessionResponse): AuthActiveCompany | null {
-  if (session.activeCompany?.companyKey) {
-    return session.activeCompany;
-  }
-
-  if (!session.companyKey && !session.datasourceCode && !session.companyTitle) {
-    return null;
-  }
-
-  return {
-    companyKey: session.companyKey ?? '',
-    datasourceCode: session.datasourceCode,
-    title: session.companyTitle,
-  };
-}
-
-function normalizeSession(session: AuthSessionResponse): AuthSession {
-  const activeCompany = normalizeActiveCompany(session);
-
-  return {
-    ...session,
-    activeCompany,
-    companyKey: activeCompany?.companyKey ?? session.companyKey,
-    companyTitle: activeCompany?.title ?? session.companyTitle,
-    datasourceCode: activeCompany?.datasourceCode ?? session.datasourceCode,
-    isAdmin: session.isAdmin ?? session.admin,
-    loginStage:
-      session.loginStage
-      ?? (activeCompany?.companyKey || activeCompany?.datasourceCode ? 'company' : 'identity'),
-    selectedCompanyOptionKey: activeCompany?.companyKey ?? session.companyKey,
-  };
 }
 
 async function requestEmployeeOptions() {
@@ -124,41 +62,13 @@ export async function fetchServerOptions(employeeId?: number | null) {
   });
 }
 
-export async function fetchAccessibleCompanies() {
-  return apiRequest<ServerOption[]>('/api/auth/companies', {
-    auth: true,
-    method: 'GET',
-  });
-}
-
 export async function fetchEmployeeOptions() {
   return requestEmployeeOptions();
 }
 
 export async function loginWithPassword(payload: LoginPayload) {
-  const response = await apiRequest<AuthSessionResponse>('/api/auth/login', {
+  return apiRequest<AuthSession>('/api/auth/login', {
     body: payload,
     method: 'POST',
-  });
-
-  return normalizeSession(response);
-}
-
-export async function switchCompanySession(companyKey: string) {
-  const response = await apiRequest<AuthSessionResponse>('/api/auth/company-session', {
-    auth: true,
-    body: {
-      companyKey,
-    },
-    method: 'POST',
-  });
-
-  return normalizeSession(response);
-}
-
-export async function fetchCurrentUserProfile() {
-  return apiRequest<AuthMeProfile>('/api/auth/me', {
-    auth: true,
-    method: 'GET',
   });
 }

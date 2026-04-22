@@ -5,13 +5,48 @@ import {
   fetchBillTypeDetailFields,
   fetchBillTypeDesignerLayout,
   fetchBillTypeMasterFields,
+  fetchBillTypeSources,
   fetchSingleTableModuleColors,
   fetchSingleTableModuleConditions,
   fetchSingleTableModuleConfig,
   fetchSingleTableModuleFields,
   fetchSingleTableModuleMenus,
 } from '../../../lib/backend-module-config';
+import { type BillSourceEntry } from './use-bill-source-state';
 import { buildBillHeaderFieldsFromDesignerLayout } from './dashboard-single-table-field-mappers';
+
+function toSourceDisabled(value: unknown) {
+  if (value === true || value === 1 || value === '1' || value === 'true' || value === 'TRUE') {
+    return true;
+  }
+
+  if (value === false || value === 0 || value === '0' || value === 'false' || value === 'FALSE') {
+    return false;
+  }
+
+  return false;
+}
+
+function mapBillTypeSourceRecordToEntry(
+  record: Record<string, unknown>,
+  index: number,
+  getRecordFieldValue: (record: Record<string, unknown> | null | undefined, ...keys: string[]) => unknown,
+  toRecordText: (value: unknown) => string,
+): BillSourceEntry {
+  const visibleValue = getRecordFieldValue(record, 'isVisible', 'isvisible', 'visible');
+  const rawId = getRecordFieldValue(record, 'id', 'ID', 'Id', 'sourceId', 'sourceid');
+  const normalizedId = toRecordText(rawId) || `bill-source-${index + 1}`;
+
+  return {
+    configType: toRecordText(getRecordFieldValue(record, 'configType', 'configtype', 'sourceConfigType', 'sourceconfigtype')) || '普通来源',
+    disabled: toSourceDisabled(visibleValue),
+    id: normalizedId,
+    sourceDetail: toRecordText(getRecordFieldValue(record, 'sourceDetail', 'sourcedetail', 'detailFields', 'detailfields', 'sourceFields', 'sourcefields')),
+    sourceName: toRecordText(getRecordFieldValue(record, 'sourceName', 'sourcename', 'name', 'Name')) || `来源 ${index + 1}`,
+    sourceSql: toRecordText(getRecordFieldValue(record, 'sourceSql', 'sourcesql', 'sql', 'SQL', 'relationSql', 'relationsql')),
+    sourceType: toRecordText(getRecordFieldValue(record, 'sourceType', 'sourcetype', 'type', 'Type')) || 'SQL',
+  };
+}
 
 export function useDashboardSingleTableMainResources({
   activeConfigModuleKey,
@@ -24,6 +59,7 @@ export function useDashboardSingleTableMainResources({
   configStep,
   getDashboardErrorMessage,
   getRecordFieldValue,
+  hydrateBillSources,
   isConfigOpen,
   mainResourceScopeKey,
   mapSingleTableColorRule,
@@ -43,6 +79,7 @@ export function useDashboardSingleTableMainResources({
   setSelectedMainFiltersForDelete,
   setSelectedMainForDelete,
   setSelectedDetailForDelete,
+  shouldLoadBillSources,
   showToast,
   toRecordNumber,
   toRecordText,
@@ -57,6 +94,7 @@ export function useDashboardSingleTableMainResources({
   configStep: number;
   getDashboardErrorMessage: (error: unknown) => string;
   getRecordFieldValue: (record: Record<string, unknown> | null | undefined, ...keys: string[]) => unknown;
+  hydrateBillSources: (sources: BillSourceEntry[]) => void;
   isConfigOpen: boolean;
   mainResourceScopeKey: string;
   mapSingleTableColorRule: (rule: any, index: number) => any;
@@ -76,6 +114,7 @@ export function useDashboardSingleTableMainResources({
   setSelectedDetailForDelete: Dispatch<SetStateAction<string[]>>;
   setSelectedMainFiltersForDelete: Dispatch<SetStateAction<string[]>>;
   setSelectedMainForDelete: Dispatch<SetStateAction<string[]>>;
+  shouldLoadBillSources: boolean;
   showToast: (message: string) => void;
   toRecordNumber: (value: unknown, fallback: number) => number;
   toRecordText: (value: unknown) => string;
@@ -428,6 +467,58 @@ export function useDashboardSingleTableMainResources({
     setInspectorTarget,
     setSelectedDetailForDelete,
     showToast,
+  ]);
+
+  useEffect(() => {
+    if (businessType !== 'table') {
+      return;
+    }
+
+    if (!canLoadBillTypeResources || !shouldLoadBillSources) {
+      return;
+    }
+
+    let isActive = true;
+
+    const loadBillSources = async () => {
+      try {
+        const rows = await fetchBillTypeSources(activeConfigModuleKey);
+
+        if (!isActive) {
+          return;
+        }
+
+        const mappedSources = rows.map((row, index) => mapBillTypeSourceRecordToEntry(
+          row,
+          index,
+          getRecordFieldValue,
+          toRecordText,
+        ));
+        hydrateBillSources(mappedSources);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        showToast(getDashboardErrorMessage(error));
+      }
+    };
+
+    void loadBillSources();
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    activeConfigModuleKey,
+    businessType,
+    canLoadBillTypeResources,
+    getDashboardErrorMessage,
+    getRecordFieldValue,
+    hydrateBillSources,
+    shouldLoadBillSources,
+    showToast,
+    toRecordText,
   ]);
 
   useEffect(() => {

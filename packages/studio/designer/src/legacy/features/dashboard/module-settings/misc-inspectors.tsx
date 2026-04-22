@@ -1,7 +1,11 @@
 import React from 'react';
 import {
-  shadcnPanelBadgeClass,
+  shadcnInspectorSectionClass,
+  shadcnInspectorSectionHeaderClass,
+  shadcnInspectorSectionTitleClass,
+  shadcnPanelBodyClass,
   shadcnPanelHeaderClass,
+  shadcnPanelHeaderMainClass,
   shadcnPanelIconShellClass,
   shadcnPanelShellClass,
   shadcnPanelTitleClass,
@@ -34,27 +38,24 @@ export function EmptyInspectorPanel({ workspaceThemeVars }: EmptyInspectorPanelP
   return (
     <div style={workspaceThemeVars} className={shadcnPanelShellClass}>
       <div className={shadcnPanelHeaderClass}>
-        <div className="flex items-start gap-3">
+        <div className={shadcnPanelHeaderMainClass}>
           <div className="flex size-8 items-center justify-center rounded-md border border-slate-200/80 bg-slate-50 text-[#1686e3] dark:border-slate-800 dark:bg-slate-900 dark:text-[#7cc0ff]">
             <span className="material-symbols-outlined text-[18px]">tune</span>
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={shadcnPanelBadgeClass}>右侧检查器</span>
-            </div>
-            <h3 className="mt-1.5 text-[15px] font-semibold tracking-[0.01em] text-slate-800 dark:text-slate-100">详细配置</h3>
+            <h3 className={shadcnPanelTitleClass}>详细配置</h3>
           </div>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center px-3 py-3">
-        <div className="w-full rounded-md border border-dashed border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/40">
-          <div className="flex items-center gap-3 rounded-md border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-950">
+      <div className={shadcnPanelBodyClass}>
+        <section className={`${shadcnInspectorSectionClass} flex min-h-full items-center justify-center`}>
+          <div className="w-full rounded-md border border-dashed border-slate-200/80 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/40">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[#eef6ff] text-[#1686e3] dark:bg-[#1686e3]/14 dark:text-[#7cc0ff]">
               <span className="material-symbols-outlined text-[20px]">touch_app</span>
             </div>
-            <div className="min-w-0 text-[12px] font-medium text-slate-600 dark:text-slate-200">选中对象后在这里编辑。</div>
+            <div className="mt-3 min-w-0 text-[12px] font-medium text-slate-600 dark:text-slate-200">选中对象后在这里编辑。</div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
@@ -74,24 +75,23 @@ export function WorkspaceThemeInspector({
   return (
     <div style={workspaceThemeVars} className={shadcnPanelShellClass}>
       <div className={shadcnPanelHeaderClass}>
-        <div className="flex items-start gap-3">
+        <div className={shadcnPanelHeaderMainClass}>
           <div className={`${panelIconShellClass} ${context.iconClass}`}>
             <span className="material-symbols-outlined text-[18px]">{context.icon}</span>
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className={shadcnPanelTitleClass}>{context.title}</h3>
-              <span className={shadcnPanelBadgeClass}>独立主题设置</span>
-            </div>
+            <h3 className={shadcnPanelTitleClass}>{context.title}</h3>
           </div>
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-        <section className={`rounded-[18px] border p-4 shadow-[0_18px_30px_-26px_rgba(15,23,42,0.18)] ${themeClasses.groupShell}`}>
-          <div className="mb-3 flex items-center gap-2 text-[12px] font-bold text-slate-700 dark:text-slate-100">
+      <div className={shadcnPanelBodyClass}>
+        <section className={`${shadcnInspectorSectionClass} ${themeClasses.groupShell} border-b-0`}>
+          <div className={shadcnInspectorSectionHeaderClass}>
+            <div className={shadcnInspectorSectionTitleClass}>
             <span className="material-symbols-outlined text-[17px] text-[color:var(--workspace-accent)]">palette</span>
-            选择主题
+              <h4>选择主题</h4>
+            </div>
           </div>
           <div className="grid gap-2.5">
             {themeOptions.map((theme) => {
