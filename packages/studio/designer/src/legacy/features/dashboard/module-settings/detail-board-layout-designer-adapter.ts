@@ -43,6 +43,7 @@ export type ArchiveLayoutScheme = {
   groups: ArchiveLayoutSchemeGroup[];
   id: string;
   name: string;
+  previewWorkbenchWidth?: number;
 };
 
 function isPlainObject(value: unknown): value is Record<string, any> {
@@ -206,6 +207,7 @@ function buildGroupChildItems(
       DETAIL_BOARD_GROUPBOX_MIN_WIDTH,
       maxRowWidth + DETAIL_BOARD_GROUP_PADDING_X * 2,
     ),
+    previewWorkbenchWidth: undefined,
   };
 }
 
@@ -600,6 +602,7 @@ export function createBlankArchiveLayoutScheme(name = '新方案'): ArchiveLayou
     ],
     id: createArchiveLayoutSchemeId(),
     name,
+    previewWorkbenchWidth: undefined,
   };
 }
 
@@ -679,6 +682,9 @@ export function normalizeArchiveLayoutSchemes(
         name: typeof scheme.name === 'string' && scheme.name.trim()
           ? scheme.name
           : `方案 ${schemeIndex + 1}`,
+        previewWorkbenchWidth: isFiniteNumber(scheme.previewWorkbenchWidth) && Number(scheme.previewWorkbenchWidth) > 0
+          ? Number(scheme.previewWorkbenchWidth)
+          : undefined,
       } satisfies ArchiveLayoutScheme;
     });
 }
