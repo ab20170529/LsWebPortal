@@ -827,12 +827,31 @@ function buildRowBucket(group: Record<string, any>, controlIds: string[]) {
     .map(([, rowControlIds]) => rowControlIds);
 }
 
-function getControlHeight(control: ArchiveLayoutDesignerControlSource, group: Record<string, any>) {
+function getControlWidth(control: ArchiveLayoutDesignerControlSource, group?: Record<string, any> | null) {
+  const explicitWidth = Number(group?.columnWidths?.[control.columnId]);
+  if (Number.isFinite(explicitWidth) && explicitWidth > 0) {
+    return Math.round(explicitWidth);
+  }
+  return Math.max(1, Math.round(control.controlWidth || UNASSIGNED_WIDTH));
+}
+
+function getControlHeight(control: ArchiveLayoutDesignerControlSource, group?: Record<string, any> | null) {
   const explicitHeight = Number(group?.columnHeights?.[control.columnId]);
   if (Number.isFinite(explicitHeight) && explicitHeight > 0) {
     return Math.round(explicitHeight);
   }
-  return Math.max(21, Math.round(control.controlHeight || UNASSIGNED_HEIGHT));
+  return Math.max(1, Math.round(control.controlHeight || UNASSIGNED_HEIGHT));
+}
+
+function getRowContentWidth(
+  rowControls: ArchiveLayoutDesignerControlSource[],
+  group?: Record<string, any> | null,
+) {
+  return rowControls.reduce((totalWidth, control, controlIndex) => (
+    totalWidth
+    + getControlWidth(control, group)
+    + (controlIndex > 0 ? FIELD_GAP : 0)
+  ), 0);
 }
 
 function normalizeIdentityToken(value: unknown) {
@@ -906,12 +925,18 @@ function buildArchiveLayoutGroupSnapshots(
       .map(String)
       .filter((columnId: string) => controlsById.has(columnId));
     const rowBuckets = buildRowBucket(group, groupControlIds);
+    let maxRowContentWidth = 0;
 
     let groupContentBottom = GROUP_HEADER_HEIGHT + GROUP_PADDING_TOP;
     rowBuckets.forEach((rowControlIds) => {
       const rowControls = rowControlIds
         .map((columnId) => controlsById.get(columnId))
         .filter(Boolean) as ArchiveLayoutDesignerControlSource[];
+      if (rowControls.length === 0) {
+        return;
+      }
+
+      maxRowContentWidth = Math.max(maxRowContentWidth, getRowContentWidth(rowControls, group));
       const rowHeight = rowControls.length > 0
         ? Math.max(...rowControls.map((control) => getControlHeight(control, group)))
         : 0;
@@ -928,7 +953,8 @@ function buildArchiveLayoutGroupSnapshots(
         ? groupContentBottom - DEFAULT_ROW_GAP + GROUP_PADDING_BOTTOM
         : GROUP_HEADER_HEIGHT + GROUP_PADDING_TOP + GROUP_PADDING_BOTTOM,
     );
-    const rect = buildLayoutRect(STAGE_OFFSET_X, currentTop, stageWidth, groupHeight);
+    const groupWidth = Math.max(stageWidth, GROUP_PADDING_X * 2 + maxRowContentWidth);
+    const rect = buildLayoutRect(STAGE_OFFSET_X, currentTop, groupWidth, groupHeight);
     const persistedId = sourceGroup ? getPersistedGroupId(sourceGroup.raw) : null;
     const name = toRecordText(group?.name || sourceGroup?.name) || `Group ${groupIndex + 1}`;
 
@@ -1099,7 +1125,7 @@ export function buildArchiveLayoutSaveBodies(
   let nextOrderId = 1;
 
   groupSnapshots.forEach((groupSnapshot) => {
-    const { currentGroup, name, rect, sourceGroup } = groupSnapshot;
+    const { currentGroup, name, rect } = groupSnapshot;
     const groupControlIds = groupSnapshot.controlIds;
     if (groupControlIds.length === 0) {
       return;
@@ -1107,23 +1133,26 @@ export function buildArchiveLayoutSaveBodies(
 
     groupControlIds.forEach((columnId: string) => assignedControlIdSet.add(columnId));
     const rowBuckets = buildRowBucket(currentGroup, groupControlIds);
-    const columnsPerRow = Math.max(1, Number(currentGroup?.columnsPerRow) || sourceGroup?.configuredColumnsPerRow || 1);
-    const safeSlotWidth = Math.max(
-      24,
-      Math.floor((rect.width - GROUP_PADDING_X * 2 - FIELD_GAP * Math.max(columnsPerRow - 1, 0)) / columnsPerRow),
-    );
     let currentTop = rect.top + GROUP_HEADER_HEIGHT + GROUP_PADDING_TOP;
 
     rowBuckets.forEach((rowControlIds) => {
       const rowControls = rowControlIds
         .map((columnId) => controlsById.get(columnId))
         .filter(Boolean) as ArchiveLayoutDesignerControlSource[];
-      const rowHeight = Math.max(...rowControls.map((control) => getControlHeight(control, currentGroup)));
+      if (rowControls.length === 0) {
+        return;
+      }
 
-      rowControls.forEach((control, slotIndex) => {
+      const rowHeight = Math.max(...rowControls.map((control) => getControlHeight(control, currentGroup)));
+      let currentLeft = rect.left + GROUP_PADDING_X;
+
+      rowControls.forEach((control) => {
+        const width = getControlWidth(control, currentGroup);
+        const height = getControlHeight(control, currentGroup);
         const matchedColumn = findMatchedCurrentColumn(control, currentColumns);
         const fieldId = resolvePersistedFieldId(control, matchedColumn);
         if (fieldId == null) {
+          currentLeft += width + FIELD_GAP;
           return;
         }
 
@@ -1134,6 +1163,7 @@ export function buildArchiveLayoutSaveBodies(
           || control.controlName,
         );
         if (!fieldName) {
+          currentLeft += width + FIELD_GAP;
           return;
         }
 
@@ -1143,13 +1173,14 @@ export function buildArchiveLayoutSaveBodies(
           fieldName,
           formKey,
           groupName: name,
-          height: getControlHeight(control, currentGroup),
-          left: rect.left + GROUP_PADDING_X + slotIndex * (safeSlotWidth + FIELD_GAP),
+          height,
+          left: currentLeft,
           orderId: nextOrderId,
           top: currentTop,
-          width: safeSlotWidth,
+          width,
         }));
         nextOrderId += 1;
+        currentLeft += width + FIELD_GAP;
       });
 
       currentTop += rowHeight + DEFAULT_ROW_GAP;
@@ -1181,11 +1212,11 @@ export function buildArchiveLayoutSaveBodies(
       fieldId,
       fieldName,
       formKey,
-      height: Math.max(UNASSIGNED_HEIGHT, control.controlHeight || UNASSIGNED_HEIGHT),
+      height: getControlHeight(control),
       left: UNASSIGNED_LEFT,
       orderId: nextOrderId,
-      top: maxGroupBottom + UNASSIGNED_TOP_GAP + index * (UNASSIGNED_HEIGHT + UNASSIGNED_ROW_GAP),
-      width: Math.max(UNASSIGNED_WIDTH, control.controlWidth || UNASSIGNED_WIDTH),
+      top: maxGroupBottom + UNASSIGNED_TOP_GAP + index * (getControlHeight(control) + UNASSIGNED_ROW_GAP),
+      width: getControlWidth(control),
     }));
     nextOrderId += 1;
   });

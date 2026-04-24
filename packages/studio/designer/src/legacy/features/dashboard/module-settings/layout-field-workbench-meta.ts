@@ -49,7 +49,7 @@ export function buildLayoutFieldWorkbenchMeta(
   const field = normalizeField(rawField);
   const isTallControl = isTallLayoutWorkbenchField(field);
   const minWidth = isTallControl ? 320 : DETAIL_BOARD_FIELD_MIN_WIDTH;
-  const minHeight = isTallControl ? DETAIL_BOARD_TALL_FIELD_MIN_HEIGHT : DETAIL_BOARD_FIELD_DEFAULT_HEIGHT;
+  const minHeight = isTallControl ? DETAIL_BOARD_TALL_FIELD_MIN_HEIGHT : 1;
   const preferredWidth = Number.isFinite(Number(customWidth)) && Number(customWidth) > 0
     ? Number(customWidth)
     : Number.isFinite(Number(field.width)) && Number(field.width) > 0
@@ -67,11 +67,11 @@ export function buildLayoutFieldWorkbenchMeta(
     width: clampNumber(preferredWidth, minWidth, DETAIL_BOARD_FIELD_MAX_WIDTH),
     height: isTallControl
       ? clampNumber(preferredHeight, minHeight, DETAIL_BOARD_TALL_FIELD_MAX_HEIGHT)
-      : DETAIL_BOARD_FIELD_DEFAULT_HEIGHT,
+      : Math.max(minHeight, Math.round(preferredHeight)),
     minWidth,
     minHeight,
     previewRows: isTallControl ? 4 : 1,
-    frameClass: isTallControl ? 'min-h-[96px]' : 'min-h-[52px]',
+    frameClass: '',
   };
 }
 

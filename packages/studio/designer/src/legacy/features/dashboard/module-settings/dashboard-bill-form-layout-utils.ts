@@ -62,6 +62,7 @@ type BillHeaderFlowLayoutField = Record<string, any>;
 type AlignBillHeaderFieldsToFlowLayoutOptions = {
   defaultHeight?: number;
   defaultWidth?: number;
+  enforceLabelMinWidth?: boolean;
   gapX?: number;
   gapY?: number;
   maxHeight?: number;
@@ -95,6 +96,7 @@ export function getBillHeaderFieldWidth(
   options: AlignBillHeaderFieldsToFlowLayoutOptions = {},
 ) {
   const defaultWidth = options.defaultWidth ?? BILL_FORM_DEFAULT_WIDTH;
+  const enforceLabelMinWidth = options.enforceLabelMinWidth ?? true;
   const minWidth = options.minWidth ?? BILL_FORM_MIN_WIDTH;
   const maxWidth = options.maxWidth ?? BILL_FORM_MAX_WIDTH;
   const minPreviewWidth = options.minPreviewWidth ?? BILL_FORM_MIN_PREVIEW_WIDTH;
@@ -104,6 +106,10 @@ export function getBillHeaderFieldWidth(
     minWidth,
     maxWidth,
   );
+
+  if (!enforceLabelMinWidth) {
+    return requestedWidth;
+  }
 
   return Math.max(requestedWidth, Math.min(maxWidth, labelWidth + minPreviewWidth + 8));
 }

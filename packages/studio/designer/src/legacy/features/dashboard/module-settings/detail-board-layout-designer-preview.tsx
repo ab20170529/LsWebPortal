@@ -130,7 +130,7 @@ export const DetailBoardLayoutDesignerPreview = React.memo(function DetailBoardL
                     key={String(item.field)}
                     data-detail-field-item="true"
                     style={{
-                      height: liveMeta.isTallControl ? liveHeight : undefined,
+                      height: liveHeight,
                       left: item.x,
                       maxWidth: liveWidth,
                       minWidth: liveMeta.minWidth,

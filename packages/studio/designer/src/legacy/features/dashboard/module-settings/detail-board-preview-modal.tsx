@@ -172,7 +172,11 @@ export const DetailBoardPreviewModal = React.memo(function DetailBoardPreviewMod
                             >
                               <div className="flex items-start gap-2">
                                 {rowColumns.map((column: any, columnIndex: number) => {
-                                  const layoutMeta = getLayoutFieldWorkbenchMeta(column, group.columnWidths?.[column.id]);
+                                  const layoutMeta = getLayoutFieldWorkbenchMeta(
+                                    column,
+                                    group.columnWidths?.[column.id],
+                                    group.columnHeights?.[column.id],
+                                  );
                                   const liveWidth = getDetailBoardFieldLiveWidth(group.id, column.id, layoutMeta.width);
                                   const liveHeight = getDetailBoardFieldLiveHeight(group.id, column.id, layoutMeta.height);
                                   const liveMeta = getLayoutFieldWorkbenchMeta(column, liveWidth, liveHeight);
@@ -185,7 +189,7 @@ export const DetailBoardPreviewModal = React.memo(function DetailBoardPreviewMod
                                         width: liveWidth,
                                         minWidth: liveMeta.minWidth,
                                         maxWidth: liveWidth,
-                                        height: liveMeta.isTallControl ? liveHeight : undefined,
+                                        height: liveHeight,
                                       }}
                                       className={`group relative min-w-0 shrink-0 self-start ${liveMeta.frameClass}`}
                                     >
