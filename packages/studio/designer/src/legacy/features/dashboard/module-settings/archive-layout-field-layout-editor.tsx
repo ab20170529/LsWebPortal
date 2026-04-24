@@ -30,22 +30,14 @@ import {
   DesignerWorkbenchDraggableItem,
   DesignerWorkbenchDropLane,
 } from '../dashboard-workbench-dnd';
-import type {
-  ArchiveLayoutScheme,
-  ArchiveLayoutSchemeFieldDefaults,
-} from './detail-board-layout-designer-adapter';
+import type { ArchiveLayoutScheme } from './detail-board-layout-designer-adapter';
 import {
   ARCHIVE_LAYOUT_PREVIEW_WIDTH_MAX as PREVIEW_WIDTH_MAX,
   ARCHIVE_LAYOUT_PREVIEW_WIDTH_MIN as PREVIEW_WIDTH_MIN,
-  countArchiveLayoutSchemeFields as countSchemeFields,
-  createArchiveLayoutSchemeGroupId as createSchemeGroupId,
-  createArchiveLayoutSchemeId as createSchemeId,
-  createEmptyArchiveLayoutScheme as createEmptyScheme,
   normalizeArchiveLayoutPreviewWorkbenchWidth as normalizePreviewWorkbenchWidth,
 } from './archive-layout-scheme-workbench-utils';
 import {
   BILL_FORM_DEFAULT_WIDTH,
-  BILL_FORM_MAX_WIDTH,
   BILL_FORM_MIN_CONTROL_HEIGHT,
   BILL_FORM_MIN_WIDTH,
   BILL_FORM_WORKBENCH_LAYOUT_GAP_X,
@@ -58,7 +50,10 @@ import {
   getBillHeaderFieldShellHeight,
   getBillHeaderFieldWidth,
 } from './dashboard-bill-form-layout-utils';
-import { useArchiveLayoutSchemeWorkbench } from './use-archive-layout-scheme-workbench';
+import {
+  useArchiveLayoutFieldPalette,
+  type ArchiveLayoutFieldPaletteEntry,
+} from './use-archive-layout-field-palette';
 
 const SURFACE_CLASS = 'rounded-[22px] border border-[#dbe6f1] bg-[linear-gradient(180deg,#fbfdff_0%,#f4f8fc_100%)] shadow-[0_18px_42px_-40px_rgba(15,23,42,0.18)]';
 const GROUP_HEADER_HEIGHT = 42;
@@ -78,10 +73,13 @@ const DASHBOARD_DRAG_FEEDBACK_MOTION_EXTRA_MS = 44;
 const DASHBOARD_DRAG_FEEDBACK_SETTLE_MS = 96;
 const DASHBOARD_DRAG_FEEDBACK_END_SETTLE_MS = 104;
 const DASHBOARD_DRAG_FEEDBACK_CANCEL_SETTLE_MS = 88;
-const PREVIEW_WIDTH_PRESETS = [
-  { key: 'compact' as const, label: '紧凑', value: 880 },
-  { key: 'standard' as const, label: '标准', value: 1080 },
-  { key: 'full' as const, label: '最大', value: PREVIEW_WIDTH_MAX },
+const ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT = 1;
+const ARCHIVE_LAYOUT_FIELD_MIN_WIDTH = 1;
+const ARCHIVE_LAYOUT_FIELD_MAX_WIDTH = 99999;
+const ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT = 99999;
+const PREVIEW_WIDTH_PRESET_KEYS = [
+  { key: 'compact' as const, label: '紧凑' },
+  { key: 'full' as const, label: '最大' },
 ];
 type ArchiveLayoutFieldLayoutEditorProps = {
   buildSchemeDocument: (scheme: ArchiveLayoutScheme, previewWorkbenchWidth?: number) => DetailLayoutDocument;
@@ -111,6 +109,9 @@ type ArchiveLayoutGroupRowViewModel = {
 };
 type ArchiveLayoutWorkbenchGroupRenderModel = {
   group: ArchiveLayoutGroupViewModel;
+  groupGapX: number;
+  groupGapY: number;
+  groupUsableWidth: number;
   laneMinHeight: number;
   rows: ArchiveLayoutGroupRowViewModel[];
 };
@@ -136,12 +137,30 @@ type FieldDropTarget = {
 };
 
 type FieldDragData = { fieldId: string; groupId: string; type: 'archive-field' };
+type PaletteFieldDragData = { anchorFieldId: string; fieldIds: string[]; type: 'archive-palette-field' };
 type GroupDragData = { groupId: string; type: 'archive-group' };
 type FieldInsertDropData = { beforeId: string | null; groupId: string; type: 'archive-field-insert' };
 type FieldRowDropData = { beforeId: string | null; groupId: string; rowNumber: number; type: 'archive-field-row' };
 type FieldSizeInputDraft = { fieldId: string | null; h: string; w: string };
 type WidthPreset = 'compact' | 'standard' | 'full';
 type HeightPreset = 'single' | 'comfortable' | 'expanded';
+type ArchiveLayoutGroupItem = DetailLayoutItem & {
+  fieldGapX?: number;
+  fieldGapY?: number;
+  rows?: number;
+};
+type ArchiveLayoutGroupFieldSizeDraft = {
+  h: string;
+  w: string;
+};
+type ArchiveLayoutGroupSettingsDraft = {
+  batchH: string;
+  batchW: string;
+  fieldSizes: Record<string, ArchiveLayoutGroupFieldSizeDraft>;
+  gapX: string;
+  gapY: string;
+  rowCount: string;
+};
 type FieldResizeState = {
   dimension: 'h' | 'w';
   fieldId: string;
@@ -155,16 +174,38 @@ type FieldResizePreview = {
   h: number;
   w: number;
 };
-type SidebarTabKey = 'fields' | 'structure' | 'schemes';
-type GroupedPlacedField = {
+type SidebarTabKey = 'fields' | 'structure';
+type StructureSection = {
+  fieldCount: number;
+  fields: Array<{
+    fieldId: string;
+    itemId: string | null;
+    title: string;
+  }>;
   groupId: string;
-  option: DetailLayoutFieldOption;
+  title: string;
 };
+type ArchiveLayoutFieldContextMenuState = {
+  anchorRect: {
+    bottom: number;
+    left: number;
+    right: number;
+    top: number;
+  };
+  fieldId: string;
+  groupId: string;
+  x: number;
+  y: number;
+} | null;
+
+const ARCHIVE_LAYOUT_FIELD_CONTEXT_MENU_WIDTH = 126;
+const ARCHIVE_LAYOUT_FIELD_CONTEXT_MENU_HEIGHT = 84;
+const ARCHIVE_LAYOUT_FIELD_CONTEXT_MENU_VIEWPORT_GAP = 10;
+const ARCHIVE_LAYOUT_FIELD_CONTEXT_MENU_FIELD_GAP = 10;
 
 const SIDEBAR_TABS: Array<{ key: SidebarTabKey; label: string }> = [
   { key: 'fields', label: '字段池' },
   { key: 'structure', label: '当前结构' },
-  { key: 'schemes', label: '已有方案' },
 ];
 
 function clampNumber(value: number, min: number, max: number) {
@@ -180,39 +221,6 @@ function areFieldDropTargetsEqual(left: FieldDropTarget | null, right: FieldDrop
   );
 }
 
-function buildSchemeFromCurrentLayout(groups: ArchiveLayoutGroupViewModel[]): ArchiveLayoutScheme {
-  const fieldDefaults = groups.reduce<Record<string, ArchiveLayoutSchemeFieldDefaults>>((result, group) => {
-    group.fields.forEach((field) => {
-      if (!field.field) {
-        return;
-      }
-      result[String(field.field)] = {
-        h: Number(field.h) || undefined,
-        w: Number(field.w) || undefined,
-      };
-    });
-    return result;
-  }, {});
-
-  const layoutGroups = groups.map((group, groupIndex) => ({
-    fieldIds: group.fields
-      .slice()
-      .sort((left, right) => (left.panelRow - right.panelRow) || (left.panelOrder - right.panelOrder) || (left.y - right.y) || (left.x - right.x))
-      .map((field) => String(field.field || ''))
-      .filter(Boolean),
-    id: createSchemeGroupId(`archive_layout_from_layout_group_${groupIndex + 1}`),
-    name: String(group.group.title || `信息分组 ${groupIndex + 1}`).trim() || `信息分组 ${groupIndex + 1}`,
-  })).filter((group) => group.fieldIds.length > 0);
-
-  return {
-    fieldDefaults,
-    groups: layoutGroups.length > 0 ? layoutGroups : createEmptyScheme().groups,
-    id: createSchemeId('archive_layout_from_layout'),
-    name: '当前布局方案',
-    previewWorkbenchWidth: undefined,
-  };
-}
-
 function getPreviewWorkbenchWidthFromDocument(document: DetailLayoutDocument) {
   const firstGroup = buildGroupOrder(document)[0];
   if (!firstGroup?.w) {
@@ -223,6 +231,127 @@ function getPreviewWorkbenchWidthFromDocument(document: DetailLayoutDocument) {
 
 function getGroupFlowUsableWidth(groupWidth: number) {
   return Math.max(BILL_FORM_MIN_WIDTH, groupWidth - BILL_FORM_WORKBENCH_LAYOUT_PADDING_X * 2);
+}
+
+function getArchiveLayoutFieldMaxWidth(groupUsableWidth?: number) {
+  void groupUsableWidth;
+  return ARCHIVE_LAYOUT_FIELD_MAX_WIDTH;
+}
+
+function getArchiveLayoutGroupRows(group: DetailLayoutItem) {
+  return Math.max(1, Number((group as ArchiveLayoutGroupItem).rows) || GROUP_DEFAULT_ROWS);
+}
+
+function getArchiveLayoutGroupGapX(group: DetailLayoutItem) {
+  return Math.max(0, Number((group as ArchiveLayoutGroupItem).fieldGapX) || BILL_FORM_WORKBENCH_LAYOUT_GAP_X);
+}
+
+function getArchiveLayoutGroupGapY(group: DetailLayoutItem) {
+  return Math.max(0, Number((group as ArchiveLayoutGroupItem).fieldGapY) || BILL_FORM_WORKBENCH_LAYOUT_GAP_Y);
+}
+
+function createEmptyGroupSettingsDraft(): ArchiveLayoutGroupSettingsDraft {
+  return {
+    batchH: '',
+    batchW: '',
+    fieldSizes: {},
+    gapX: String(BILL_FORM_WORKBENCH_LAYOUT_GAP_X),
+    gapY: String(BILL_FORM_WORKBENCH_LAYOUT_GAP_Y),
+    rowCount: String(GROUP_DEFAULT_ROWS),
+  };
+}
+
+function buildGroupSettingsDraft(group: ArchiveLayoutGroupViewModel): ArchiveLayoutGroupSettingsDraft {
+  return {
+    batchH: '',
+    batchW: '',
+    fieldSizes: Object.fromEntries(
+      group.fields.map((field) => [
+        field.id,
+        {
+          h: String(field.h),
+          w: String(field.w),
+        } satisfies ArchiveLayoutGroupFieldSizeDraft,
+      ]),
+    ),
+    gapX: String(getArchiveLayoutGroupGapX(group.group)),
+    gapY: String(getArchiveLayoutGroupGapY(group.group)),
+    rowCount: String(getArchiveLayoutGroupRows(group.group)),
+  };
+}
+
+function arrangeGroupDraftsForFlow(
+  drafts: FlowDraft[],
+  usableWidth: number,
+  gapX: number,
+): FlowDraft[] {
+  const orderedDrafts = normalizeDrafts(drafts);
+  let currentRow = 1;
+  let currentOrder = 0;
+  let currentRowWidth = 0;
+
+  return orderedDrafts.map((draft) => {
+    const width = Math.max(ARCHIVE_LAYOUT_FIELD_MIN_WIDTH, Math.round(Number(draft.w) || BILL_FORM_DEFAULT_WIDTH));
+    const requiresNextRow = currentOrder > 0 && currentRowWidth + gapX + width > usableWidth;
+
+    if (requiresNextRow) {
+      currentRow += 1;
+      currentOrder = 0;
+      currentRowWidth = 0;
+    }
+
+    currentOrder += 1;
+    currentRowWidth = currentOrder === 1 ? width : currentRowWidth + gapX + width;
+
+    return {
+      ...draft,
+      panelOrder: currentOrder,
+      panelRow: currentRow,
+    };
+  });
+}
+
+function wrapGroupDraftsWithinWidth(
+  drafts: FlowDraft[],
+  usableWidth: number,
+  gapX: number,
+): FlowDraft[] {
+  const orderedDrafts = normalizeDrafts(drafts);
+  if (orderedDrafts.length === 0) {
+    return orderedDrafts;
+  }
+
+  let currentRow = 1;
+  let currentOrder = 0;
+  let currentRowWidth = 0;
+  let currentSourceRow = orderedDrafts[0]?.panelRow ?? 1;
+
+  return orderedDrafts.map((draft, index) => {
+    const width = Math.max(ARCHIVE_LAYOUT_FIELD_MIN_WIDTH, Math.round(Number(draft.w) || BILL_FORM_DEFAULT_WIDTH));
+    const nextSourceRow = Math.max(1, draft.panelRow || 1);
+
+    if (index > 0 && nextSourceRow !== currentSourceRow) {
+      currentSourceRow = nextSourceRow;
+      currentRow += 1;
+      currentOrder = 0;
+      currentRowWidth = 0;
+    }
+
+    if (currentOrder > 0 && currentRowWidth + gapX + width > usableWidth) {
+      currentRow += 1;
+      currentOrder = 0;
+      currentRowWidth = 0;
+    }
+
+    currentOrder += 1;
+    currentRowWidth = currentOrder === 1 ? width : currentRowWidth + gapX + width;
+
+    return {
+      ...draft,
+      panelOrder: currentOrder,
+      panelRow: currentRow,
+    };
+  });
 }
 
 function parseArchiveFieldDragId(id: unknown) {
@@ -323,13 +452,14 @@ function getDisplayTitle(item: DetailLayoutItem, fieldOption?: DetailLayoutField
 }
 
 function getFieldWidthPresetValue(preset: WidthPreset, usableWidth: number) {
+  const maxWidth = getArchiveLayoutFieldMaxWidth(usableWidth);
   if (preset === 'compact') {
-    return clampNumber(Math.round((usableWidth - BILL_FORM_WORKBENCH_LAYOUT_GAP_X) / 2), BILL_FORM_MIN_WIDTH, BILL_FORM_MAX_WIDTH);
+    return clampNumber(Math.round((usableWidth - BILL_FORM_WORKBENCH_LAYOUT_GAP_X) / 2), ARCHIVE_LAYOUT_FIELD_MIN_WIDTH, maxWidth);
   }
   if (preset === 'full') {
-    return clampNumber(usableWidth, BILL_FORM_MIN_WIDTH, BILL_FORM_MAX_WIDTH);
+    return clampNumber(usableWidth, ARCHIVE_LAYOUT_FIELD_MIN_WIDTH, maxWidth);
   }
-  return clampNumber(BILL_FORM_DEFAULT_WIDTH, BILL_FORM_MIN_WIDTH, BILL_FORM_MAX_WIDTH);
+  return clampNumber(BILL_FORM_DEFAULT_WIDTH, ARCHIVE_LAYOUT_FIELD_MIN_WIDTH, maxWidth);
 }
 
 function stabilizeDocument(
@@ -386,19 +516,21 @@ function stabilizeDocument(
   const nextItems: DetailLayoutItem[] = [];
 
   groupOrder.forEach((group, groupIndex) => {
+    const groupGapX = getArchiveLayoutGroupGapX(group);
+    const groupGapY = getArchiveLayoutGroupGapY(group);
     const rawDrafts = draftOverrides?.get(group.id) ?? buildDrafts(childrenByParent.get(group.id) ?? []);
-    const preparedDrafts = normalizeDrafts(rawDrafts).map((item) => {
+    const drafts = wrapGroupDraftsWithinWidth(rawDrafts, groupFlowUsableWidth, groupGapX);
+    const preparedDrafts = drafts.map((item) => {
       const fieldOption = optionMap.get(String(item.field ?? ''));
       const defaultSize = fieldOption ? getDefaultSize(fieldOption.rawField as Record<string, any>) : { h: BILL_FORM_MIN_CONTROL_HEIGHT, w: BILL_FORM_DEFAULT_WIDTH };
       return {
         ...item,
-        resolvedHeight: clampNumber(item.h || defaultSize.h, BILL_FORM_MIN_CONTROL_HEIGHT, 160),
-        resolvedWidth: clampNumber(item.w || defaultSize.w, BILL_FORM_MIN_WIDTH, Math.min(BILL_FORM_MAX_WIDTH, groupFlowUsableWidth)),
+        resolvedHeight: clampNumber(item.h || defaultSize.h, ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT, ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT),
+        resolvedWidth: clampNumber(item.w || defaultSize.w, ARCHIVE_LAYOUT_FIELD_MIN_WIDTH, getArchiveLayoutFieldMaxWidth(groupFlowUsableWidth)),
       };
     });
-    const drafts = reindexDrafts(preparedDrafts);
     const aligned = alignBillHeaderFieldsToFlowLayout(
-      drafts.map((item) => {
+      preparedDrafts.map((item) => {
         const fieldOption = optionMap.get(String(item.field ?? ''));
         const rawField = (fieldOption?.rawField ?? {}) as Record<string, any>;
         return {
@@ -413,13 +545,16 @@ function stabilizeDocument(
       {
         defaultHeight: BILL_FORM_MIN_CONTROL_HEIGHT,
         defaultWidth: BILL_FORM_DEFAULT_WIDTH,
-        gapX: BILL_FORM_WORKBENCH_LAYOUT_GAP_X,
-        gapY: BILL_FORM_WORKBENCH_LAYOUT_GAP_Y,
+        enforceLabelMinWidth: false,
+        gapX: groupGapX,
+        gapY: groupGapY,
         layoutPaddingX: BILL_FORM_WORKBENCH_LAYOUT_PADDING_X,
         layoutPaddingY: BILL_FORM_WORKBENCH_LAYOUT_PADDING_Y,
-        maxWidth: BILL_FORM_MAX_WIDTH,
+        maxHeight: ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
+        maxWidth: getArchiveLayoutFieldMaxWidth(groupFlowUsableWidth),
+        minHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
         minRowHeight: BILL_FORM_WORKBENCH_MIN_ROW_HEIGHT,
-        minWidth: BILL_FORM_MIN_WIDTH,
+        minWidth: ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
       },
     ) as Array<{ canvasX?: number; canvasY?: number; controlHeight?: number; id: string; width?: number }>;
 
@@ -428,23 +563,39 @@ function stabilizeDocument(
       const alignedItem = alignedMap.get(item.id);
       return {
         ...item,
-        h: alignedItem ? getBillHeaderFieldHeight(alignedItem) : item.h,
+        h: alignedItem ? getBillHeaderFieldHeight(alignedItem, {
+          maxHeight: ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
+          minHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+        }) : item.h,
         parentId: group.id,
-        w: alignedItem ? getBillHeaderFieldWidth(alignedItem) : item.w,
+        w: alignedItem ? getBillHeaderFieldWidth(alignedItem, {
+          enforceLabelMinWidth: false,
+          maxWidth: getArchiveLayoutFieldMaxWidth(groupFlowUsableWidth),
+          minWidth: ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
+        }) : item.w,
         x: alignedItem?.canvasX ?? BILL_FORM_WORKBENCH_LAYOUT_PADDING_X,
         y: alignedItem?.canvasY ?? BILL_FORM_WORKBENCH_LAYOUT_PADDING_Y,
       };
     });
 
     const bodyHeight = childItems.reduce((max, item) => {
-      const shellHeight = getBillHeaderFieldShellHeight({ controlHeight: item.h, width: item.w });
+      const shellHeight = getBillHeaderFieldShellHeight(
+        { controlHeight: item.h, width: item.w },
+        {
+          maxHeight: ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
+          maxWidth: getArchiveLayoutFieldMaxWidth(groupFlowUsableWidth),
+          minHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+          minRowHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+          minWidth: ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
+        },
+      );
       return Math.max(max, item.y + shellHeight);
     }, BILL_FORM_WORKBENCH_LAYOUT_PADDING_Y + BILL_FORM_WORKBENCH_MIN_ROW_HEIGHT);
     const actualRowCount = Math.max(1, drafts.reduce((max, item) => Math.max(max, item.panelRow), 1));
-    const desiredRowCount = Math.max(actualRowCount, Number((group as DetailLayoutItem & { rows?: number }).rows) || 0);
+    const desiredRowCount = Math.max(actualRowCount, getArchiveLayoutGroupRows(group));
     const desiredBodyHeight = BILL_FORM_WORKBENCH_LAYOUT_PADDING_Y
       + desiredRowCount * BILL_FORM_WORKBENCH_MIN_ROW_HEIGHT
-      + Math.max(0, desiredRowCount - 1) * BILL_FORM_WORKBENCH_LAYOUT_GAP_Y;
+      + Math.max(0, desiredRowCount - 1) * groupGapY;
     const groupHeight = Math.max(GROUP_MIN_HEIGHT, Math.max(bodyHeight, desiredBodyHeight) + GROUP_HEADER_HEIGHT + 20);
 
     const nextGroup = {
@@ -455,7 +606,9 @@ function stabilizeDocument(
       x: 24,
       y: nextGroupY,
     };
-    (nextGroup as DetailLayoutItem & { rows?: number }).rows = desiredRowCount;
+    (nextGroup as ArchiveLayoutGroupItem).rows = desiredRowCount;
+    (nextGroup as ArchiveLayoutGroupItem).fieldGapX = groupGapX;
+    (nextGroup as ArchiveLayoutGroupItem).fieldGapY = groupGapY;
 
     nextItems.push(nextGroup);
     nextItems.push(...childItems);
@@ -490,7 +643,10 @@ function buildArchiveLayoutWorkbenchGroupRenderModels(
 ): ArchiveLayoutWorkbenchGroupRenderModel[] {
   return groups.map((group) => {
     const actualRowCount = Math.max(1, group.fields.reduce((max, item) => Math.max(max, item.panelRow), 1));
-    const desiredRowCount = Math.max(actualRowCount, Number((group.group as DetailLayoutItem & { rows?: number }).rows) || 0);
+    const desiredRowCount = Math.max(actualRowCount, getArchiveLayoutGroupRows(group.group));
+    const groupGapX = getArchiveLayoutGroupGapX(group.group);
+    const groupGapY = getArchiveLayoutGroupGapY(group.group);
+    const groupUsableWidth = getGroupFlowUsableWidth(group.group.w);
     const fieldsByRow = new Map<number, FlowDraft[]>();
 
     group.fields.forEach((field) => {
@@ -513,13 +669,32 @@ function buildArchiveLayoutWorkbenchGroupRenderModels(
 
     const laneMinHeight = group.fields.length > 0
       ? Math.max(...group.fields.map((item) => getBillHeaderFieldShellHeight({
-          controlHeight: getBillHeaderFieldHeight({ controlHeight: item.h }),
-          width: getBillHeaderFieldWidth({ width: item.w, name: String(item.title || item.field || '') }),
+          controlHeight: getBillHeaderFieldHeight({ controlHeight: item.h }, {
+            maxHeight: ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
+            minHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+          }),
+          width: getBillHeaderFieldWidth(
+            { width: item.w, name: String(item.title || item.field || '') },
+            {
+              enforceLabelMinWidth: false,
+              maxWidth: getArchiveLayoutFieldMaxWidth(groupUsableWidth),
+              minWidth: ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
+            },
+          ),
+        }, {
+          maxHeight: ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
+          maxWidth: getArchiveLayoutFieldMaxWidth(groupUsableWidth),
+          minHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+          minRowHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+          minWidth: ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
         })))
       : BILL_FORM_WORKBENCH_MIN_ROW_HEIGHT;
 
     return {
       group,
+      groupGapX,
+      groupGapY,
+      groupUsableWidth,
       laneMinHeight,
       rows,
     } satisfies ArchiveLayoutWorkbenchGroupRenderModel;
@@ -530,7 +705,6 @@ type ArchiveLayoutWorkbenchToolbarProps = {
   fieldCount: number;
   groupCount: number;
   onAddGroup: () => void;
-  onOpenSchemeModal: () => void;
   onPreviewWorkbenchWidthInputBlur: () => void;
   onPreviewWorkbenchWidthInputChange: (value: string) => void;
   onPreviewWorkbenchWidthInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -539,13 +713,14 @@ type ArchiveLayoutWorkbenchToolbarProps = {
   onPreviewWorkbenchWidthSliderCommit: () => void;
   previewWorkbenchWidthDraft: number;
   previewWorkbenchWidthInput: string;
+  previewWorkbenchWidthMax: number;
+  previewWidthPresets: Array<{ key: WidthPreset; label: string; value: number }>;
 };
 
 const ArchiveLayoutWorkbenchToolbar = React.memo(function ArchiveLayoutWorkbenchToolbar({
   fieldCount,
   groupCount,
   onAddGroup,
-  onOpenSchemeModal,
   onPreviewWorkbenchWidthInputBlur,
   onPreviewWorkbenchWidthInputChange,
   onPreviewWorkbenchWidthInputKeyDown,
@@ -554,13 +729,15 @@ const ArchiveLayoutWorkbenchToolbar = React.memo(function ArchiveLayoutWorkbench
   onPreviewWorkbenchWidthSliderCommit,
   previewWorkbenchWidthDraft,
   previewWorkbenchWidthInput,
+  previewWorkbenchWidthMax,
+  previewWidthPresets,
 }: ArchiveLayoutWorkbenchToolbarProps) {
   return (
-    <div className="border-b border-[#e4ecf5] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,250,255,0.92))] px-4 py-3">
+    <div className="border-b border-[#e4ecf5] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,250,255,0.92))] px-4 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Workbench</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
             <div className="text-[15px] font-semibold text-slate-900">详情布局工作台</div>
             <span className="rounded-full border border-[#dbe5ef] bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
               {groupCount} 组
@@ -573,30 +750,23 @@ const ArchiveLayoutWorkbenchToolbar = React.memo(function ArchiveLayoutWorkbench
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={onOpenSchemeModal}
-            className="inline-flex h-9 items-center justify-center rounded-[11px] border border-[#dbe5ef] bg-white px-3 text-[11px] font-semibold text-slate-600 transition-[background-color,color,border-color,box-shadow,transform] hover:-translate-y-[1px] hover:border-[#cddaea] hover:bg-[#f8fbff] hover:text-slate-800 hover:shadow-[0_12px_24px_-22px_rgba(15,23,42,0.18)]"
-          >
-            方案设置
-          </button>
-          <button
-            type="button"
             onClick={onAddGroup}
             className="inline-flex h-9 items-center justify-center rounded-[11px] border border-primary/20 bg-primary px-3 text-[11px] font-semibold text-white transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-[1px] hover:bg-primary/90 hover:shadow-[0_14px_28px_-24px_rgba(59,130,246,0.35)]"
           >
             新增分组
           </button>
-          <div className="rounded-[14px] border border-[#dbe5ef] bg-white px-3 py-2 shadow-[0_12px_24px_-24px_rgba(15,23,42,0.18)]">
+          <div className="rounded-[14px] border border-[#dbe5ef] bg-white px-2.5 py-1.5 shadow-[0_12px_24px_-24px_rgba(15,23,42,0.18)]">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-medium text-slate-500">预览宽度</span>
               <div className="inline-flex rounded-[10px] border border-[#dbe5ef] bg-[#f8fbff] p-1">
-                {PREVIEW_WIDTH_PRESETS.map((preset) => (
+                {previewWidthPresets.map((preset) => (
                   <button
                     key={preset.key}
                     type="button"
                     onClick={() => onPreviewWorkbenchWidthPresetSelect(preset.key)}
                     className={cn(
                       'rounded-[8px] px-2.5 py-1 text-[10px] font-semibold transition-colors',
-                      normalizePreviewWorkbenchWidth(previewWorkbenchWidthDraft) === preset.value
+                      previewWorkbenchWidthDraft === preset.value
                         ? 'bg-primary text-white shadow-[0_10px_24px_-24px_rgba(59,130,246,0.45)]'
                         : 'text-slate-500 hover:bg-white',
                     )}
@@ -605,19 +775,17 @@ const ArchiveLayoutWorkbenchToolbar = React.memo(function ArchiveLayoutWorkbench
                   </button>
                 ))}
               </div>
-            </div>
-            <div className="mt-2 flex items-center gap-2">
               <input
                 type="range"
                 min={PREVIEW_WIDTH_MIN}
-                max={PREVIEW_WIDTH_MAX}
+                max={previewWorkbenchWidthMax}
                 step={20}
                 value={previewWorkbenchWidthDraft}
                 onChange={(event) => onPreviewWorkbenchWidthSliderChange(Number(event.target.value))}
                 onPointerUp={onPreviewWorkbenchWidthSliderCommit}
                 onKeyUp={onPreviewWorkbenchWidthSliderCommit}
                 onBlur={onPreviewWorkbenchWidthSliderCommit}
-                className="h-4 w-28 accent-primary"
+                className="h-4 w-24 accent-primary"
               />
               <input
                 type="text"
@@ -627,7 +795,7 @@ const ArchiveLayoutWorkbenchToolbar = React.memo(function ArchiveLayoutWorkbench
                 onChange={(event) => onPreviewWorkbenchWidthInputChange(event.target.value)}
                 onBlur={onPreviewWorkbenchWidthInputBlur}
                 onKeyDown={onPreviewWorkbenchWidthInputKeyDown}
-                className="h-8 w-[72px] rounded-[10px] border border-[#d8e3ef] px-2 text-center text-[11px] text-slate-700 outline-none"
+                className="h-8 w-[68px] rounded-[10px] border border-[#d8e3ef] px-2 text-center text-[11px] text-slate-700 outline-none"
               />
             </div>
           </div>
@@ -638,109 +806,88 @@ const ArchiveLayoutWorkbenchToolbar = React.memo(function ArchiveLayoutWorkbench
 });
 
 type ArchiveLayoutSidebarProps = {
-  groupedPlacedFields: GroupedPlacedField[];
-  groupTitleById: Map<string, string>;
-  hasPlacedFields: boolean;
+  draggingPaletteFieldIdSet: Set<string>;
   keyword: string;
-  onAddGroup: () => void;
-  placedFieldItemIdByValue: Map<string, string>;
-  onAddFieldToGroup: (fieldId: string) => void;
-  onApplySpecificScheme: (scheme: ArchiveLayoutScheme) => void;
-  onCreateNewSchemeDraft: () => void;
-  onCreateSchemeFromCurrentLayout: () => void;
-  onDuplicateScheme: (scheme: ArchiveLayoutScheme) => void;
+  onClearPaletteSelection: () => void;
   onKeywordChange: (value: string) => void;
-  onOpenSchemeModal: (schemeId?: string | null, draft?: ArchiveLayoutScheme | null) => void;
+  onPaletteDragEnd: () => void;
+  onPaletteDragStart: (event: React.DragEvent<HTMLDivElement>, entry: ArchiveLayoutFieldPaletteEntry) => void;
   onSelectGroup: (groupId: string) => void;
   onSidebarTabChange: (tab: SidebarTabKey) => void;
   onSelectPlacedField: (groupId: string, fieldId: string | null) => void;
-  onSelectScheme: (scheme: ArchiveLayoutScheme) => void;
-  pendingOptions: DetailLayoutFieldOption[];
-  schemes: ArchiveLayoutScheme[];
-  schemeSourceId: string | null;
+  paletteEntries: ArchiveLayoutFieldPaletteEntry[];
   selectedFieldId: string | null;
   selectedGroupId: string | null;
+  selectedPaletteFieldIds: string[];
+  selectedPaletteFieldIdSet: Set<string>;
   sidebarTab: SidebarTabKey;
   staticWorkbenchMotionStyle: React.CSSProperties;
-  suggestedScheme: ArchiveLayoutScheme;
+  structureSections: StructureSection[];
+  togglePaletteFieldSelection: (
+    event: Pick<React.MouseEvent<HTMLElement>, 'ctrlKey' | 'metaKey'>,
+    entry: ArchiveLayoutFieldPaletteEntry,
+  ) => void;
 };
 
 const ArchiveLayoutSidebar = React.memo(function ArchiveLayoutSidebar({
-  groupedPlacedFields,
-  groupTitleById,
-  hasPlacedFields,
+  draggingPaletteFieldIdSet,
   keyword,
-  onAddGroup,
-  placedFieldItemIdByValue,
-  onAddFieldToGroup,
-  onApplySpecificScheme,
-  onCreateNewSchemeDraft,
-  onCreateSchemeFromCurrentLayout,
-  onDuplicateScheme,
+  onClearPaletteSelection,
   onKeywordChange,
-  onOpenSchemeModal,
+  onPaletteDragEnd,
+  onPaletteDragStart,
   onSelectGroup,
   onSidebarTabChange,
   onSelectPlacedField,
-  onSelectScheme,
-  pendingOptions,
-  schemes,
-  schemeSourceId,
+  paletteEntries,
   selectedFieldId,
   selectedGroupId,
+  selectedPaletteFieldIds,
+  selectedPaletteFieldIdSet,
   sidebarTab,
   staticWorkbenchMotionStyle,
-  suggestedScheme,
+  structureSections,
+  togglePaletteFieldSelection,
 }: ArchiveLayoutSidebarProps) {
-  const structureSections = React.useMemo(() => {
-    const sectionMap = new Map<string, { fieldIds: string[]; labels: string[]; title: string }>();
-
-    groupedPlacedFields.forEach(({ groupId, option }) => {
-      const current = sectionMap.get(groupId) ?? {
-        fieldIds: [],
-        labels: [],
-        title: groupTitleById.get(groupId) || DEFAULT_GROUP_TITLE,
-      };
-      current.fieldIds.push(String(option.value));
-      current.labels.push(String(option.title || option.label || option.value));
-      sectionMap.set(groupId, current);
-    });
-
-    return Array.from(sectionMap.entries()).map(([groupId, entry]) => ({
-      fieldCount: entry.fieldIds.length,
-      fieldIds: entry.fieldIds,
-      groupId,
-      previewText: entry.labels.slice(0, 3).join(' / '),
-      title: entry.title,
-    }));
-  }, [groupTitleById, groupedPlacedFields]);
+  const paletteEntryById = React.useMemo(
+    () => new Map(paletteEntries.map((entry) => [entry.fieldId, entry])),
+    [paletteEntries],
+  );
+  const selectedPalettePreviewEntries = React.useMemo(
+    () => selectedPaletteFieldIds
+      .map((fieldId) => paletteEntryById.get(fieldId))
+      .filter((entry): entry is ArchiveLayoutFieldPaletteEntry => Boolean(entry)),
+    [paletteEntryById, selectedPaletteFieldIds],
+  );
+  const selectedPaletteOrderMap = React.useMemo(
+    () => new Map(selectedPaletteFieldIds.map((fieldId, index) => [fieldId, index + 1])),
+    [selectedPaletteFieldIds],
+  );
+  const [paletteFilter, setPaletteFilter] = React.useState<'all' | 'pending' | 'placed'>('all');
+  const palettePendingCount = React.useMemo(
+    () => paletteEntries.filter((entry) => !entry.isPlaced).length,
+    [paletteEntries],
+  );
+  const palettePlacedCount = React.useMemo(
+    () => paletteEntries.filter((entry) => entry.isPlaced).length,
+    [paletteEntries],
+  );
+  const filteredPaletteEntries = React.useMemo(() => paletteEntries.filter((entry) => {
+    if (paletteFilter === 'pending') {
+      return !entry.isPlaced;
+    }
+    if (paletteFilter === 'placed') {
+      return entry.isPlaced;
+    }
+    return true;
+  }), [paletteEntries, paletteFilter]);
 
   return (
-    <aside className={cn(SURFACE_CLASS, 'flex min-h-0 flex-col overflow-hidden')}>
+    <aside className={cn(SURFACE_CLASS, 'min-w-0 flex min-h-0 flex-col overflow-hidden')}>
       <div className="border-b border-[#e4ecf5] px-3 py-2.5">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Selector</div>
-            <div className="mt-1 text-[15px] font-semibold text-slate-900">资源与结构</div>
-          </div>
-          <div className="grid w-[140px] shrink-0 grid-cols-2 gap-1 rounded-[12px] border border-[#dbe5ef] bg-white/88 p-1 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.22)]">
-            <button
-              type="button"
-              onClick={() => onOpenSchemeModal()}
-              className="inline-flex h-8 items-center justify-center rounded-[9px] bg-[#f8fbff] px-2 text-center text-[11px] font-semibold leading-tight text-slate-600 transition-[background-color,color,box-shadow,transform] hover:bg-[#eef5ff] hover:text-primary hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.2)]"
-              style={staticWorkbenchMotionStyle}
-            >
-              方案
-            </button>
-            <button
-              type="button"
-              onClick={onAddGroup}
-              className="inline-flex h-8 items-center justify-center rounded-[9px] bg-[#f8fbff] px-2 text-center text-[11px] font-semibold leading-tight text-slate-600 transition-[background-color,color,box-shadow,transform] hover:bg-[#eef5ff] hover:text-primary hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.2)]"
-              style={staticWorkbenchMotionStyle}
-            >
-              建组
-            </button>
-          </div>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Selector</div>
+          <div className="mt-1 text-[15px] font-semibold text-slate-900">资源与结构</div>
         </div>
         <input
           value={keyword}
@@ -749,11 +896,6 @@ const ArchiveLayoutSidebar = React.memo(function ArchiveLayoutSidebar({
           className="mt-2 h-8.5 w-full rounded-[10px] border border-[#d8e3ef] bg-white px-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 transition-[border-color,box-shadow,background-color] focus:border-primary/35 focus:bg-white focus:shadow-[0_0_0_3px_rgba(59,130,246,0.08)]"
           style={staticWorkbenchMotionStyle}
         />
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
-          <span className="rounded-full border border-[#dbe5ef] bg-white px-2 py-1">{pendingOptions.length} 待放入</span>
-          <span className="rounded-full border border-[#dbe5ef] bg-white px-2 py-1">{groupedPlacedFields.length} 已编排</span>
-          <span className="rounded-full border border-[#dbe5ef] bg-white px-2 py-1">{schemes.length} 方案</span>
-        </div>
         <div className="mt-2 inline-flex rounded-[10px] border border-[#dbe5ef] bg-white p-1">
           {SIDEBAR_TABS.map((tab) => (
             <button
@@ -774,27 +916,176 @@ const ArchiveLayoutSidebar = React.memo(function ArchiveLayoutSidebar({
       <div className="min-h-0 flex-1 p-2">
         {sidebarTab === 'fields' ? (
           <section className="flex h-full min-h-0 flex-col rounded-[14px] border border-[#e0e8f2] bg-white/82">
-            <div className="flex items-center justify-between border-b border-[#edf2f7] px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf2f7] px-3 py-2">
               <div className="text-[12px] font-semibold text-slate-700">字段池</div>
-              <div className="text-[11px] text-slate-400">{pendingOptions.length}</div>
+              <div className="flex flex-wrap items-center justify-end gap-1">
+                {[
+                  { key: 'all' as const, label: '全部字段', count: paletteEntries.length },
+                  { key: 'pending' as const, label: '待放入', count: palettePendingCount },
+                  { key: 'placed' as const, label: '已编排', count: palettePlacedCount },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setPaletteFilter(item.key)}
+                    className={cn(
+                      'rounded-full border px-2 py-1 text-[10px] font-medium transition-[border-color,background-color,color,box-shadow]',
+                      paletteFilter === item.key
+                        ? 'border-primary/24 bg-primary/8 text-primary shadow-[0_10px_18px_-16px_rgba(59,130,246,0.35)]'
+                        : 'border-[#dbe5ef] bg-white text-slate-500 hover:border-primary/18 hover:text-slate-700',
+                    )}
+                    style={staticWorkbenchMotionStyle}
+                  >
+                    {item.label} {item.count}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {pendingOptions.length > 0 ? pendingOptions.map((option) => (
-                <button
-                  key={String(option.value)}
-                  type="button"
-                  onClick={() => onAddFieldToGroup(String(option.value))}
-                  className="mb-2 flex w-full items-center justify-between rounded-[14px] border border-dashed border-[#d8e3ef] bg-[#f8fbff] px-3 py-3 text-left transition-[border-color,background-color,box-shadow,transform] hover:border-primary/40 hover:bg-white hover:shadow-[0_12px_24px_-24px_rgba(15,23,42,0.18)]"
-                  style={staticWorkbenchMotionStyle}
+            <div className="border-b border-[#edf2f7] bg-[linear-gradient(180deg,rgba(248,251,255,0.96),rgba(255,255,255,0.94))] px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Batch Drag</div>
+                {selectedPaletteFieldIds.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={onClearPaletteSelection}
+                    className="rounded-full border border-[#dbe5ef] bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500 transition-colors hover:border-primary/24 hover:text-primary"
+                    style={staticWorkbenchMotionStyle}
+                  >
+                    清空
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className={cn(
+                  'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold',
+                  selectedPaletteFieldIds.length > 0 ? 'bg-primary text-white shadow-[0_10px_18px_-16px_rgba(59,130,246,0.45)]' : 'bg-[#eef3f8] text-slate-500',
+                )}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] font-semibold text-slate-800">{option.title || option.label}</div>
-                    <div className="mt-1 truncate text-[11px] text-slate-400">{option.label}</div>
+                  {selectedPaletteFieldIds.length}
+                </span>
+                <div className="min-w-0 text-[11px] text-slate-600">
+                  {selectedPaletteFieldIds.length > 0 ? '拖动任一已选字段可整批放入布局' : '按住 Ctrl/Cmd 点击多个字段后批量拖入'}
+                </div>
+              </div>
+              {selectedPalettePreviewEntries.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedPalettePreviewEntries.slice(0, 4).map((entry, index) => (
+                    <span
+                      key={`selected-preview:${entry.fieldId}`}
+                      className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/14 bg-primary/7 px-2 py-1 text-[10px] font-medium text-primary"
+                    >
+                      <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-white text-[9px] font-semibold">
+                        {index + 1}
+                      </span>
+                      <span className="truncate max-w-[118px]">{entry.title}</span>
+                    </span>
+                  ))}
+                  {selectedPalettePreviewEntries.length > 4 ? (
+                    <span className="inline-flex items-center rounded-full border border-[#dbe5ef] bg-white px-2 py-1 text-[10px] font-medium text-slate-500">
+                      +{selectedPalettePreviewEntries.length - 4}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-2">
+              {filteredPaletteEntries.length > 0 ? filteredPaletteEntries.map((entry) => {
+                const isSelected = selectedPaletteFieldIdSet.has(entry.fieldId);
+                const isDragging = draggingPaletteFieldIdSet.has(entry.fieldId);
+                const selectionOrder = selectedPaletteOrderMap.get(entry.fieldId) ?? null;
+                const itemClassName = cn(
+                  'mb-2 flex w-full items-center justify-between rounded-[14px] border px-3 py-2.5 text-left transition-[border-color,background-color,box-shadow,transform,opacity] hover:border-primary/32 hover:bg-white hover:shadow-[0_12px_24px_-24px_rgba(15,23,42,0.18)]',
+                  isSelected ? 'border-primary/35 bg-[linear-gradient(180deg,rgba(239,246,255,0.92),rgba(255,255,255,0.96))] shadow-[0_16px_28px_-26px_rgba(59,130,246,0.26)] ring-1 ring-primary/10' : null,
+                  isDragging ? 'cursor-grabbing opacity-60 ring-2 ring-primary/18' : null,
+                  entry.isPlaced ? 'border-[#dbe5ef] bg-[#fbfdff]' : 'border-dashed border-[#d8e3ef] bg-[#f8fbff]',
+                );
+                const content = (
+                  <div className={cn('flex min-w-0 flex-1 items-center', entry.isPlaced ? 'gap-0' : 'gap-2.5')}>
+                    {!entry.isPlaced ? (
+                      <div
+                        className={cn(
+                          'mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-[transform,background-color,border-color,color,box-shadow]',
+                          selectionOrder
+                            ? 'border-primary bg-primary text-white shadow-[0_10px_18px_-16px_rgba(59,130,246,0.45)]'
+                            : 'border-[#dbe5ef] bg-white text-slate-400',
+                        )}
+                      >
+                        {selectionOrder ? selectionOrder : <span className="size-1.5 rounded-full bg-slate-300" />}
+                      </div>
+                    ) : null}
+                    <div className="min-w-0 flex flex-1 items-center gap-1.5">
+                      <div className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-800">{entry.title}</div>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                          entry.isPlaced
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-primary/16 bg-primary/8 text-primary',
+                        )}
+                      >
+                        {entry.isPlaced ? '已在布局' : '可拖入'}
+                      </span>
+                      <span
+                        className={cn(
+                          'max-w-[108px] shrink-0 truncate rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                          entry.isPlaced && entry.placedGroupName
+                            ? 'border-[#d8efe4] bg-[#f3fbf7] text-emerald-700'
+                            : 'border-[#dbe5ef] bg-white text-slate-500',
+                        )}
+                        title={entry.isPlaced && entry.placedGroupName ? entry.placedGroupName : '未放入布局'}
+                      >
+                        {entry.isPlaced && entry.placedGroupName ? entry.placedGroupName : '未放入'}
+                      </span>
+                    </div>
                   </div>
-                  <span className="ml-2 shrink-0 text-[11px] font-semibold text-primary">放入</span>
-                </button>
-              )) : (
-                <div className="px-2 py-6 text-center text-[12px] text-slate-400">所有字段都已放入布局</div>
+                );
+
+                if (entry.isPlaced) {
+                  return (
+                    <button
+                      key={entry.fieldId}
+                      type="button"
+                      onClick={(event) => togglePaletteFieldSelection(event, entry)}
+                      className={itemClassName}
+                      style={staticWorkbenchMotionStyle}
+                    >
+                      {content}
+                    </button>
+                  );
+                }
+
+                return (
+                  <div
+                    key={entry.fieldId}
+                    role="button"
+                    tabIndex={0}
+                    draggable
+                    title={`${entry.title} · 拖动放入布局`}
+                    className={cn(itemClassName, isDragging ? 'select-none' : 'cursor-grab active:cursor-grabbing')}
+                    style={staticWorkbenchMotionStyle}
+                    onClick={(event) => togglePaletteFieldSelection(event, entry)}
+                    onDragStart={(event) => onPaletteDragStart(event, entry)}
+                    onDragEnd={onPaletteDragEnd}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        togglePaletteFieldSelection(
+                          {
+                            ctrlKey: event.ctrlKey,
+                            metaKey: event.metaKey,
+                          },
+                          entry,
+                        );
+                      }
+                    }}
+                  >
+                    {content}
+                  </div>
+                );
+              }) : (
+                <div className="px-2 py-6 text-center text-[12px] text-slate-400">
+                  {paletteEntries.length > 0 ? '当前筛选下没有匹配字段' : '当前没有匹配字段'}
+                </div>
               )}
             </div>
           </section>
@@ -828,157 +1119,28 @@ const ArchiveLayoutSidebar = React.memo(function ArchiveLayoutSidebar({
                         {section.fieldCount}
                       </span>
                     </div>
-                    <div className="mt-1 truncate text-[11px] text-slate-400">
-                      {section.previewText || '当前分组还没有字段'}
-                    </div>
                   </button>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {section.fieldIds.slice(0, 4).map((fieldId) => {
-                      const itemId = placedFieldItemIdByValue.get(fieldId) ?? null;
-                      return (
-                        <button
-                          key={fieldId}
-                          type="button"
-                          onClick={() => onSelectPlacedField(section.groupId, itemId)}
-                          className={cn(
-                            'rounded-[9px] border px-2 py-1 text-[10px] font-medium transition-[background-color,color,border-color]',
-                            itemId === selectedFieldId
-                              ? 'border-primary/28 bg-primary/10 text-primary'
-                              : 'border-[#dbe5ef] bg-white text-slate-500 hover:border-[#cddaea] hover:text-slate-700',
-                          )}
-                        >
-                          定位
-                        </button>
-                      );
-                    })}
+                  <div className="mt-2 grid gap-1.5">
+                    {section.fields.map((field) => (
+                      <button
+                        key={`${section.groupId}:${field.fieldId}`}
+                        type="button"
+                        onClick={() => onSelectPlacedField(section.groupId, field.itemId)}
+                        className={cn(
+                          'flex items-center justify-between gap-2 rounded-[10px] border px-2.5 py-2 text-left text-[11px] transition-[background-color,color,border-color]',
+                          field.itemId === selectedFieldId
+                            ? 'border-primary/28 bg-primary/10 text-primary'
+                            : 'border-[#dbe5ef] bg-white text-slate-500 hover:border-[#cddaea] hover:text-slate-700',
+                        )}
+                      >
+                        <span className="truncate font-medium">{field.title}</span>
+                        <span className="shrink-0 text-[10px]">定位</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )) : (
                 <div className="px-2 py-6 text-center text-[12px] text-slate-400">当前没有匹配结构</div>
-              )}
-            </div>
-          </section>
-        ) : null}
-        {sidebarTab === 'schemes' ? (
-          <section className="flex h-full min-h-0 flex-col rounded-[14px] border border-[#e0e8f2] bg-white/82">
-            <div className="flex items-center justify-between border-b border-[#edf2f7] px-3 py-2">
-              <div className="min-w-0">
-                <div className="text-[12px] font-semibold text-slate-700">已有方案</div>
-              </div>
-              <div className="ml-3 rounded-full border border-[#e5ecf5] bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
-                {schemes.length} 个方案
-              </div>
-            </div>
-            <div className="border-b border-[#edf2f7] px-3 py-2">
-              <div className="grid gap-1 rounded-[12px] border border-[#dbe5ef] bg-white/90 p-1 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.22)]">
-                <div className="grid grid-cols-2 gap-1">
-                  <button
-                    type="button"
-                    onClick={onCreateSchemeFromCurrentLayout}
-                    disabled={!hasPlacedFields}
-                    className={cn(
-                      'inline-flex h-8 items-center justify-center rounded-[9px] px-2 text-center text-[10px] font-semibold leading-tight transition-[background-color,color,box-shadow,transform]',
-                      hasPlacedFields
-                        ? 'bg-[#f8fbff] text-slate-600 hover:bg-[#eef5ff] hover:text-primary hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.2)]'
-                        : 'cursor-not-allowed bg-[#f8fafc] text-slate-300',
-                    )}
-                    style={staticWorkbenchMotionStyle}
-                  >
-                    从布局生成
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onCreateNewSchemeDraft}
-                    className="inline-flex h-8 items-center justify-center rounded-[9px] bg-[#f8fbff] px-2 text-center text-[10px] font-semibold leading-tight text-slate-600 transition-[background-color,color,box-shadow,transform] hover:bg-[#eef5ff] hover:text-primary hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.2)]"
-                    style={staticWorkbenchMotionStyle}
-                  >
-                    新建方案
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onOpenSchemeModal()}
-                  className="inline-flex h-8 items-center justify-center rounded-[9px] bg-primary px-2 text-center text-[10px] font-semibold leading-tight text-white transition-[background-color,box-shadow,transform] hover:bg-primary/90 hover:shadow-[0_12px_24px_-24px_rgba(59,130,246,0.45)]"
-                  style={staticWorkbenchMotionStyle}
-                >
-                  打开方案设置
-                </button>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {schemes.length > 0 ? schemes.map((scheme) => (
-                <div
-                  key={scheme.id}
-                  className={cn(
-                    'mb-1.5 rounded-[12px] border px-2.5 py-2.5 transition-[border-color,background-color,box-shadow,transform]',
-                    schemeSourceId === scheme.id ? 'border-primary/35 bg-primary/5 shadow-[0_12px_24px_-24px_rgba(59,130,246,0.3)]' : 'border-[#edf2f7] bg-[#fbfdff] hover:border-[#d7e5f4] hover:bg-white hover:shadow-[0_12px_24px_-24px_rgba(15,23,42,0.18)]',
-                  )}
-                  style={staticWorkbenchMotionStyle}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12px] font-semibold text-slate-800">{scheme.name}</div>
-                      <div className="mt-1 text-[11px] text-slate-400">{scheme.groups.length} 个分组 · {countSchemeFields(scheme)} 个字段</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onSelectScheme(scheme)}
-                      className="rounded-[9px] border border-[#dbe5ef] bg-white px-2 py-1 text-[10px] font-semibold text-slate-500 transition-[background-color,color,box-shadow,transform] hover:bg-[#f8fbff] hover:text-slate-700 hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.18)]"
-                      style={staticWorkbenchMotionStyle}
-                    >
-                      选中
-                    </button>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onApplySpecificScheme(scheme)}
-                      className="rounded-[9px] border border-primary/20 bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-white transition-[background-color,box-shadow,transform] hover:bg-primary/90 hover:shadow-[0_12px_24px_-24px_rgba(59,130,246,0.45)]"
-                      style={staticWorkbenchMotionStyle}
-                    >
-                      应用
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenSchemeModal(scheme.id)}
-                      className="rounded-[9px] border border-[#dbe5ef] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 transition-[background-color,color,box-shadow,transform] hover:bg-[#f8fbff] hover:text-slate-700 hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.18)]"
-                      style={staticWorkbenchMotionStyle}
-                    >
-                      编辑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDuplicateScheme(scheme)}
-                      className="rounded-[9px] border border-[#dbe5ef] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 transition-[background-color,color,box-shadow,transform] hover:bg-[#f8fbff] hover:text-slate-700 hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.18)]"
-                      style={staticWorkbenchMotionStyle}
-                    >
-                      复制
-                    </button>
-                  </div>
-                </div>
-              )) : (
-                <div className="grid gap-3 rounded-[14px] border border-dashed border-[#d8e3ef] bg-[#f8fbff] px-4 py-6 text-center">
-                  <div className="text-[13px] font-semibold text-slate-700">还没有保存的方案</div>
-                  <div className="text-[12px] leading-5 text-slate-500">先设置分组并勾选字段，再保存为方案或一键放入布局。</div>
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={onCreateNewSchemeDraft}
-                      className="rounded-[10px] border border-[#dbe5ef] bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 transition-[background-color,color,box-shadow,transform] hover:bg-[#f8fbff] hover:shadow-[0_10px_24px_-24px_rgba(15,23,42,0.18)]"
-                      style={staticWorkbenchMotionStyle}
-                    >
-                      新建方案
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenSchemeModal(null, suggestedScheme)}
-                      className="rounded-[10px] border border-primary/20 bg-primary/8 px-3 py-2 text-[12px] font-semibold text-primary transition-[background-color,box-shadow,transform] hover:bg-primary/12 hover:shadow-[0_10px_24px_-24px_rgba(59,130,246,0.28)]"
-                      style={staticWorkbenchMotionStyle}
-                    >
-                      使用默认建议
-                    </button>
-                  </div>
-                </div>
               )}
             </div>
           </section>
@@ -1258,18 +1420,300 @@ const ArchiveLayoutSchemeFieldRow = React.memo(function ArchiveLayoutSchemeField
   );
 });
 
+void ArchiveLayoutSchemeFieldRow;
+
+type ArchiveLayoutFieldContextMenuOverlayProps = {
+  menu: ArchiveLayoutFieldContextMenuState;
+  onClose: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
+};
+
+function ArchiveLayoutFieldContextMenuOverlay({
+  menu,
+  onClose,
+  onEdit,
+  onRemove,
+}: ArchiveLayoutFieldContextMenuOverlayProps) {
+  if (!menu) {
+    return null;
+  }
+
+  const viewportGap = ARCHIVE_LAYOUT_FIELD_CONTEXT_MENU_VIEWPORT_GAP;
+  const fieldGap = ARCHIVE_LAYOUT_FIELD_CONTEXT_MENU_FIELD_GAP;
+  const menuWidth = ARCHIVE_LAYOUT_FIELD_CONTEXT_MENU_WIDTH;
+  const menuHeight = ARCHIVE_LAYOUT_FIELD_CONTEXT_MENU_HEIGHT;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const canPlaceRight = viewportWidth - menu.anchorRect.right >= menuWidth + fieldGap + viewportGap;
+  const canPlaceLeft = menu.anchorRect.left >= menuWidth + fieldGap + viewportGap;
+  const canPlaceBelow = viewportHeight - menu.anchorRect.bottom >= menuHeight + fieldGap + viewportGap;
+  const canPlaceAbove = menu.anchorRect.top >= menuHeight + fieldGap + viewportGap;
+  const unclampedLeft = canPlaceRight
+    ? menu.anchorRect.right + fieldGap
+    : canPlaceLeft
+      ? menu.anchorRect.left - menuWidth - fieldGap
+      : menu.anchorRect.left;
+  const unclampedTop = canPlaceRight || canPlaceLeft
+    ? menu.anchorRect.top
+    : canPlaceBelow
+      ? menu.anchorRect.bottom + fieldGap
+      : canPlaceAbove
+        ? menu.anchorRect.top - menuHeight - fieldGap
+        : menu.y;
+  const left = clampNumber(
+    unclampedLeft,
+    viewportGap,
+    Math.max(viewportGap, viewportWidth - menuWidth - viewportGap),
+  );
+  const top = clampNumber(
+    unclampedTop,
+    viewportGap,
+    Math.max(viewportGap, viewportHeight - menuHeight - viewportGap),
+  );
+
+  return createPortal(
+    <div className="fixed inset-0 z-[122]" onClick={onClose}>
+      <div
+        className="absolute min-w-[126px] overflow-hidden rounded-[10px] border border-white/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(248,250,253,0.98))] p-0.5 shadow-[0_12px_24px_-22px_rgba(15,23,42,0.22)] backdrop-blur-lg"
+        style={{
+          left,
+          top,
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="overflow-hidden rounded-[8px] bg-white/98 p-0.5">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex w-full items-center gap-1.5 rounded-[7px] px-1.5 py-1.5 text-left transition-colors hover:bg-[#eef6ff]"
+          >
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-[#1686e3]/10 text-[#1686e3]">
+              <span className="material-symbols-outlined text-[12px]">edit_square</span>
+            </div>
+            <div className="truncate text-[10px] font-medium leading-none text-slate-700">快编</div>
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="mt-0.5 flex w-full items-center gap-1.5 rounded-[7px] px-1.5 py-1.5 text-left transition-colors hover:bg-rose-50"
+          >
+            <div className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-rose-500/10 text-rose-500">
+              <span className="material-symbols-outlined text-[12px]">delete</span>
+            </div>
+            <div className="truncate text-[10px] font-medium leading-none text-slate-700">移除</div>
+          </button>
+        </div>
+      </div>
+    </div>,
+    globalThis.document.body,
+  );
+}
+
+type ArchiveLayoutGroupSettingsPanelProps = {
+  draft: ArchiveLayoutGroupSettingsDraft;
+  group: ArchiveLayoutGroupViewModel | null;
+  onApply: () => void;
+  onBatchInputChange: (dimension: 'h' | 'w', value: string) => void;
+  onClose: () => void;
+  onFieldSizeChange: (fieldId: string, dimension: 'h' | 'w', value: string) => void;
+  onFillBatchToFields: () => void;
+  onGroupSettingChange: (key: 'gapX' | 'gapY' | 'rowCount', value: string) => void;
+  onLocateField: (groupId: string, fieldId: string) => void;
+  selectedFieldId: string | null;
+  visible: boolean;
+};
+
+const ArchiveLayoutGroupSettingsPanel = React.memo(function ArchiveLayoutGroupSettingsPanel({
+  draft,
+  group,
+  onApply,
+  onBatchInputChange,
+  onClose,
+  onFieldSizeChange,
+  onFillBatchToFields,
+  onGroupSettingChange,
+  onLocateField,
+  selectedFieldId,
+  visible,
+}: ArchiveLayoutGroupSettingsPanelProps) {
+  const orderedFields = React.useMemo(
+    () => (group ? normalizeDrafts(group.fields) : []),
+    [group],
+  );
+
+  return (
+    <aside className={cn(SURFACE_CLASS, 'min-w-0 flex min-h-0 flex-col overflow-hidden')}>
+      <div className="border-b border-[#e4ecf5] px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Group Settings</div>
+            <div className="mt-1 text-[15px] font-semibold text-slate-900">
+              {visible && group ? String(group.group.title || DEFAULT_GROUP_TITLE) : '右键分组区域'}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              {visible && group ? `共 ${orderedFields.length} 个字段，应用后自动重排` : '在中间画布右键某个分组，打开当前分组设置'}
+            </div>
+          </div>
+          {visible ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-[10px] border border-[#dbe5ef] bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 hover:bg-[#f8fbff]"
+            >
+              收起
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {visible && group ? (
+        <>
+          <div className="border-b border-[#edf2f7] px-4 py-3">
+            <div className="grid gap-2.5">
+              <div className="grid grid-cols-3 gap-2">
+                <label className="grid min-w-0 gap-1 text-[10px] text-slate-500">
+                  <span>行数</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.rowCount}
+                    onChange={(event) => onGroupSettingChange('rowCount', event.target.value.replace(/[^\d]/g, ''))}
+                    className="h-8 w-full min-w-0 rounded-[10px] border border-[#d8e3ef] px-2.5 text-[12px] outline-none"
+                  />
+                </label>
+                <label className="grid min-w-0 gap-1 text-[10px] text-slate-500">
+                  <span>字段间距</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.gapX}
+                    onChange={(event) => onGroupSettingChange('gapX', event.target.value.replace(/[^\d]/g, ''))}
+                    className="h-8 w-full min-w-0 rounded-[10px] border border-[#d8e3ef] px-2.5 text-[12px] outline-none"
+                  />
+                </label>
+                <label className="grid min-w-0 gap-1 text-[10px] text-slate-500">
+                  <span>行间距</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.gapY}
+                    onChange={(event) => onGroupSettingChange('gapY', event.target.value.replace(/[^\d]/g, ''))}
+                    className="h-8 w-full min-w-0 rounded-[10px] border border-[#d8e3ef] px-2.5 text-[12px] outline-none"
+                  />
+                </label>
+              </div>
+              <div className="rounded-[12px] border border-[#e7eef6] bg-[#f8fbff] p-3">
+                <div className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-2">
+                  <div className="pb-2 text-[11px] font-semibold text-slate-700">全部</div>
+                  <label className="grid min-w-0 gap-1 text-[10px] text-slate-500">
+                    <span>宽度</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={draft.batchW}
+                      onChange={(event) => onBatchInputChange('w', event.target.value.replace(/[^\d]/g, ''))}
+                      className="h-8 w-full min-w-0 rounded-[10px] border border-[#d8e3ef] bg-white px-2 text-right font-medium tabular-nums text-[11px] outline-none"
+                    />
+                  </label>
+                  <label className="grid min-w-0 gap-1 text-[10px] text-slate-500">
+                    <span>高度</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={draft.batchH}
+                      onChange={(event) => onBatchInputChange('h', event.target.value.replace(/[^\d]/g, ''))}
+                      className="h-8 w-full min-w-0 rounded-[10px] border border-[#d8e3ef] bg-white px-2 text-right font-medium tabular-nums text-[11px] outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={onFillBatchToFields}
+                    className="h-8 rounded-[10px] border border-primary/18 bg-primary/8 px-3 text-[11px] font-semibold text-primary hover:bg-primary/12"
+                  >
+                    一键应用
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            <div className="grid gap-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_72px_72px] items-center gap-2 rounded-[10px] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-400">
+                <span>字段</span>
+                <span className="text-center">宽度</span>
+                <span className="text-center">高度</span>
+              </div>
+              {orderedFields.map((field) => (
+                <div
+                  key={field.id}
+                  className={cn(
+                    'grid grid-cols-[minmax(0,1fr)_72px_72px] items-center gap-2 rounded-[12px] border bg-white px-3 py-2 transition-colors',
+                    selectedFieldId === field.id
+                      ? 'border-primary/26 bg-primary/[0.035]'
+                      : 'border-[#e7eef6] hover:border-[#d9e5f2] hover:bg-[#fbfdff]',
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onLocateField(group.group.id, field.id)}
+                    className="truncate text-left text-[12px] font-semibold text-slate-800 hover:text-primary"
+                    title={String(field.title || field.field || '字段')}
+                  >
+                    {String(field.title || field.field || '字段')}
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.fieldSizes[field.id]?.w ?? ''}
+                    onChange={(event) => onFieldSizeChange(field.id, 'w', event.target.value.replace(/[^\d]/g, ''))}
+                    className="h-8 w-full min-w-0 rounded-[10px] border border-[#d8e3ef] px-2 text-right font-medium tabular-nums text-[11px] outline-none"
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.fieldSizes[field.id]?.h ?? ''}
+                    onChange={(event) => onFieldSizeChange(field.id, 'h', event.target.value.replace(/[^\d]/g, ''))}
+                    className="h-8 w-full min-w-0 rounded-[10px] border border-[#d8e3ef] px-2 text-right font-medium tabular-nums text-[11px] outline-none"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-[#edf2f7] px-4 py-3">
+            <button
+              type="button"
+              onClick={onApply}
+              className="w-full rounded-[12px] border border-primary/18 bg-primary px-3 py-2.5 text-[12px] font-semibold text-white hover:bg-primary/92"
+            >
+              应用到当前分组并自动重排
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="px-4 py-5 text-[12px] text-slate-500">
+          分组设置会列出当前组内所有字段，支持单字段宽高、全组批量宽高、行数和间距设置。
+        </div>
+      )}
+    </aside>
+  );
+});
+
 type ArchiveLayoutWorkbenchRowProps = {
   activeDragFieldId: string | null;
   density: 'comfortable' | 'compact';
   dragFeedbackIndicatorOpacity: number;
   dragFeedbackTransitionMs: number;
   fieldResizePreview: FieldResizePreview | null;
+  groupGapX: number;
+  groupUsableWidth: number;
   groupId: string;
   hasActiveDrag: boolean;
   normalizeColumn: (column: Record<string, any>) => Record<string, any>;
   onDeleteGroupRow: (groupId: string) => void;
-  onRemoveField: (fieldId: string) => void;
+  onOpenFieldContextMenu: (event: React.MouseEvent<HTMLDivElement>, groupId: string, fieldId: string) => void;
   onOpenFieldEditor: (fieldId: string) => void;
+  onPaletteRowDragOver: (event: React.DragEvent<HTMLDivElement>, groupId: string, rowNumber: number) => void;
+  onPaletteRowDrop: (event: React.DragEvent<HTMLDivElement>, groupId: string, rowNumber: number) => void;
   onSelectField: (groupId: string, fieldId: string) => void;
   onStartFieldResize: (
     event: React.MouseEvent<HTMLDivElement> | React.PointerEvent<HTMLDivElement>,
@@ -1295,7 +1739,7 @@ type ArchiveLayoutWorkbenchFieldCardProps = {
   isNeighborBeforeInsert: boolean;
   isSelected: boolean;
   normalizedField: Record<string, any>;
-  onRemoveField: (fieldId: string) => void;
+  onOpenFieldContextMenu: (event: React.MouseEvent<HTMLDivElement>, groupId: string, fieldId: string) => void;
   onOpenFieldEditor: (fieldId: string) => void;
   onSelectField: (groupId: string, fieldId: string) => void;
   onStartFieldResize: (
@@ -1323,7 +1767,7 @@ const ArchiveLayoutWorkbenchFieldCard = React.memo(function ArchiveLayoutWorkben
   isNeighborBeforeInsert,
   isSelected,
   normalizedField,
-  onRemoveField,
+  onOpenFieldContextMenu,
   onOpenFieldEditor,
   onSelectField,
   onStartFieldResize,
@@ -1381,6 +1825,11 @@ const ArchiveLayoutWorkbenchFieldCard = React.memo(function ArchiveLayoutWorkben
           event.stopPropagation();
           onOpenFieldEditor(field.id);
         }}
+        onContextMenu={(event: React.MouseEvent<HTMLDivElement>) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenFieldContextMenu(event, groupId, field.id);
+        }}
       >
         {isInsertTarget ? (
           <span className="pointer-events-none absolute inset-[2px] rounded-[10px] bg-primary/[0.045] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.08)]" />
@@ -1388,39 +1837,7 @@ const ArchiveLayoutWorkbenchFieldCard = React.memo(function ArchiveLayoutWorkben
         <div
           data-workbench-no-drag="true"
           className={cn(
-            'absolute right-2 top-2 z-10 flex items-center gap-1 transition-opacity duration-180 ease-[cubic-bezier(0.22,1,0.36,1)]',
-            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
-          )}
-          style={{
-            transitionDuration: `${dragFeedbackTransitionMs}ms`,
-            transitionTimingFunction,
-          }}
-        >
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenFieldEditor(field.id);
-            }}
-            className="rounded-[8px] border border-[#dbe5ef] bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-[0_8px_18px_-16px_rgba(15,23,42,0.22)] hover:border-[#cddaea] hover:text-slate-700"
-          >
-            快编
-          </button>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onRemoveField(field.id);
-            }}
-            className="rounded-[8px] border border-[#f1d4d8] bg-white px-2 py-0.5 text-[10px] font-semibold text-rose-600 shadow-[0_8px_18px_-16px_rgba(15,23,42,0.22)] hover:border-[#edc2ca] hover:bg-[#fff7f7]"
-          >
-            移除
-          </button>
-        </div>
-        <div
-          data-workbench-no-drag="true"
-          className={cn(
-            'absolute inset-y-1 right-0 z-10 flex w-3 cursor-col-resize items-center justify-center rounded-full transition-[opacity,background-color,transform] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/8',
+            'absolute inset-y-3 right-0 z-10 flex w-3 cursor-col-resize items-center justify-center rounded-full transition-[opacity,background-color,transform] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/8',
             isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
           )}
           style={{
@@ -1429,12 +1846,12 @@ const ArchiveLayoutWorkbenchFieldCard = React.memo(function ArchiveLayoutWorkben
           }}
           onPointerDown={(event) => onStartFieldResize(event, field, 'w')}
         >
-          <span className="h-7 w-px rounded-full bg-slate-300/70" />
+          <span className="h-5 w-px rounded-full bg-slate-600/95" />
         </div>
         <div
           data-workbench-no-drag="true"
           className={cn(
-            'absolute inset-x-3 bottom-0 z-10 flex h-3 cursor-row-resize items-center justify-center rounded-full transition-[opacity,background-color,transform] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/8',
+            'absolute inset-x-18 bottom-0 z-10 flex h-3 cursor-row-resize items-center justify-center rounded-full transition-[opacity,background-color,transform] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/8',
             isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
           )}
           style={{
@@ -1443,7 +1860,7 @@ const ArchiveLayoutWorkbenchFieldCard = React.memo(function ArchiveLayoutWorkben
           }}
           onPointerDown={(event) => onStartFieldResize(event, field, 'h')}
         >
-          <span className="h-px w-7 rounded-full bg-slate-300/70" />
+          <span className="h-px w-px rounded-full bg-slate-600/95" />
         </div>
         <div
           className={cn(
@@ -1490,12 +1907,16 @@ const ArchiveLayoutWorkbenchRow = React.memo(function ArchiveLayoutWorkbenchRow(
   dragFeedbackIndicatorOpacity,
   dragFeedbackTransitionMs,
   fieldResizePreview,
+  groupGapX,
+  groupUsableWidth,
   groupId,
   hasActiveDrag,
   normalizeColumn,
   onDeleteGroupRow,
-  onRemoveField,
+  onOpenFieldContextMenu,
   onOpenFieldEditor,
+  onPaletteRowDragOver,
+  onPaletteRowDrop,
   onSelectField,
   onStartFieldResize,
   openFieldEditorId,
@@ -1541,22 +1962,46 @@ const ArchiveLayoutWorkbenchRow = React.memo(function ArchiveLayoutWorkbenchRow(
     const normalizedField = normalizeColumn({ ...rawField, name: displayTitle });
     const previewFieldWidth = fieldResizePreview?.fieldId === field.id ? fieldResizePreview.w : field.w;
     const previewFieldHeight = fieldResizePreview?.fieldId === field.id ? fieldResizePreview.h : field.h;
-    const liveWidth = getBillHeaderFieldWidth({ width: previewFieldWidth, name: displayTitle });
-    const liveHeight = getBillHeaderFieldHeight({ controlHeight: previewFieldHeight });
+    const liveWidth = getBillHeaderFieldWidth(
+      { width: previewFieldWidth, name: displayTitle },
+      {
+        enforceLabelMinWidth: false,
+        maxWidth: getArchiveLayoutFieldMaxWidth(groupUsableWidth),
+        minWidth: ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
+      },
+    );
+    const liveHeight = getBillHeaderFieldHeight(
+      { controlHeight: previewFieldHeight },
+      {
+        maxHeight: ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
+        minHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+      },
+    );
     return {
       displayTitle,
       field,
       normalizedField,
-      previewHeight: clampNumber(liveHeight - 24, 18, 24),
-      shellHeight: Math.max(28, getBillHeaderFieldShellHeight({ controlHeight: liveHeight, width: liveWidth }) - 24),
+      previewHeight: Math.max(ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT, liveHeight),
+      shellHeight: getBillHeaderFieldShellHeight(
+        { controlHeight: liveHeight, width: liveWidth },
+        {
+          maxHeight: ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
+          maxWidth: getArchiveLayoutFieldMaxWidth(groupUsableWidth),
+          minHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+          minRowHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+          minWidth: ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
+        },
+      ),
       width: liveWidth,
     } satisfies ArchiveLayoutWorkbenchFieldRenderModel;
-  }), [fieldResizePreview, normalizeColumn, optionMap, rowFields]);
+  }), [fieldResizePreview, groupUsableWidth, normalizeColumn, optionMap, rowFields]);
 
   return (
     <DesignerWorkbenchDropLane
       dropId={`archive-row:${groupId}:${rowNumber}`}
       data={{ beforeId: null, groupId, rowNumber, type: 'archive-field-row' } as FieldRowDropData}
+      onDragOver={(event) => onPaletteRowDragOver(event, groupId, rowNumber)}
+      onDrop={(event) => onPaletteRowDrop(event, groupId, rowNumber)}
       className={cn(
         'group/row relative -mx-1.5 rounded-[12px] px-2.5 py-1 transition-[background-color,border-color,box-shadow,transform] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)]',
         isRowTarget ? 'bg-primary/6 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)]' : 'hover:bg-slate-50/70',
@@ -1623,9 +2068,8 @@ const ArchiveLayoutWorkbenchRow = React.memo(function ArchiveLayoutWorkbenchRow(
       <SortableContext items={rowFields.map((field) => `archive-field:${field.id}`)} strategy={rectSortingStrategy}>
         <div className={cn(
           'flex min-w-full items-start',
-          density === 'compact' ? 'gap-x-3.5' : 'gap-x-4.5',
           isEmptyRow ? 'opacity-0' : '',
-        )}>
+        )} style={{ columnGap: `${Math.max(density === 'compact' ? 2 : 4, groupGapX)}px` }}>
           {fieldRenderModels.length > 0 ? fieldRenderModels.map((fieldModel, fieldIndex) => {
             const { displayTitle, field, normalizedField, previewHeight, shellHeight, width } = fieldModel;
             const isInsertTarget = hasActiveDrag && rowDropTarget?.beforeId === field.id && activeDragFieldId !== field.id;
@@ -1648,7 +2092,7 @@ const ArchiveLayoutWorkbenchRow = React.memo(function ArchiveLayoutWorkbenchRow(
                 isNeighborBeforeInsert={isNeighborBeforeInsert}
                 isSelected={isSelected}
                 normalizedField={normalizedField}
-                onRemoveField={onRemoveField}
+                onOpenFieldContextMenu={onOpenFieldContextMenu}
                 onOpenFieldEditor={onOpenFieldEditor}
                 onSelectField={onSelectField}
                 onStartFieldResize={onStartFieldResize}
@@ -1706,6 +2150,8 @@ const ArchiveLayoutWorkbenchRow = React.memo(function ArchiveLayoutWorkbenchRow(
   && prevProps.selectedFieldId === nextProps.selectedFieldId
   && prevProps.openFieldEditorId === nextProps.openFieldEditorId
   && prevProps.fieldResizePreview === nextProps.fieldResizePreview
+  && prevProps.groupGapX === nextProps.groupGapX
+  && prevProps.groupUsableWidth === nextProps.groupUsableWidth
   && areFieldDropTargetsEqual(prevProps.rowDropTarget, nextProps.rowDropTarget)
   && prevProps.dragFeedbackTransitionMs === nextProps.dragFeedbackTransitionMs
   && prevProps.dragFeedbackIndicatorOpacity === nextProps.dragFeedbackIndicatorOpacity
@@ -1719,6 +2165,7 @@ type ArchiveLayoutWorkbenchGroupProps = {
   dragFeedbackIndicatorOpacity: number;
   dragFeedbackTransitionMs: number;
   dragFieldId: string | null;
+  hasActiveDrag: boolean;
   fieldResizePreview: FieldResizePreview | null;
   groupRenderModel: ArchiveLayoutWorkbenchGroupRenderModel;
   normalizeColumn: (column: Record<string, any>) => Record<string, any>;
@@ -1726,8 +2173,13 @@ type ArchiveLayoutWorkbenchGroupProps = {
   onDeleteGroup: (groupId: string) => void;
   onDeleteGroupRow: (groupId: string) => void;
   onMoveGroup: (groupId: string, direction: 'down' | 'up') => void;
-  onRemoveField: (fieldId: string) => void;
+  onOpenFieldContextMenu: (event: React.MouseEvent<HTMLDivElement>, groupId: string, fieldId: string) => void;
   onOpenFieldEditor: (fieldId: string) => void;
+  onOpenGroupSettings: (event: React.MouseEvent<HTMLDivElement>, groupId: string) => void;
+  onPaletteGroupDragOver: (event: React.DragEvent<HTMLDivElement>, groupId: string) => void;
+  onPaletteGroupDrop: (event: React.DragEvent<HTMLDivElement>, groupId: string) => void;
+  onPaletteRowDragOver: (event: React.DragEvent<HTMLDivElement>, groupId: string, rowNumber: number) => void;
+  onPaletteRowDrop: (event: React.DragEvent<HTMLDivElement>, groupId: string, rowNumber: number) => void;
   onRenameGroup: (groupId: string, title: string) => void;
   onSelectField: (groupId: string, fieldId: string) => void;
   onSelectGroup: (groupId: string) => void;
@@ -1751,6 +2203,7 @@ const ArchiveLayoutWorkbenchGroup = React.memo(function ArchiveLayoutWorkbenchGr
   dragFeedbackIndicatorOpacity,
   dragFeedbackTransitionMs,
   dragFieldId,
+  hasActiveDrag,
   fieldResizePreview,
   groupRenderModel,
   normalizeColumn,
@@ -1758,8 +2211,13 @@ const ArchiveLayoutWorkbenchGroup = React.memo(function ArchiveLayoutWorkbenchGr
   onDeleteGroup,
   onDeleteGroupRow,
   onMoveGroup,
-  onRemoveField,
+  onOpenFieldContextMenu,
   onOpenFieldEditor,
+  onOpenGroupSettings,
+  onPaletteGroupDragOver,
+  onPaletteGroupDrop,
+  onPaletteRowDragOver,
+  onPaletteRowDrop,
   onRenameGroup,
   onSelectField,
   onSelectGroup,
@@ -1770,7 +2228,7 @@ const ArchiveLayoutWorkbenchGroup = React.memo(function ArchiveLayoutWorkbenchGr
   selectedFieldId,
   selectedGroupId,
 }: ArchiveLayoutWorkbenchGroupProps) {
-  const { group, laneMinHeight, rows } = groupRenderModel;
+  const { group, groupGapX, groupGapY, groupUsableWidth, laneMinHeight, rows } = groupRenderModel;
   const groupId = group.group.id;
   const isSelectedGroup = selectedGroupId === groupId;
   const activeDropTarget = currentGroupDropTarget?.groupId === groupId ? currentGroupDropTarget : null;
@@ -1792,6 +2250,7 @@ const ArchiveLayoutWorkbenchGroup = React.memo(function ArchiveLayoutWorkbenchGr
       )}
       style={{ width: group.group.w }}
       onClick={() => onSelectGroup(groupId)}
+      onContextMenu={(event) => onOpenGroupSettings(event, groupId)}
     >
       <div className="mb-3 flex flex-wrap items-center gap-2 px-1">
         <div className="min-w-0 flex flex-1 items-center gap-2">
@@ -1865,9 +2324,11 @@ const ArchiveLayoutWorkbenchGroup = React.memo(function ArchiveLayoutWorkbenchGr
       <DesignerWorkbenchDropLane
         dropId={`archive-group:${groupId}`}
         data={{ groupId, type: 'archive-group' } as GroupDragData}
+        onDragOver={(event) => onPaletteGroupDragOver(event, groupId)}
+        onDrop={(event) => onPaletteGroupDrop(event, groupId)}
         className={cn(
           'scrollbar-none relative -mx-1 rounded-[16px] px-2 py-1.5 transition-colors',
-          dragFieldId && activeDropTarget && !activeDropTarget.beforeId ? 'bg-primary/5' : '',
+          hasActiveDrag && activeDropTarget && !activeDropTarget.beforeId ? 'bg-primary/5' : '',
           group.fields.length === 0 && 'rounded-[14px] border border-dashed border-[#dfe7f1]/80 bg-white/40 px-3 py-4',
         )}
         style={{
@@ -1875,7 +2336,7 @@ const ArchiveLayoutWorkbenchGroup = React.memo(function ArchiveLayoutWorkbenchGr
           minHeight: laneMinHeight,
         }}
       >
-        <div className="grid gap-y-0.5">
+        <div className="grid" style={{ rowGap: `${Math.max(2, groupGapY)}px` }}>
           {rows.map((row) => {
             const rowDropTarget = activeDropTarget?.rowNumber === row.rowNumber ? activeDropTarget : null;
             return (
@@ -1886,12 +2347,16 @@ const ArchiveLayoutWorkbenchGroup = React.memo(function ArchiveLayoutWorkbenchGr
                 dragFeedbackIndicatorOpacity={dragFeedbackIndicatorOpacity}
                 dragFeedbackTransitionMs={dragFeedbackTransitionMs}
                 fieldResizePreview={activeResizePreview}
+                groupGapX={groupGapX}
+                groupUsableWidth={groupUsableWidth}
                 groupId={groupId}
-                hasActiveDrag={Boolean(dragFieldId)}
+                hasActiveDrag={hasActiveDrag}
                 normalizeColumn={normalizeColumn}
                 onDeleteGroupRow={onDeleteGroupRow}
-                onRemoveField={onRemoveField}
+                onOpenFieldContextMenu={onOpenFieldContextMenu}
                 onOpenFieldEditor={onOpenFieldEditor}
+                onPaletteRowDragOver={onPaletteRowDragOver}
+                onPaletteRowDrop={onPaletteRowDrop}
                 onSelectField={onSelectField}
                 onStartFieldResize={onStartFieldResize}
                 openFieldEditorId={activeOpenFieldEditorId}
@@ -1911,6 +2376,7 @@ const ArchiveLayoutWorkbenchGroup = React.memo(function ArchiveLayoutWorkbenchGr
   prevProps.groupRenderModel === nextProps.groupRenderModel
   && prevProps.density === nextProps.density
   && prevProps.dragFieldId === nextProps.dragFieldId
+  && prevProps.hasActiveDrag === nextProps.hasActiveDrag
   && prevProps.selectedGroupId === nextProps.selectedGroupId
   && prevProps.selectedFieldId === nextProps.selectedFieldId
   && prevProps.openFieldEditorId === nextProps.openFieldEditorId
@@ -2218,21 +2684,19 @@ function useArchiveLayoutDragFeedbackState() {
 }
 
 export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutFieldLayoutEditor({
-  buildSchemeDocument,
   document,
   fieldOptions,
   getDefaultSize,
   normalizeColumn,
   onDocumentChange,
-  onSchemesChange,
-  schemes,
-  suggestedScheme,
 }: ArchiveLayoutFieldLayoutEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const workbenchViewportRef = React.useRef<HTMLDivElement | null>(null);
   const documentPreviewWorkbenchWidth = React.useMemo(
     () => getPreviewWorkbenchWidthFromDocument(document),
     [document],
   );
+  const [previewWorkbenchWidthMax, setPreviewWorkbenchWidthMax] = React.useState(PREVIEW_WIDTH_MAX);
   const [previewWorkbenchWidth, setPreviewWorkbenchWidth] = React.useState(documentPreviewWorkbenchWidth);
   const [previewWorkbenchWidthDraft, setPreviewWorkbenchWidthDraft] = React.useState(documentPreviewWorkbenchWidth);
   const [previewWorkbenchWidthInput, setPreviewWorkbenchWidthInput] = React.useState(String(documentPreviewWorkbenchWidth));
@@ -2255,6 +2719,12 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
   const [fieldResizePreview, setFieldResizePreview] = React.useState<FieldResizePreview | null>(null);
   const [quickEditorSizeInput, setQuickEditorSizeInput] = React.useState<FieldSizeInputDraft>({ fieldId: null, h: '', w: '' });
   const [sidebarTab, setSidebarTab] = React.useState<SidebarTabKey>('fields');
+  const [fieldContextMenu, setFieldContextMenu] = React.useState<ArchiveLayoutFieldContextMenuState>(null);
+  const [activeGroupSettingsGroupId, setActiveGroupSettingsGroupId] = React.useState<string | null>(null);
+  const [groupSettingsDraft, setGroupSettingsDraft] = React.useState<ArchiveLayoutGroupSettingsDraft>(createEmptyGroupSettingsDraft);
+  const [activePaletteDragFieldIds, setActivePaletteDragFieldIds] = React.useState<string[] | null>(null);
+  const [nativePaletteDragData, setNativePaletteDragData] = React.useState<PaletteFieldDragData | null>(null);
+  const [nativePaletteDropTarget, setNativePaletteDropTarget] = React.useState<FieldDropTarget | null>(null);
   const outsideCloseBlockedUntilRef = React.useRef(0);
   const fieldResizePreviewRef = React.useRef<FieldResizePreview | null>(null);
   const fieldResizeFrameRef = React.useRef<number | null>(null);
@@ -2294,10 +2764,6 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     () => new Set(stabilizedDocument.items.filter((item) => item.type !== 'groupbox' && item.field).map((item) => String(item.field))),
     [stabilizedDocument.items],
   );
-  const hasSourcePlacedFields = React.useMemo(
-    () => document.items.some((item) => item.type !== 'groupbox' && item.field),
-    [document.items],
-  );
   const normalizedKeyword = keyword.trim().toLowerCase();
   const filteredOptions = React.useMemo(() => fieldOptions.filter((option) => {
     const text = `${option.title || ''} ${option.label || ''} ${option.description || ''}`.toLowerCase();
@@ -2307,11 +2773,6 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     () => filteredOptions.filter((option) => placedFieldIds.has(String(option.value))),
     [filteredOptions, placedFieldIds],
   );
-  const pendingOptions = React.useMemo(
-    () => filteredOptions.filter((option) => !placedFieldIds.has(String(option.value))),
-    [filteredOptions, placedFieldIds],
-  );
-  const hasPlacedFields = placedFieldIds.size > 0;
   const dragFeedbackTransitionMs = DASHBOARD_DRAG_MOTION_BASE_MS + Math.round(dragFeedbackMotion * DASHBOARD_DRAG_FEEDBACK_MOTION_EXTRA_MS);
   const dragFeedbackIndicatorOpacity = 1 - dragFeedbackMotion * 0.18;
   const staticWorkbenchMotionStyle = React.useMemo(
@@ -2321,18 +2782,70 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     }),
     [],
   );
-  const schemeModalSurfaceButtonClass = 'transition-[background-color,color,border-color,box-shadow,transform] hover:-translate-y-[1px] hover:shadow-[0_12px_24px_-22px_rgba(15,23,42,0.18)] active:translate-y-0';
-  const schemeModalInputClass = 'transition-[border-color,background-color,box-shadow] focus:border-primary/35 focus:bg-white focus:shadow-[0_0_0_4px_rgba(59,130,246,0.08)]';
-  const schemeModalCardClass = 'transition-[border-color,background-color,box-shadow,transform] hover:-translate-y-[1px] hover:shadow-[0_14px_28px_-26px_rgba(15,23,42,0.18)]';
-  const schemeModalSelectedCardClass = 'shadow-[0_16px_30px_-28px_rgba(59,130,246,0.34)]';
-  const shouldAutoOpenSchemeModal = !hasPlacedFields && !hasSourcePlacedFields;
+  const normalizePreviewWorkbenchWidthForEditor = React.useCallback((value: number) => clampNumber(
+    Math.round(value / 20) * 20,
+    PREVIEW_WIDTH_MIN,
+    previewWorkbenchWidthMax,
+  ), [previewWorkbenchWidthMax]);
+  React.useEffect(() => {
+    const target = workbenchViewportRef.current;
+    if (!target) {
+      return undefined;
+    }
+
+    const updatePreviewWorkbenchWidthMax = () => {
+      const contentWidth = Math.max(0, target.clientWidth - 24);
+      const nextMax = clampNumber(
+        Math.round(Math.min(PREVIEW_WIDTH_MAX, Math.max(PREVIEW_WIDTH_MIN, contentWidth - 32)) / 20) * 20,
+        PREVIEW_WIDTH_MIN,
+        PREVIEW_WIDTH_MAX,
+      );
+      setPreviewWorkbenchWidthMax((current) => (current === nextMax ? current : nextMax));
+    };
+
+    updatePreviewWorkbenchWidthMax();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updatePreviewWorkbenchWidthMax);
+      return () => window.removeEventListener('resize', updatePreviewWorkbenchWidthMax);
+    }
+
+    const observer = new ResizeObserver(() => updatePreviewWorkbenchWidthMax());
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [normalizePreviewWorkbenchWidthForEditor]);
+  React.useEffect(() => {
+    const normalizedWidth = normalizePreviewWorkbenchWidthForEditor(previewWorkbenchWidth);
+    if (normalizedWidth === previewWorkbenchWidth) {
+      return;
+    }
+    setPreviewWorkbenchWidth(normalizedWidth);
+    setPreviewWorkbenchWidthDraft(normalizedWidth);
+    setPreviewWorkbenchWidthInput(String(normalizedWidth));
+    onDocumentChange(stabilizeDocument(document, fieldOptions, getDefaultSize, undefined, undefined, normalizedWidth));
+  }, [
+    document,
+    fieldOptions,
+    getDefaultSize,
+    normalizePreviewWorkbenchWidthForEditor,
+    onDocumentChange,
+    previewWorkbenchWidth,
+  ]);
+  const previewWidthPresets = React.useMemo(() => (PREVIEW_WIDTH_PRESET_KEYS.map((preset) => {
+    const fallbackValue = preset.key === 'compact'
+      ? 880
+      : previewWorkbenchWidthMax;
+    return {
+      ...preset,
+      value: normalizePreviewWorkbenchWidthForEditor(Math.min(fallbackValue, previewWorkbenchWidthMax)),
+    };
+  })), [normalizePreviewWorkbenchWidthForEditor, previewWorkbenchWidthMax]);
   const syncPreviewWorkbenchWidthState = React.useCallback((nextWidth: number) => {
-    const normalizedWidth = normalizePreviewWorkbenchWidth(nextWidth);
+    const normalizedWidth = normalizePreviewWorkbenchWidthForEditor(nextWidth);
     setPreviewWorkbenchWidth(normalizedWidth);
     setPreviewWorkbenchWidthDraft(normalizedWidth);
     setPreviewWorkbenchWidthInput(String(normalizedWidth));
     return normalizedWidth;
-  }, []);
+  }, [normalizePreviewWorkbenchWidthForEditor]);
   const commitDocument = React.useCallback((nextDocument: DetailLayoutDocument, nextPreviewWorkbenchWidth = previewWorkbenchWidth) => {
     const normalizedWidth = syncPreviewWorkbenchWidthState(nextPreviewWorkbenchWidth);
     onDocumentChange(stabilizeDocument(nextDocument, fieldOptions, getDefaultSize, undefined, undefined, normalizedWidth));
@@ -2342,98 +2855,19 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     onDocumentChange(stabilizeDocument(stabilizedDocument, fieldOptions, getDefaultSize, undefined, undefined, normalizedWidth));
   }, [fieldOptions, getDefaultSize, onDocumentChange, stabilizedDocument, syncPreviewWorkbenchWidthState]);
   const handlePreviewWorkbenchWidthSliderChange = React.useCallback((nextWidth: number) => {
-    const normalizedWidth = normalizePreviewWorkbenchWidth(nextWidth);
+    const normalizedWidth = normalizePreviewWorkbenchWidthForEditor(nextWidth);
     setPreviewWorkbenchWidthDraft(normalizedWidth);
     setPreviewWorkbenchWidthInput(String(normalizedWidth));
-  }, []);
+  }, [normalizePreviewWorkbenchWidthForEditor]);
   const handlePreviewWorkbenchWidthPresetSelect = React.useCallback((preset: WidthPreset) => {
-    const nextWidth = PREVIEW_WIDTH_PRESETS.find((item) => item.key === preset)?.value ?? PREVIEW_WIDTH_MAX;
+    const nextWidth = previewWidthPresets.find((item) => item.key === preset)?.value ?? previewWorkbenchWidthMax;
     setPreviewWorkbenchWidthDraft(nextWidth);
     setPreviewWorkbenchWidthInput(String(nextWidth));
     commitPreviewWorkbenchWidth(nextWidth);
-  }, [commitPreviewWorkbenchWidth]);
+  }, [commitPreviewWorkbenchWidth, previewWidthPresets, previewWorkbenchWidthMax]);
   const handlePreviewWorkbenchWidthSliderCommit = React.useCallback(() => {
     commitPreviewWorkbenchWidth(previewWorkbenchWidthDraft);
   }, [commitPreviewWorkbenchWidth, previewWorkbenchWidthDraft]);
-
-  const handleOpenSchemesView = React.useCallback(() => {
-    setSidebarTab('schemes');
-  }, []);
-  const handleOpenStructureView = React.useCallback(() => {
-    setSidebarTab('structure');
-  }, []);
-  const schemeWorkbench = useArchiveLayoutSchemeWorkbench({
-    buildCurrentLayoutScheme: () => buildSchemeFromCurrentLayout(groups),
-    buildSchemeDocument,
-    commitDocument,
-    fieldOptions,
-    getDefaultSize,
-    hasPlacedFields,
-    onOpenSchemesView: handleOpenSchemesView,
-    onOpenStructureView: handleOpenStructureView,
-    onSchemesChange,
-    previewWorkbenchWidth,
-    schemes,
-    shouldAutoOpen: shouldAutoOpenSchemeModal,
-    suggestedScheme,
-  });
-  const {
-    addSchemeGroup,
-    applySchemeBatchFieldSize,
-    applySchemeDraft,
-    applySpecificScheme,
-    closeSchemeModal,
-    createNewSchemeDraft,
-    createSchemeFromCurrentLayout,
-    deleteActiveScheme,
-    duplicateScheme,
-    filteredSelectedSchemeFieldCount,
-    filteredUnassignedSchemeFieldCount,
-    handleCommitSchemeFieldSizeDraft,
-    handleNudgeSchemeFieldSizeDraft,
-    handleResetSchemeFieldSizeDraft,
-    handleSchemeFieldCheckedChange,
-    handleSchemeFieldSizeDraftChange,
-    handleSchemeFieldSizeInputKeyDown,
-    handleSchemePreviewWorkbenchWidthInputBlur,
-    handleSchemePreviewWorkbenchWidthInputChange,
-    handleSchemePreviewWorkbenchWidthInputKeyDown,
-    handleSchemePreviewWorkbenchWidthPresetSelect,
-    handleSchemePreviewWorkbenchWidthSliderChange,
-    handleToggleSchemeFieldExpanded,
-    isBatchSizePanelOpen,
-    isEditingUnsavedScheme,
-    isSchemeModalOpen,
-    moveCurrentSchemeGroupFields,
-    moveSchemeFieldToGroup,
-    moveSchemeGroup,
-    openSchemeModal,
-    removeSchemeGroup,
-    renameSchemeGroup,
-    saveSchemeDraft,
-    saveSchemeDraftAsCopy,
-    schemeBatchSizeInput,
-    schemeDraft,
-    schemeFieldFilterMode,
-    schemeFieldKeyword,
-    schemeFieldSearchInputRef,
-    schemePreviewWorkbenchWidthInput,
-    schemeSourceId,
-    selectedSchemeBatchFieldIds,
-    selectedSchemeFieldCount,
-    selectedSchemeGroup,
-    selectedSchemeGroupFieldCount,
-    selectedSchemeGroupId,
-    selectedSchemeGroupIndex,
-    setIsBatchSizePanelOpen,
-    setSchemeBatchSizeInput,
-    setSchemeDraftName,
-    setSchemeFieldFilterMode,
-    setSchemeFieldKeyword,
-    setSelectedSchemeGroupId,
-    visibleSchemeFieldRows,
-    selectScheme,
-  } = schemeWorkbench;
 
   const fieldIdToGroupId = React.useMemo(() => {
     const nextMap = new Map<string, string>();
@@ -2458,6 +2892,15 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     });
     return nextMap;
   }, [groups]);
+  const placedGroupIdByFieldValue = React.useMemo(() => {
+    const nextMap = new Map<string, string>();
+    stabilizedDocument.items.forEach((item) => {
+      if (item.type !== 'groupbox' && item.field && item.parentId) {
+        nextMap.set(String(item.field), String(item.parentId));
+      }
+    });
+    return nextMap;
+  }, [stabilizedDocument.items]);
   const normalizedDraftsByGroupId = React.useMemo(() => {
     const nextMap = new Map<string, FlowDraft[]>();
     groups.forEach((group) => {
@@ -2509,6 +2952,25 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     });
     return nextMap;
   }, [groups]);
+  const activeGroupSettingsGroup = React.useMemo(
+    () => (activeGroupSettingsGroupId ? groupViewModelById.get(activeGroupSettingsGroupId) ?? null : null),
+    [activeGroupSettingsGroupId, groupViewModelById],
+  );
+  const nativePaletteDraggingFieldIdSet = React.useMemo(
+    () => new Set(nativePaletteDragData?.fieldIds ?? []),
+    [nativePaletteDragData],
+  );
+  const resolveGroupAppendRowNumber = React.useCallback((groupId: string) => {
+    const group = groupViewModelById.get(groupId);
+    if (!group || group.fields.length === 0) {
+      return 1;
+    }
+    return Math.max(1, group.fields.reduce((max, field) => Math.max(max, field.panelRow), 1));
+  }, [groupViewModelById]);
+  const clearNativePaletteDrag = React.useCallback(() => {
+    setNativePaletteDragData(null);
+    setNativePaletteDropTarget(null);
+  }, []);
 
   const mutateDrafts = React.useCallback((mutator: (draftMap: Map<string, FlowDraft[]>, groupOrder: string[]) => void) => {
     const draftMap = new Map<string, FlowDraft[]>(
@@ -2519,37 +2981,53 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     commitDocument(stabilizeDocument(stabilizedDocument, fieldOptions, getDefaultSize, draftMap, groupOrder, previewWorkbenchWidth));
   }, [commitDocument, fieldOptions, getDefaultSize, groupIdOrder, normalizedDraftsByGroupId, previewWorkbenchWidth, stabilizedDocument]);
 
-  const addFieldToGroup = React.useCallback((fieldId: string, targetGroupId?: string | null) => {
+  const createFieldDraft = React.useCallback((
+    fieldId: string,
+    groupId: string | null,
+    panelRow: number,
+    suffix: string,
+  ) => {
     const option = optionMap.get(fieldId);
     if (!option) {
-      return;
-    }
-
-    const groupId = targetGroupId || selectedGroupId || firstGroupId;
-    if (placedFieldIds.has(fieldId) && groupId) {
-      setSelectedGroupId(groupId);
-      return;
+      return null;
     }
 
     const defaultSize = getDefaultSize(option.rawField as Record<string, any>);
-    const nextField: FlowDraft = {
+    return {
       field: fieldId,
-      h: clampNumber(defaultSize.h, BILL_FORM_MIN_CONTROL_HEIGHT, 160),
-      id: `archive_layout_field_${fieldId}_${Date.now()}`,
+      h: clampNumber(defaultSize.h, ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT, ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT),
+      id: `archive_layout_field_${fieldId}_${suffix}`,
       panelOrder: 999,
-      panelRow: 1,
+      panelRow,
       parentId: groupId,
       readOnly: Boolean(option.readOnly),
       required: Boolean(option.required),
       title: option.title || option.label,
       type: option.itemType,
-      w: clampNumber(defaultSize.w, BILL_FORM_MIN_WIDTH, usablePreviewWorkbenchWidth),
+      w: clampNumber(defaultSize.w, ARCHIVE_LAYOUT_FIELD_MIN_WIDTH, getArchiveLayoutFieldMaxWidth(usablePreviewWorkbenchWidth)),
       x: 0,
       y: 0,
-    };
+    } satisfies FlowDraft;
+  }, [getDefaultSize, optionMap, usablePreviewWorkbenchWidth]);
+
+  const insertFieldOptions = React.useCallback((
+    fieldIds: string[],
+    targetGroupId?: string | null,
+    targetRowNumber: number = 1,
+    beforeId: string | null = null,
+  ) => {
+    const orderedFieldIds = Array.from(new Set(fieldIds.filter(Boolean)));
+    const nextFieldIds = orderedFieldIds.filter((fieldId) => optionMap.has(fieldId) && !placedFieldIds.has(fieldId));
+    if (nextFieldIds.length === 0) {
+      return;
+    }
+
+    const rowNumber = Math.max(1, targetRowNumber);
+    const groupId = targetGroupId || selectedGroupId || firstGroupId;
+    const timestamp = Date.now();
 
     if (!groupId) {
-      const nextGroupId = `archive_layout_group_${Date.now()}`;
+      const nextGroupId = `archive_layout_group_${timestamp}`;
       const nextGroup: DetailLayoutItem = {
         h: GROUP_MIN_HEIGHT,
         id: nextGroupId,
@@ -2560,30 +3038,60 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
         title: DEFAULT_GROUP_TITLE,
       };
       (nextGroup as DetailLayoutItem & { rows?: number }).rows = GROUP_DEFAULT_ROWS;
+      const nextFields = nextFieldIds
+        .map((fieldId, index) => createFieldDraft(fieldId, nextGroupId, rowNumber, `${timestamp + index}`))
+        .filter((field): field is FlowDraft => Boolean(field));
+      if (nextFields.length === 0) {
+        return;
+      }
       commitDocument(createEmptyDetailLayoutDocument({
         gridSize: stabilizedDocument.gridSize,
-        items: [
-          ...stabilizedDocument.items,
-          nextGroup,
-          {
-            ...nextField,
-            parentId: nextGroupId,
-          },
-        ],
+        items: [...stabilizedDocument.items, nextGroup, ...nextFields],
       }));
       setSelectedGroupId(nextGroupId);
-      setSelectedFieldId(nextField.id);
+      setSelectedFieldId(nextFields[nextFields.length - 1]?.id ?? null);
       return;
     }
 
+    let insertedFieldIds: string[] = [];
     mutateDrafts((draftMap) => {
-      const current = draftMap.get(groupId) ?? [];
-      draftMap.set(groupId, [...current, nextField]);
+      const nextFields = nextFieldIds
+        .map((fieldId, index) => createFieldDraft(fieldId, groupId, rowNumber, `${timestamp + index}`))
+        .filter((field): field is FlowDraft => Boolean(field));
+      if (nextFields.length === 0) {
+        return;
+      }
+
+      insertedFieldIds = nextFields.map((field) => field.id);
+      const targetDrafts: FlowDraft[] = reindexDrafts(draftMap.get(groupId) ?? []).map((item) => ({
+        ...item,
+        parentId: groupId,
+      }));
+      let insertIndex = -1;
+
+      if (beforeId) {
+        insertIndex = targetDrafts.findIndex((item) => item.id === beforeId);
+      } else {
+        const rowItems = targetDrafts.filter((item) => item.panelRow === rowNumber);
+        const lastRowItemId = rowItems[rowItems.length - 1]?.id;
+        if (lastRowItemId) {
+          insertIndex = targetDrafts.findIndex((item) => item.id === lastRowItemId) + 1;
+        } else {
+          insertIndex = targetDrafts.findIndex((item) => item.panelRow > rowNumber);
+        }
+      }
+
+      if (insertIndex >= 0) {
+        targetDrafts.splice(insertIndex, 0, ...nextFields);
+      } else {
+        targetDrafts.push(...nextFields);
+      }
+
+      draftMap.set(groupId, reindexDrafts(targetDrafts));
     });
     setSelectedGroupId(groupId);
-    setSelectedFieldId(nextField.id);
-  }, [commitDocument, firstGroupId, getDefaultSize, mutateDrafts, optionMap, placedFieldIds, previewWorkbenchWidth, selectedGroupId, stabilizedDocument.gridSize, stabilizedDocument.items, usablePreviewWorkbenchWidth]);
-
+    setSelectedFieldId(insertedFieldIds[insertedFieldIds.length - 1] ?? null);
+  }, [commitDocument, createFieldDraft, firstGroupId, mutateDrafts, optionMap, placedFieldIds, previewWorkbenchWidth, selectedGroupId, stabilizedDocument.gridSize, stabilizedDocument.items]);
   const updateField = React.useCallback((fieldId: string, patch: Partial<FlowDraft>) => {
     mutateDrafts((draftMap) => {
       draftMap.forEach((drafts, groupId) => {
@@ -2643,7 +3151,10 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     if (selectedFieldId === fieldId) {
       setSelectedFieldId(null);
     }
-  }, [mutateDrafts, openFieldEditorId, selectedFieldId]);
+    if (fieldContextMenu?.fieldId === fieldId) {
+      setFieldContextMenu(null);
+    }
+  }, [fieldContextMenu, mutateDrafts, openFieldEditorId, selectedFieldId]);
 
   React.useEffect(() => {
     if (!fieldResizeState) {
@@ -2692,8 +3203,8 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
           h: fieldResizePreviewRef.current?.h ?? fieldResizeState.startHeight,
           w: clampNumber(
             Math.round(fieldResizeState.startWidth + (event.clientX - fieldResizeState.startMouseX)),
-            BILL_FORM_MIN_WIDTH,
-            usablePreviewWorkbenchWidth,
+            ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
+            getArchiveLayoutFieldMaxWidth(usablePreviewWorkbenchWidth),
           ),
         });
         return;
@@ -2703,8 +3214,8 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
         fieldId: fieldResizeState.fieldId,
         h: clampNumber(
           Math.round(fieldResizeState.startHeight + (event.clientY - fieldResizeState.startMouseY)),
-          BILL_FORM_MIN_CONTROL_HEIGHT,
-          160,
+          ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+          ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
         ),
         w: fieldResizePreviewRef.current?.w ?? fieldResizeState.startWidth,
       });
@@ -2936,27 +3447,37 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
   }, [normalizeColumn]);
   const handleDragStart = React.useCallback((event: DragStartEvent) => {
     const activeFieldId = parseArchiveFieldDragId(event.active.id);
-    const activeData = event.active.data.current as FieldDragData | undefined;
-    if (!activeFieldId && activeData?.type !== 'archive-field') {
+    const activeData = event.active.data.current as FieldDragData | PaletteFieldDragData | undefined;
+    if (!activeFieldId && activeData?.type !== 'archive-field' && activeData?.type !== 'archive-palette-field') {
       return;
     }
-    beginFieldDrag(event, activeFieldId ?? activeData?.fieldId ?? null);
+    setFieldContextMenu(null);
+    setActivePaletteDragFieldIds(activeData?.type === 'archive-palette-field' ? activeData.fieldIds : null);
+    beginFieldDrag(
+      event,
+      activeFieldId
+      ?? (activeData?.type === 'archive-palette-field'
+        ? activeData.anchorFieldId
+        : (activeData?.type === 'archive-field' ? activeData.fieldId : null)),
+    );
   }, [beginFieldDrag]);
 
   const handleDragOver = React.useCallback((event: DragOverEvent) => {
     const activeFieldId = parseArchiveFieldDragId(event.active.id);
     const overFieldId = parseArchiveFieldDragId(event.over?.id);
-    const activeData = event.active.data.current as FieldDragData | undefined;
+    const activeData = event.active.data.current as FieldDragData | PaletteFieldDragData | undefined;
     const overData = event.over?.data.current as FieldDragData | GroupDragData | FieldInsertDropData | FieldRowDropData | undefined;
     const translatedActiveRect = event.active.rect.current.translated ?? event.active.rect.current.initial;
     const activeCenterX = translatedActiveRect
       ? translatedActiveRect.left + translatedActiveRect.width / 2
       : null;
-    if (!activeFieldId && activeData?.type !== 'archive-field') {
+    if (!activeFieldId && activeData?.type !== 'archive-field' && activeData?.type !== 'archive-palette-field') {
       return;
     }
     if (overFieldId && overFieldId !== activeFieldId) {
-      const targetGroupId = fieldIdToGroupId.get(overFieldId) ?? activeData?.groupId ?? '';
+      const targetGroupId = fieldIdToGroupId.get(overFieldId)
+        ?? (activeData?.type === 'archive-field' ? activeData.groupId : '')
+        ?? '';
       const targetGroup = groupViewModelById.get(targetGroupId);
       const targetField = fieldDraftById.get(overFieldId);
       const rowFieldIds = targetField
@@ -3048,7 +3569,7 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
       setDropTargetIfChanged({ beforeId: overData.beforeId, groupId: overData.groupId, rowNumber: null, mode: 'standard' });
       return;
     }
-    if (overData?.type === 'archive-field' && overData.fieldId !== (activeFieldId ?? activeData?.fieldId)) {
+    if (overData?.type === 'archive-field' && overData.fieldId !== (activeFieldId ?? (activeData?.type === 'archive-field' ? activeData.fieldId : null))) {
       const targetField = fieldDraftById.get(overData.fieldId);
       setDropTargetWithHysteresis({
         beforeId: overData.fieldId,
@@ -3067,14 +3588,41 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
   const handleDragEnd = React.useCallback((event: DragEndEvent) => {
     const activeFieldId = parseArchiveFieldDragId(event.active.id);
     const overFieldId = parseArchiveFieldDragId(event.over?.id);
-    const activeData = event.active.data.current as FieldDragData | undefined;
+    const activeData = event.active.data.current as FieldDragData | PaletteFieldDragData | undefined;
     const overData = event.over?.data.current as FieldDragData | GroupDragData | FieldInsertDropData | FieldRowDropData | undefined;
-    const resolvedActiveFieldId = activeFieldId ?? activeData?.fieldId ?? null;
-    const resolvedActiveGroupId = activeData?.groupId ?? (resolvedActiveFieldId ? fieldIdToGroupId.get(resolvedActiveFieldId) ?? '' : '');
+    const resolvedActiveFieldId = activeFieldId ?? (activeData?.type === 'archive-field' ? activeData.fieldId : null);
+    const resolvedActiveGroupId = activeData?.type === 'archive-field'
+      ? activeData.groupId
+      : (resolvedActiveFieldId ? fieldIdToGroupId.get(resolvedActiveFieldId) ?? '' : '');
     const activeField = resolvedActiveFieldId ? fieldDraftById.get(resolvedActiveFieldId) : undefined;
     const resolvedActiveRowNumber = activeField?.panelRow ?? 1;
 
-    if (resolvedActiveFieldId && dropTarget?.mode === 'row' && (dropTarget.groupId !== resolvedActiveGroupId || (dropTarget.rowNumber ?? resolvedActiveRowNumber) !== resolvedActiveRowNumber)) {
+    if (activeData?.type === 'archive-palette-field') {
+      const paletteFieldIds = activeData.fieldIds.filter((fieldId) => !placedFieldIds.has(fieldId));
+      if (paletteFieldIds.length > 0) {
+        if (dropTarget) {
+          insertFieldOptions(
+            paletteFieldIds,
+            dropTarget.groupId,
+            dropTarget.rowNumber ?? 1,
+            dropTarget.beforeId,
+          );
+        } else if (overData?.type === 'archive-field-row') {
+          insertFieldOptions(paletteFieldIds, overData.groupId, overData.rowNumber, overData.beforeId);
+        } else if (overFieldId) {
+          const targetGroupId = fieldIdToGroupId.get(overFieldId) ?? selectedGroupId ?? firstGroupId;
+          const targetField = fieldDraftById.get(overFieldId);
+          insertFieldOptions(paletteFieldIds, targetGroupId, targetField?.panelRow ?? 1, overFieldId);
+        } else if (overData?.type === 'archive-field-insert') {
+          insertFieldOptions(paletteFieldIds, overData.groupId, resolvedActiveRowNumber, overData.beforeId);
+        } else if (overData?.type === 'archive-field') {
+          const targetField = fieldDraftById.get(overData.fieldId);
+          insertFieldOptions(paletteFieldIds, overData.groupId, targetField?.panelRow ?? 1, overData.fieldId);
+        } else if (overData?.type === 'archive-group') {
+          insertFieldOptions(paletteFieldIds, overData.groupId, 1);
+        }
+      }
+    } else if (resolvedActiveFieldId && dropTarget?.mode === 'row' && (dropTarget.groupId !== resolvedActiveGroupId || (dropTarget.rowNumber ?? resolvedActiveRowNumber) !== resolvedActiveRowNumber)) {
       moveField(resolvedActiveFieldId, dropTarget.groupId, dropTarget.rowNumber ?? resolvedActiveRowNumber, dropTarget.beforeId);
     } else if (resolvedActiveFieldId && overData?.type === 'archive-field-row') {
       moveField(resolvedActiveFieldId, overData.groupId, overData.rowNumber, overData.beforeId);
@@ -3093,9 +3641,11 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
       moveField(resolvedActiveFieldId, overData.groupId, resolvedActiveRowNumber);
     }
     settleAfterDrag(DASHBOARD_DRAG_FEEDBACK_END_SETTLE_MS);
-  }, [dropTarget, fieldDraftById, fieldIdToGroupId, moveField, settleAfterDrag]);
+    setActivePaletteDragFieldIds(null);
+  }, [dropTarget, fieldDraftById, fieldIdToGroupId, firstGroupId, insertFieldOptions, moveField, placedFieldIds, selectedGroupId, settleAfterDrag]);
 
   const handleDragCancel = React.useCallback(() => {
+    setActivePaletteDragFieldIds(null);
     settleAfterDrag(DASHBOARD_DRAG_FEEDBACK_CANCEL_SETTLE_MS);
   }, [settleAfterDrag]);
 
@@ -3117,6 +3667,152 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     });
     return nextMap;
   }, [stabilizedDocument.items]);
+  const structureSections = React.useMemo(() => {
+    const sectionMap = new Map<string, StructureSection>();
+
+    groupedPlacedFields.forEach(({ groupId, option }) => {
+      const current = sectionMap.get(groupId) ?? {
+        fieldCount: 0,
+        fields: [],
+        groupId,
+        title: groupTitleById.get(groupId) || DEFAULT_GROUP_TITLE,
+      };
+      current.fields.push({
+        fieldId: String(option.value),
+        itemId: placedFieldItemIdByValue.get(String(option.value)) ?? null,
+        title: String(option.title || option.label || option.value),
+      });
+      current.fieldCount += 1;
+      sectionMap.set(groupId, current);
+    });
+
+    return Array.from(sectionMap.values());
+  }, [groupTitleById, groupedPlacedFields, placedFieldItemIdByValue]);
+  const {
+    paletteEntries,
+    resolveDragFieldIds: resolvePaletteDragFieldIds,
+    selectedFieldIds: selectedPaletteFieldIds,
+    selectedFieldIdSet: selectedPaletteFieldIdSet,
+    setSelectedFieldIds: setSelectedPaletteFieldIds,
+    toggleFieldSelection: togglePaletteFieldSelection,
+  } = useArchiveLayoutFieldPalette({
+    groupTitleById,
+    onLocatePlacedField: (groupId, fieldId) => {
+      setSelectedGroupId(groupId);
+      setSelectedFieldId(fieldId);
+    },
+    options: filteredOptions,
+    placedFieldItemIdByValue,
+    placedGroupIdByFieldValue,
+  });
+  const handlePaletteNativeDragStart = React.useCallback((event: React.DragEvent<HTMLDivElement>, entry: ArchiveLayoutFieldPaletteEntry) => {
+    const fieldIds = resolvePaletteDragFieldIds(entry.fieldId).filter((fieldId) => !placedFieldIds.has(fieldId));
+    if (fieldIds.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const payload = {
+      anchorFieldId: entry.fieldId,
+      fieldIds,
+      type: 'archive-palette-field',
+    } satisfies PaletteFieldDragData;
+
+    setNativePaletteDragData(payload);
+    setNativePaletteDropTarget(null);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.dropEffect = 'copy';
+      event.dataTransfer.setData('text/plain', fieldIds.join(','));
+      event.dataTransfer.setData('application/x-archive-layout-field-palette', JSON.stringify(payload));
+    }
+  }, [placedFieldIds, resolvePaletteDragFieldIds]);
+  const handlePaletteNativeDragEnd = React.useCallback(() => {
+    clearNativePaletteDrag();
+  }, [clearNativePaletteDrag]);
+  const commitNativePaletteDrop = React.useCallback((targetGroupId: string | null, targetRowNumber: number) => {
+    if (!nativePaletteDragData) {
+      return;
+    }
+    insertFieldOptions(nativePaletteDragData.fieldIds, targetGroupId, targetRowNumber);
+    clearNativePaletteDrag();
+  }, [clearNativePaletteDrag, insertFieldOptions, nativePaletteDragData]);
+  const handlePaletteGroupDragOver = React.useCallback((event: React.DragEvent<HTMLDivElement>, groupId: string) => {
+    if (!nativePaletteDragData) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+    setNativePaletteDropTarget({
+      beforeId: null,
+      groupId,
+      mode: 'standard',
+      rowNumber: resolveGroupAppendRowNumber(groupId),
+    });
+  }, [nativePaletteDragData, resolveGroupAppendRowNumber]);
+  const handlePaletteGroupDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>, groupId: string) => {
+    if (!nativePaletteDragData) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    commitNativePaletteDrop(groupId, resolveGroupAppendRowNumber(groupId));
+  }, [commitNativePaletteDrop, nativePaletteDragData, resolveGroupAppendRowNumber]);
+  const handlePaletteRowDragOver = React.useCallback((event: React.DragEvent<HTMLDivElement>, groupId: string, rowNumber: number) => {
+    if (!nativePaletteDragData) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+    setNativePaletteDropTarget({
+      beforeId: null,
+      groupId,
+      mode: 'row',
+      rowNumber,
+    });
+  }, [nativePaletteDragData]);
+  const handlePaletteRowDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>, groupId: string, rowNumber: number) => {
+    if (!nativePaletteDragData) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    commitNativePaletteDrop(groupId, rowNumber);
+  }, [commitNativePaletteDrop, nativePaletteDragData]);
+  const handlePaletteCanvasDragOver = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!nativePaletteDragData) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+    const fallbackGroupId = selectedGroupId ?? firstGroupId ?? null;
+    setNativePaletteDropTarget(
+      fallbackGroupId
+        ? {
+            beforeId: null,
+            groupId: fallbackGroupId,
+            mode: 'standard',
+            rowNumber: resolveGroupAppendRowNumber(fallbackGroupId),
+          }
+        : null,
+    );
+  }, [firstGroupId, nativePaletteDragData, resolveGroupAppendRowNumber, selectedGroupId]);
+  const handlePaletteCanvasDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!nativePaletteDragData) {
+      return;
+    }
+    event.preventDefault();
+    const fallbackGroupId = selectedGroupId ?? firstGroupId ?? null;
+    commitNativePaletteDrop(fallbackGroupId, fallbackGroupId ? resolveGroupAppendRowNumber(fallbackGroupId) : 1);
+  }, [commitNativePaletteDrop, firstGroupId, nativePaletteDragData, resolveGroupAppendRowNumber, selectedGroupId]);
   const workbenchGroupRenderModels = React.useMemo(
     () => buildArchiveLayoutWorkbenchGroupRenderModels(groups),
     [groups],
@@ -3133,7 +3829,6 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
   const activeFieldEditorId = activeFieldEditor?.field.id ?? null;
   const activeFieldEditorWidth = activeFieldEditor?.field.w ?? null;
   const activeFieldEditorHeight = activeFieldEditor?.field.h ?? null;
-
   React.useEffect(() => {
     if (!activeFieldEditor) {
       setQuickEditorSizeInput({ fieldId: null, h: '', w: '' });
@@ -3146,6 +3841,23 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     });
   }, [activeFieldEditor, activeFieldEditorHeight, activeFieldEditorId, activeFieldEditorWidth]);
 
+  React.useEffect(() => {
+    if (fieldContextMenu && !fieldContextById.has(fieldContextMenu.fieldId)) {
+      setFieldContextMenu(null);
+    }
+  }, [fieldContextById, fieldContextMenu]);
+  React.useEffect(() => {
+    if (!activeGroupSettingsGroupId) {
+      return;
+    }
+    if (!activeGroupSettingsGroup) {
+      setActiveGroupSettingsGroupId(null);
+      setGroupSettingsDraft(createEmptyGroupSettingsDraft());
+      return;
+    }
+    setGroupSettingsDraft(buildGroupSettingsDraft(activeGroupSettingsGroup));
+  }, [activeGroupSettingsGroup, activeGroupSettingsGroupId]);
+
   const commitFieldSizeValue = React.useCallback((
     fieldId: string,
     dimension: 'w' | 'h',
@@ -3155,8 +3867,8 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     const nextValue = parseCommittedNumber(
       rawValue,
       fallback,
-      dimension === 'w' ? BILL_FORM_MIN_WIDTH : BILL_FORM_MIN_CONTROL_HEIGHT,
-      dimension === 'w' ? usablePreviewWorkbenchWidth : 160,
+      dimension === 'w' ? ARCHIVE_LAYOUT_FIELD_MIN_WIDTH : ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+      dimension === 'w' ? getArchiveLayoutFieldMaxWidth(usablePreviewWorkbenchWidth) : ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
     );
     updateField(fieldId, dimension === 'w' ? { w: nextValue } : { h: nextValue });
     return nextValue;
@@ -3170,8 +3882,8 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
   ) => {
     const nextValue = clampNumber(
       currentValue + delta,
-      dimension === 'w' ? BILL_FORM_MIN_WIDTH : BILL_FORM_MIN_CONTROL_HEIGHT,
-      dimension === 'w' ? usablePreviewWorkbenchWidth : 160,
+      dimension === 'w' ? ARCHIVE_LAYOUT_FIELD_MIN_WIDTH : ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+      dimension === 'w' ? getArchiveLayoutFieldMaxWidth(usablePreviewWorkbenchWidth) : ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
     );
     updateField(fieldId, dimension === 'w' ? { w: nextValue } : { h: nextValue });
     return nextValue;
@@ -3199,11 +3911,12 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
 
   const openFieldEditor = React.useCallback((fieldId: string) => {
     outsideCloseBlockedUntilRef.current = Date.now() + 220;
+    setFieldContextMenu(null);
     setSelectedFieldId(fieldId);
     setOpenFieldEditorId(fieldId);
   }, []);
 
-  const renderBillStyleFieldPreview = React.useCallback((rawField: any, previewHeight = BILL_FORM_MIN_CONTROL_HEIGHT) => {
+  const renderBillStyleFieldPreview = React.useCallback((rawField: any, previewHeight = ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT) => {
     const field = normalizeColumn(rawField);
     const fieldTypeText = String(
       field.type
@@ -3274,80 +3987,243 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
     if (!nextValue) {
       return;
     }
-    setPreviewWorkbenchWidthDraft(normalizePreviewWorkbenchWidth(Number(nextValue)));
-  }, []);
+    setPreviewWorkbenchWidthDraft(normalizePreviewWorkbenchWidthForEditor(Number(nextValue)));
+  }, [normalizePreviewWorkbenchWidthForEditor]);
   const handlePreviewWorkbenchWidthInputBlur = React.useCallback(() => {
     commitPreviewWorkbenchWidth(
-      parseCommittedNumber(previewWorkbenchWidthInput, previewWorkbenchWidth, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX),
+      parseCommittedNumber(previewWorkbenchWidthInput, previewWorkbenchWidth, PREVIEW_WIDTH_MIN, previewWorkbenchWidthMax),
     );
-  }, [commitPreviewWorkbenchWidth, previewWorkbenchWidth, previewWorkbenchWidthInput]);
+  }, [commitPreviewWorkbenchWidth, previewWorkbenchWidth, previewWorkbenchWidthInput, previewWorkbenchWidthMax]);
   const handlePreviewWorkbenchWidthInputKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     handleFieldSizeInputKeyDown(
       event,
       () => commitPreviewWorkbenchWidth(
-        parseCommittedNumber(previewWorkbenchWidthInput, previewWorkbenchWidth, PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX),
+        parseCommittedNumber(previewWorkbenchWidthInput, previewWorkbenchWidth, PREVIEW_WIDTH_MIN, previewWorkbenchWidthMax),
       ),
       () => {
         setPreviewWorkbenchWidthDraft(previewWorkbenchWidth);
         setPreviewWorkbenchWidthInput(String(previewWorkbenchWidth));
       },
     );
-  }, [commitPreviewWorkbenchWidth, handleFieldSizeInputKeyDown, previewWorkbenchWidth, previewWorkbenchWidthInput]);
-  const handleSelectPlacedField = React.useCallback((groupId: string, fieldId: string | null) => {
+  }, [commitPreviewWorkbenchWidth, handleFieldSizeInputKeyDown, previewWorkbenchWidth, previewWorkbenchWidthInput, previewWorkbenchWidthMax]);
+  const handleLocatePlacedField = React.useCallback((groupId: string, fieldId: string | null) => {
     setSelectedGroupId((current) => groupId || current);
     setSelectedFieldId(fieldId);
-    setSidebarTab('structure');
   }, []);
+  const handleSelectPlacedField = React.useCallback((groupId: string, fieldId: string | null) => {
+    handleLocatePlacedField(groupId, fieldId);
+    setSidebarTab('structure');
+  }, [handleLocatePlacedField]);
   const handleSidebarTabChange = React.useCallback((tab: SidebarTabKey) => {
     setSidebarTab(tab);
   }, []);
   const handleSelectWorkbenchGroup = React.useCallback((groupId: string) => {
+    setFieldContextMenu(null);
     setSelectedGroupId(groupId);
     setSelectedFieldId(null);
     setSidebarTab('structure');
   }, []);
   const handleSelectWorkbenchField = React.useCallback((groupId: string, fieldId: string) => {
+    setFieldContextMenu(null);
     setSelectedGroupId(groupId);
     setSelectedFieldId(fieldId);
     setSidebarTab('structure');
   }, []);
+  const handleOpenGroupSettings = React.useCallback((event: React.MouseEvent<HTMLDivElement>, groupId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setFieldContextMenu(null);
+    setSelectedGroupId(groupId);
+    setSelectedFieldId(null);
+    setActiveGroupSettingsGroupId(groupId);
+  }, []);
+  const handleOpenFieldContextMenu = React.useCallback((event: React.MouseEvent<HTMLDivElement>, groupId: string, fieldId: string) => {
+    const triggerRect = event.currentTarget.getBoundingClientRect();
+    setSelectedGroupId(groupId);
+    setSelectedFieldId(fieldId);
+    setFieldContextMenu({
+      anchorRect: {
+        bottom: triggerRect.bottom,
+        left: triggerRect.left,
+        right: triggerRect.right,
+        top: triggerRect.top,
+      },
+      fieldId,
+      groupId,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }, []);
+  const handleCloseGroupSettings = React.useCallback(() => {
+    setActiveGroupSettingsGroupId(null);
+  }, []);
+  const handleGroupSettingDraftChange = React.useCallback((key: 'gapX' | 'gapY' | 'rowCount', value: string) => {
+    setGroupSettingsDraft((current) => ({ ...current, [key]: value }));
+  }, []);
+  const handleGroupBatchSizeDraftChange = React.useCallback((dimension: 'h' | 'w', value: string) => {
+    setGroupSettingsDraft((current) => ({
+      ...current,
+      [dimension === 'w' ? 'batchW' : 'batchH']: value,
+    }));
+  }, []);
+  const handleGroupFieldSizeDraftChange = React.useCallback((fieldId: string, dimension: 'h' | 'w', value: string) => {
+    setGroupSettingsDraft((current) => ({
+      ...current,
+      fieldSizes: {
+        ...current.fieldSizes,
+        [fieldId]: {
+          h: dimension === 'h' ? value : (current.fieldSizes[fieldId]?.h ?? ''),
+          w: dimension === 'w' ? value : (current.fieldSizes[fieldId]?.w ?? ''),
+        },
+      },
+    }));
+  }, []);
+  const handleFillGroupBatchSizes = React.useCallback(() => {
+    if (!activeGroupSettingsGroup) {
+      return;
+    }
+    setGroupSettingsDraft((current) => ({
+      ...current,
+      fieldSizes: Object.fromEntries(
+        activeGroupSettingsGroup.fields.map((field) => [
+          field.id,
+          {
+            h: current.batchH || current.fieldSizes[field.id]?.h || String(field.h),
+            w: current.batchW || current.fieldSizes[field.id]?.w || String(field.w),
+          } satisfies ArchiveLayoutGroupFieldSizeDraft,
+        ]),
+      ),
+    }));
+  }, [activeGroupSettingsGroup]);
+  const applyGroupSettings = React.useCallback(() => {
+    if (!activeGroupSettingsGroupId || !activeGroupSettingsGroup) {
+      return;
+    }
+
+    const targetGroup = activeGroupSettingsGroup.group;
+    const groupUsableWidth = getGroupFlowUsableWidth(targetGroup.w || previewWorkbenchWidth);
+    const parsedGapX = parseCommittedNumber(groupSettingsDraft.gapX, getArchiveLayoutGroupGapX(targetGroup), 0, 240);
+    const parsedGapY = parseCommittedNumber(groupSettingsDraft.gapY, getArchiveLayoutGroupGapY(targetGroup), 0, 240);
+    const maxWidth = getArchiveLayoutFieldMaxWidth(groupUsableWidth);
+    const patchedDrafts = arrangeGroupDraftsForFlow(
+      activeGroupSettingsGroup.fields.map((field) => {
+        const fieldDraft = groupSettingsDraft.fieldSizes[field.id];
+        const nextWidth = parseCommittedNumber(fieldDraft?.w ?? '', field.w, ARCHIVE_LAYOUT_FIELD_MIN_WIDTH, maxWidth);
+        const nextHeight = parseCommittedNumber(fieldDraft?.h ?? '', field.h, ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT, ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT);
+        return {
+          ...field,
+          h: nextHeight,
+          parentId: activeGroupSettingsGroupId,
+          w: nextWidth,
+        };
+      }),
+      groupUsableWidth,
+      parsedGapX,
+    );
+    const actualRows = Math.max(1, patchedDrafts.reduce((max, field) => Math.max(max, field.panelRow), 1));
+    const nextRows = actualRows;
+    const draftMap = new Map<string, FlowDraft[]>(
+      Array.from(normalizedDraftsByGroupId.entries()).map(([groupId, drafts]) => [groupId, drafts.slice()]),
+    );
+    draftMap.set(activeGroupSettingsGroupId, patchedDrafts);
+    const nextDocument = createEmptyDetailLayoutDocument({
+      gridSize: stabilizedDocument.gridSize,
+      items: stabilizedDocument.items.map((item) => (
+        item.id === activeGroupSettingsGroupId
+          ? {
+              ...item,
+              fieldGapX: parsedGapX,
+              fieldGapY: parsedGapY,
+              rows: nextRows,
+            } as ArchiveLayoutGroupItem
+          : item
+      )),
+    });
+    commitDocument(stabilizeDocument(nextDocument, fieldOptions, getDefaultSize, draftMap, groupIdOrder, previewWorkbenchWidth));
+    setSelectedGroupId(activeGroupSettingsGroupId);
+    setGroupSettingsDraft(buildGroupSettingsDraft({
+      fields: patchedDrafts,
+      group: {
+        ...targetGroup,
+        fieldGapX: parsedGapX,
+        fieldGapY: parsedGapY,
+        rows: nextRows,
+      } as ArchiveLayoutGroupItem,
+    }));
+  }, [
+    activeGroupSettingsGroup,
+    activeGroupSettingsGroupId,
+    commitDocument,
+    fieldOptions,
+    getDefaultSize,
+    groupIdOrder,
+    groupSettingsDraft,
+    normalizedDraftsByGroupId,
+    previewWorkbenchWidth,
+    stabilizedDocument.gridSize,
+    stabilizedDocument.items,
+  ]);
+  const closeFieldContextMenu = React.useCallback(() => {
+    setFieldContextMenu(null);
+  }, []);
+  const activeWorkbenchDropTarget = nativePaletteDragData ? nativePaletteDropTarget : renderDropTarget;
+  const hasActiveWorkbenchDrag = Boolean(dragFieldId) || Boolean(nativePaletteDragData);
 
   return (
-    <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
-      <ArchiveLayoutSidebar
-        groupedPlacedFields={groupedPlacedFields}
-        groupTitleById={groupTitleById}
-        hasPlacedFields={hasPlacedFields}
-        keyword={keyword}
-        placedFieldItemIdByValue={placedFieldItemIdByValue}
-        onAddFieldToGroup={addFieldToGroup}
-        onAddGroup={addGroup}
-        onApplySpecificScheme={applySpecificScheme}
-        onCreateNewSchemeDraft={createNewSchemeDraft}
-        onCreateSchemeFromCurrentLayout={createSchemeFromCurrentLayout}
-        onDuplicateScheme={duplicateScheme}
-        onKeywordChange={handleKeywordChange}
-        onOpenSchemeModal={openSchemeModal}
-        onSelectGroup={handleSelectWorkbenchGroup}
-        onSelectPlacedField={handleSelectPlacedField}
-        onSelectScheme={selectScheme}
-        onSidebarTabChange={handleSidebarTabChange}
-        pendingOptions={pendingOptions}
-        schemes={schemes}
-        schemeSourceId={schemeSourceId}
-        selectedFieldId={selectedFieldId}
-        selectedGroupId={selectedGroupId}
-        sidebarTab={sidebarTab}
-        staticWorkbenchMotionStyle={staticWorkbenchMotionStyle}
-        suggestedScheme={suggestedScheme}
-      />
+    <DndContext
+      autoScroll={{
+        acceleration: 14,
+        activator: AutoScrollActivator.Pointer,
+        interval: 8,
+        threshold: {
+          x: 0.12,
+          y: 0.16,
+        },
+      }}
+      collisionDetection={collisionDetection}
+      measuring={{
+        droppable: {
+          strategy: MeasuringStrategy.Always,
+        },
+      }}
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div
+        className="grid h-full min-h-0 gap-3 xl:grid-cols-[300px_minmax(0,1fr)_300px]"
+        onContextMenuCapture={(event) => {
+          event.preventDefault();
+        }}
+      >
+        <ArchiveLayoutSidebar
+          draggingPaletteFieldIdSet={nativePaletteDraggingFieldIdSet}
+          keyword={keyword}
+          onClearPaletteSelection={() => setSelectedPaletteFieldIds([])}
+          onKeywordChange={handleKeywordChange}
+          onPaletteDragEnd={handlePaletteNativeDragEnd}
+          onPaletteDragStart={handlePaletteNativeDragStart}
+          onSelectGroup={handleSelectWorkbenchGroup}
+          onSelectPlacedField={handleSelectPlacedField}
+          onSidebarTabChange={handleSidebarTabChange}
+          paletteEntries={paletteEntries}
+          selectedFieldId={selectedFieldId}
+          selectedGroupId={selectedGroupId}
+          selectedPaletteFieldIds={selectedPaletteFieldIds}
+          selectedPaletteFieldIdSet={selectedPaletteFieldIdSet}
+          sidebarTab={sidebarTab}
+          staticWorkbenchMotionStyle={staticWorkbenchMotionStyle}
+          structureSections={structureSections}
+          togglePaletteFieldSelection={togglePaletteFieldSelection}
+        />
 
-      <section className={cn(SURFACE_CLASS, 'flex min-h-0 flex-col overflow-hidden')}>
+        <section className={cn(SURFACE_CLASS, 'flex min-h-0 flex-col overflow-hidden')}>
         <ArchiveLayoutWorkbenchToolbar
           fieldCount={placedFieldIds.size}
           groupCount={groups.length}
           onAddGroup={addGroup}
-          onOpenSchemeModal={() => openSchemeModal()}
           onPreviewWorkbenchWidthInputBlur={handlePreviewWorkbenchWidthInputBlur}
           onPreviewWorkbenchWidthInputChange={handlePreviewWorkbenchWidthInputChange}
           onPreviewWorkbenchWidthInputKeyDown={handlePreviewWorkbenchWidthInputKeyDown}
@@ -3356,35 +4232,19 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
           onPreviewWorkbenchWidthSliderCommit={handlePreviewWorkbenchWidthSliderCommit}
           previewWorkbenchWidthDraft={previewWorkbenchWidthDraft}
           previewWorkbenchWidthInput={previewWorkbenchWidthInput}
+          previewWorkbenchWidthMax={previewWorkbenchWidthMax}
+          previewWidthPresets={previewWidthPresets}
         />
-        <DndContext
-          autoScroll={{
-            acceleration: 14,
-            activator: AutoScrollActivator.Pointer,
-            interval: 8,
-            threshold: {
-              x: 0.12,
-              y: 0.16,
-            },
-          }}
-          collisionDetection={collisionDetection}
-          measuring={{
-            droppable: {
-              strategy: MeasuringStrategy.Always,
-            },
-          }}
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          <div className="min-h-0 flex-1 overflow-auto p-3">
+          <div ref={workbenchViewportRef} className="min-h-0 flex-1 overflow-auto p-3">
             <div
               className="mx-auto rounded-[18px] border border-[#d6e2f1] bg-[linear-gradient(180deg,#fcfdff_0%,#f6faff_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
               style={{ minWidth: previewWorkbenchWidth + 32, width: previewWorkbenchWidth + 32 }}
             >
-              <div className="flex min-h-full flex-col gap-6">
+              <div
+                className="flex min-h-full flex-col gap-6"
+                onDragOver={handlePaletteCanvasDragOver}
+                onDrop={handlePaletteCanvasDrop}
+              >
                 {groups.length === 0 ? (
                   <div className="rounded-[16px] border border-dashed border-[#dbe6f1] bg-white/72 px-4 py-10 text-center text-[12px] text-slate-400">
                     暂无分组，先在左侧点击“新增分组”。
@@ -3395,11 +4255,12 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
                     key={groupRenderModel.group.group.id}
                     canMoveDown={groupIndex < workbenchGroupRenderModels.length - 1}
                     canMoveUp={groupIndex > 0}
-                    currentGroupDropTarget={renderDropTarget?.groupId === groupRenderModel.group.group.id ? renderDropTarget : null}
+                    currentGroupDropTarget={activeWorkbenchDropTarget?.groupId === groupRenderModel.group.group.id ? activeWorkbenchDropTarget : null}
                     density={density}
                     dragFeedbackIndicatorOpacity={dragFeedbackIndicatorOpacity}
                     dragFeedbackTransitionMs={dragFeedbackTransitionMs}
                     dragFieldId={dragFieldId}
+                    hasActiveDrag={hasActiveWorkbenchDrag}
                     fieldResizePreview={fieldResizePreview}
                     groupRenderModel={groupRenderModel}
                     normalizeColumn={normalizeColumn}
@@ -3407,8 +4268,13 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
                     onDeleteGroup={deleteGroup}
                     onDeleteGroupRow={deleteGroupRow}
                     onMoveGroup={moveGroup}
-                    onRemoveField={removeField}
+                    onOpenFieldContextMenu={handleOpenFieldContextMenu}
                     onOpenFieldEditor={openFieldEditor}
+                    onOpenGroupSettings={handleOpenGroupSettings}
+                    onPaletteGroupDragOver={handlePaletteGroupDragOver}
+                    onPaletteGroupDrop={handlePaletteGroupDrop}
+                    onPaletteRowDragOver={handlePaletteRowDragOver}
+                    onPaletteRowDrop={handlePaletteRowDrop}
                     onRenameGroup={renameGroup}
                     onSelectField={handleSelectWorkbenchField}
                     onSelectGroup={handleSelectWorkbenchGroup}
@@ -3423,692 +4289,130 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
               </div>
             </div>
           </div>
-          <DragOverlay
-            modifiers={dragOverlayModifiers}
-            dropAnimation={{
-              duration: DASHBOARD_DRAG_MOTION_BASE_MS,
-              easing: DASHBOARD_DRAG_MOTION_EASING,
-            }}
-          >
-            {activeDragFieldContext ? (() => {
-              const fieldOption = optionMap.get(String(activeDragFieldContext.field.field ?? ''));
-              const rawField = (fieldOption?.rawField ?? {}) as Record<string, any>;
-              const displayTitle = getDisplayTitle(activeDragFieldContext.field, fieldOption, rawField);
-              const normalizedField = normalizeColumn({ ...rawField, name: displayTitle });
-              const liveHeight = getBillHeaderFieldHeight({ controlHeight: activeDragFieldContext.field.h });
-              const overlayWidth = clampNumber(
-                Math.min(getBillHeaderFieldWidth({ width: activeDragFieldContext.field.w, name: displayTitle }), 220),
-                148,
-                220,
-              );
-              const overlayHeight = 32;
-              const previewHeight = clampNumber(liveHeight - 28, 14, 18);
-              const overlayMotion = clampNumber(dragOverlayMotionIntensity, 0, 1);
-              const overlayScale = 1 - overlayMotion * 0.025;
-              const overlayOpacity = 0.97 - overlayMotion * 0.12;
-              const overlayValueOpacity = 0.82 - overlayMotion * 0.18;
-              const overlayShadowOpacity = 0.24 - overlayMotion * 0.08;
-              const overlayShadow = `0 16px 30px -24px rgba(15,23,42,${overlayShadowOpacity.toFixed(3)})`;
-
-              return (
-                <div
-                  className="flex select-none rounded-[10px] border border-[color:var(--workspace-accent)]/18 bg-white/97 text-left transition-[opacity,transform,box-shadow] duration-150 ease-out"
-                  style={{
-                    height: overlayHeight,
-                    width: overlayWidth,
-                    opacity: overlayOpacity,
-                    transform: `translateZ(0) scale(${overlayScale})`,
-                    transformOrigin: 'top left',
-                    boxShadow: overlayShadow,
-                  }}
-                >
-                  <div className="pointer-events-none flex h-full min-w-0 flex-1 items-center gap-2 px-2">
-                    <div className="flex h-full max-w-[56%] shrink-0 items-center text-[12px] font-semibold tracking-[-0.01em] text-slate-800" title={displayTitle}>
-                      <span className="truncate">{displayTitle}</span>
-                    </div>
-                    <div className="min-w-0 flex-1" style={{ opacity: overlayValueOpacity }}>
-                      {renderBillStyleFieldPreview(normalizedField, previewHeight)}
-                    </div>
-                  </div>
-                </div>
-              );
-            })() : null}
-          </DragOverlay>
-        </DndContext>
-      </section>
-      {isSchemeModalOpen && typeof globalThis.document !== 'undefined'
+        </section>
+        <ArchiveLayoutGroupSettingsPanel
+          draft={groupSettingsDraft}
+          group={activeGroupSettingsGroup}
+          onApply={applyGroupSettings}
+          onBatchInputChange={handleGroupBatchSizeDraftChange}
+          onClose={handleCloseGroupSettings}
+          onFieldSizeChange={handleGroupFieldSizeDraftChange}
+          onFillBatchToFields={handleFillGroupBatchSizes}
+          onGroupSettingChange={handleGroupSettingDraftChange}
+          onLocateField={handleLocatePlacedField}
+          selectedFieldId={selectedFieldId}
+          visible={Boolean(activeGroupSettingsGroupId && activeGroupSettingsGroup)}
+        />
+      </div>
+      {typeof globalThis.document !== 'undefined'
         ? createPortal(
-            <>
-              <div className="fixed inset-0 z-[118] bg-slate-950/28 backdrop-blur-[3px]" onClick={closeSchemeModal} />
-              <div className="fixed inset-0 z-[119] flex items-center justify-center p-4 md:p-5" onClick={closeSchemeModal}>
-                <div
-                  className="flex h-[min(820px,calc(100vh-32px))] w-[min(1380px,calc(100vw-24px))] flex-col overflow-hidden rounded-[28px] border border-[#d9e3ef] bg-[linear-gradient(180deg,#ffffff_0%,#f6faff_100%)] shadow-[0_34px_90px_-42px_rgba(15,23,42,0.42)]"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e6edf6] px-5 py-4">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Scheme Workbench</div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <div className="text-[16px] font-semibold text-slate-900">方案设置</div>
-                        <span className="rounded-full border border-[#e5ecf5] bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
-                          {schemeDraft.groups.length} 组 / {countSchemeFields(schemeDraft)} 字段
-                        </span>
-                        {isEditingUnsavedScheme ? (
-                          <span className="rounded-full border border-primary/18 bg-primary/8 px-2.5 py-1 text-[10px] font-semibold text-primary">
-                            未保存草稿
-                          </span>
-                        ) : null}
+            <DragOverlay
+              modifiers={dragOverlayModifiers}
+              zIndex={140}
+              dropAnimation={{
+                duration: DASHBOARD_DRAG_MOTION_BASE_MS,
+                easing: DASHBOARD_DRAG_MOTION_EASING,
+              }}
+            >
+              {activeDragFieldContext ? (() => {
+                const fieldOption = optionMap.get(String(activeDragFieldContext.field.field ?? ''));
+                const rawField = (fieldOption?.rawField ?? {}) as Record<string, any>;
+                const displayTitle = getDisplayTitle(activeDragFieldContext.field, fieldOption, rawField);
+                const normalizedField = normalizeColumn({ ...rawField, name: displayTitle });
+                const liveHeight = getBillHeaderFieldHeight(
+                  { controlHeight: activeDragFieldContext.field.h },
+                  {
+                    maxHeight: ARCHIVE_LAYOUT_FIELD_MAX_HEIGHT,
+                    minHeight: ARCHIVE_LAYOUT_FIELD_MIN_HEIGHT,
+                  },
+                );
+                const overlayWidth = clampNumber(
+                  Math.min(
+                    getBillHeaderFieldWidth(
+                      { width: activeDragFieldContext.field.w, name: displayTitle },
+                      {
+                        enforceLabelMinWidth: false,
+                        maxWidth: getArchiveLayoutFieldMaxWidth(previewWorkbenchWidth),
+                        minWidth: ARCHIVE_LAYOUT_FIELD_MIN_WIDTH,
+                      },
+                    ),
+                    220,
+                  ),
+                  148,
+                  220,
+                );
+                const overlayHeight = 32;
+                const previewHeight = clampNumber(liveHeight - 28, 14, 18);
+                const overlayMotion = clampNumber(dragOverlayMotionIntensity, 0, 1);
+                const overlayScale = 1 - overlayMotion * 0.025;
+                const overlayOpacity = 0.97 - overlayMotion * 0.12;
+                const overlayValueOpacity = 0.82 - overlayMotion * 0.18;
+                const overlayShadowOpacity = 0.24 - overlayMotion * 0.08;
+                const overlayShadow = `0 16px 30px -24px rgba(15,23,42,${overlayShadowOpacity.toFixed(3)})`;
+
+                return (
+                  <div
+                    className="flex select-none rounded-[10px] border border-[color:var(--workspace-accent)]/18 bg-white/97 text-left transition-[opacity,transform,box-shadow] duration-150 ease-out"
+                    style={{
+                      height: overlayHeight,
+                      width: overlayWidth,
+                      opacity: overlayOpacity,
+                      transform: `translateZ(0) scale(${overlayScale})`,
+                      transformOrigin: 'top left',
+                      boxShadow: overlayShadow,
+                    }}
+                  >
+                    <div className="pointer-events-none flex h-full min-w-0 flex-1 items-center gap-2 px-2">
+                      <div className="flex h-full max-w-[56%] shrink-0 items-center text-[12px] font-semibold tracking-[-0.01em] text-slate-800" title={displayTitle}>
+                        <span className="truncate">{displayTitle}</span>
                       </div>
-                      <div className="mt-2 text-[11px] text-slate-500">`/` 搜索字段，`Ctrl/Cmd+S` 保存，`Ctrl/Cmd+Enter` 保存并应用。</div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={saveSchemeDraft}
-                        className={cn(
-                          'rounded-[12px] border border-[#dbe5ef] bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                          schemeModalSurfaceButtonClass,
-                        )}
-                        style={staticWorkbenchMotionStyle}
-                      >
-                        保存方案
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveSchemeDraftAsCopy}
-                        className={cn(
-                          'rounded-[12px] border border-[#dbe5ef] bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                          schemeModalSurfaceButtonClass,
-                        )}
-                        style={staticWorkbenchMotionStyle}
-                      >
-                        另存为
-                      </button>
-                      <button
-                        type="button"
-                        onClick={closeSchemeModal}
-                        className={cn(
-                          'rounded-[12px] border border-[#dbe5ef] bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                          schemeModalSurfaceButtonClass,
-                        )}
-                        style={staticWorkbenchMotionStyle}
-                      >
-                        关闭
-                      </button>
+                      <div className="min-w-0 flex-1" style={{ opacity: overlayValueOpacity }}>
+                        {renderBillStyleFieldPreview(normalizedField, previewHeight)}
+                      </div>
                     </div>
                   </div>
-                  <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[348px_minmax(0,1fr)]">
-                    <aside className="flex min-h-0 flex-col border-r border-[#edf2f7] bg-[linear-gradient(180deg,#fbfdff_0%,#f7fbff_100%)]">
-                      <div className="border-b border-[#edf2f7] px-4 py-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-[12px] font-semibold text-slate-800">方案列表</div>
-                            <div className="mt-1 text-[11px] text-slate-500">{schemes.length} 个已保存方案</div>
-                          </div>
-                          <div className="rounded-full border border-[#e5ecf5] bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
-                            当前编辑 {selectedSchemeFieldCount} 字段
-                          </div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={createNewSchemeDraft}
-                            className={cn(
-                              'rounded-[11px] border border-[#dbe5ef] bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                              schemeModalSurfaceButtonClass,
-                            )}
-                            style={staticWorkbenchMotionStyle}
-                          >
-                            新建方案
-                          </button>
-                          <button
-                            type="button"
-                            onClick={createSchemeFromCurrentLayout}
-                            disabled={!hasPlacedFields}
-                            className={cn(
-                              'rounded-[11px] border px-3 py-2 text-[11px] font-semibold',
-                              hasPlacedFields
-                                ? `border-[#dbe5ef] bg-white text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff] ${schemeModalSurfaceButtonClass}`
-                                : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
-                            )}
-                            style={hasPlacedFields ? staticWorkbenchMotionStyle : undefined}
-                          >
-                            从布局生成
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openSchemeModal(null, suggestedScheme)}
-                          className={cn(
-                            'mt-2 w-full rounded-[11px] border border-primary/20 bg-primary/8 px-3 py-2 text-[11px] font-semibold text-primary hover:border-primary/28 hover:bg-primary/12',
-                            schemeModalSurfaceButtonClass,
-                          )}
-                          style={staticWorkbenchMotionStyle}
-                        >
-                          使用默认建议
-                        </button>
+                );
+              })() : activePaletteDragFieldIds && activePaletteDragFieldIds.length > 0 ? (() => {
+                const anchorFieldId = activePaletteDragFieldIds[0];
+                const fieldOption = optionMap.get(anchorFieldId);
+                const rawField = (fieldOption?.rawField ?? {}) as Record<string, any>;
+                const displayTitle = String(fieldOption?.title || fieldOption?.label || anchorFieldId);
+                const normalizedField = normalizeColumn({ ...rawField, name: displayTitle });
+
+                return (
+                  <div className="flex select-none rounded-[10px] border border-primary/18 bg-white/97 text-left shadow-[0_16px_30px_-24px_rgba(15,23,42,0.24)]">
+                    <div className="pointer-events-none flex min-w-[188px] max-w-[248px] items-center gap-2 px-2 py-2">
+                      <span className="inline-flex h-6 shrink-0 items-center rounded-full border border-primary/16 bg-primary/8 px-2 text-[10px] font-semibold text-primary">
+                        {activePaletteDragFieldIds.length} 项
+                      </span>
+                      <div className="min-w-0 flex-1 text-[12px] font-semibold text-slate-800">
+                        <span className="truncate">{displayTitle}</span>
                       </div>
-                      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-                        {schemes.length > 0 ? schemes.map((scheme) => (
-                          <div
-                            key={scheme.id}
-                            className={cn(
-                              'mb-2 rounded-[16px] border px-3 py-3',
-                              schemeSourceId === scheme.id
-                                ? `border-primary/35 bg-primary/5 ${schemeModalSelectedCardClass}`
-                                : 'border-[#e6edf6] bg-white hover:border-[#d7e5f4]',
-                              schemeModalCardClass,
-                            )}
-                            style={staticWorkbenchMotionStyle}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-[12px] font-semibold text-slate-800">{scheme.name}</div>
-                                <div className="mt-1 text-[11px] text-slate-400">{scheme.groups.length} 个分组 · {countSchemeFields(scheme)} 个字段</div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => selectScheme(scheme)}
-                                className={cn(
-                                  'rounded-[9px] border border-[#dbe5ef] bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                                  schemeModalSurfaceButtonClass,
-                                )}
-                                style={staticWorkbenchMotionStyle}
-                              >
-                                选中
-                              </button>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => applySpecificScheme(scheme)}
-                                className={cn(
-                                  'rounded-[9px] border border-primary/20 bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-primary/90',
-                                  schemeModalSurfaceButtonClass,
-                                )}
-                                style={staticWorkbenchMotionStyle}
-                              >
-                                应用
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openSchemeModal(scheme.id)}
-                                className={cn(
-                                  'rounded-[9px] border border-[#dbe5ef] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                                  schemeModalSurfaceButtonClass,
-                                )}
-                                style={staticWorkbenchMotionStyle}
-                              >
-                                编辑
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => duplicateScheme(scheme)}
-                                className={cn(
-                                  'rounded-[9px] border border-[#dbe5ef] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                                  schemeModalSurfaceButtonClass,
-                                )}
-                                style={staticWorkbenchMotionStyle}
-                              >
-                                复制
-                              </button>
-                            </div>
-                          </div>
-                        )) : (
-                          <div className="rounded-[16px] border border-dashed border-[#d8e3ef] bg-white px-4 py-6 text-center text-[12px] text-slate-400">
-                            还没有保存的方案
-                          </div>
-                        )}
+                      <div className="min-w-[84px] max-w-[112px] flex-1 opacity-85">
+                        {renderBillStyleFieldPreview(normalizedField, 18)}
                       </div>
-                      <div className="border-t border-[#edf2f7] px-4 py-4">
-                        <label className="grid gap-1.5 text-[12px] text-slate-600">
-                          <span>方案名称</span>
-                          <input
-                            value={schemeDraft.name}
-                            onChange={(event) => setSchemeDraftName(event.target.value)}
-                            className={cn(
-                              'h-10 rounded-[12px] border border-[#d8e3ef] bg-white px-3 text-[12px] text-slate-700 outline-none',
-                              schemeModalInputClass,
-                            )}
-                            style={staticWorkbenchMotionStyle}
-                          />
-                        </label>
-                        {schemeSourceId ? (
-                          <button
-                            type="button"
-                            onClick={deleteActiveScheme}
-                            className={cn(
-                              'mt-3 w-full rounded-[11px] border border-[#f1d4d8] bg-[#fff7f7] px-3 py-2 text-[11px] font-semibold text-rose-600 hover:border-[#edc2ca] hover:bg-[#fff1f1]',
-                              schemeModalSurfaceButtonClass,
-                            )}
-                            style={staticWorkbenchMotionStyle}
-                          >
-                            删除当前方案
-                          </button>
-                        ) : null}
-                      </div>
-                    </aside>
-                    <section className="flex min-h-0 flex-col">
-                      <div className="border-b border-[#edf2f7] px-4 py-4">
-                        <div className="grid gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
-                          <div className="grid gap-3">
-                            <div className="rounded-[16px] border border-[#e6edf6] bg-white px-3 py-3 shadow-[0_14px_28px_-28px_rgba(15,23,42,0.16)]">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="text-[12px] font-semibold text-slate-800">当前分组</div>
-                                  <div className="mt-1 truncate text-[11px] text-slate-500">
-                                    {selectedSchemeGroup?.name || '先选择一个分组'}
-                                  </div>
-                                </div>
-                                <span className="rounded-full border border-[#e5ecf5] bg-[#f8fbff] px-2.5 py-1 text-[10px] font-medium text-slate-500">
-                                  {selectedSchemeGroupFieldCount} 项
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={addSchemeGroup}
-                                className={cn(
-                                  'mt-3 w-full rounded-[11px] border border-[#dbe5ef] bg-[#f8fbff] px-3 py-2 text-[11px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-white',
-                                  schemeModalSurfaceButtonClass,
-                                )}
-                                style={staticWorkbenchMotionStyle}
-                              >
-                                新增分组
-                              </button>
-                            </div>
-                            <div className="rounded-[16px] border border-[#e6edf6] bg-[linear-gradient(180deg,#fbfdff_0%,#f7fbff_100%)] px-3 py-3 shadow-[0_14px_28px_-28px_rgba(15,23,42,0.18)]">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="text-[12px] font-semibold text-slate-800">分组编排</div>
-                                <span className="rounded-full border border-[#e5ecf5] bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
-                                  {schemeDraft.groups.length} 组
-                                </span>
-                              </div>
-                              <div className="mt-3 max-h-[240px] overflow-y-auto pr-1">
-                                {schemeDraft.groups.map((group, groupIndex) => (
-                                  <div
-                                    key={group.id}
-                                    className={cn(
-                                      'mb-2 rounded-[14px] border px-3 py-3',
-                                      selectedSchemeGroupId === group.id
-                                        ? `border-primary/35 bg-primary/5 ${schemeModalSelectedCardClass}`
-                                        : 'border-[#e6edf6] bg-white hover:border-[#d7e5f4]',
-                                      schemeModalCardClass,
-                                    )}
-                                    style={staticWorkbenchMotionStyle}
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedSchemeGroupId(group.id)}
-                                      className="mb-2 flex w-full items-center justify-between gap-2 text-left"
-                                    >
-                                      <span className="truncate text-[11px] font-semibold text-slate-700">{group.name || `信息分组 ${groupIndex + 1}`}</span>
-                                      <span className="rounded-full border border-[#e5ecf5] bg-white px-2 py-1 text-[10px] font-medium text-slate-500">
-                                        {group.fieldIds.length}
-                                      </span>
-                                    </button>
-                                    <div className="grid grid-cols-[minmax(0,1fr)_32px_32px] gap-2">
-                                      <input
-                                        value={group.name}
-                                        onChange={(event) => renameSchemeGroup(group.id, event.target.value)}
-                                        onFocus={() => setSelectedSchemeGroupId(group.id)}
-                                        className={cn(
-                                          'h-9 rounded-[10px] border border-[#d8e3ef] bg-white px-3 text-[12px] text-slate-700 outline-none',
-                                          schemeModalInputClass,
-                                        )}
-                                        style={staticWorkbenchMotionStyle}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => moveSchemeGroup(group.id, 'up')}
-                                        disabled={groupIndex === 0}
-                                        className={cn(
-                                          'rounded-[10px] border text-[12px] font-semibold',
-                                          groupIndex > 0
-                                            ? `border-[#dbe5ef] bg-white text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff] ${schemeModalSurfaceButtonClass}`
-                                            : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
-                                        )}
-                                        style={groupIndex > 0 ? staticWorkbenchMotionStyle : undefined}
-                                      >
-                                        ↑
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => moveSchemeGroup(group.id, 'down')}
-                                        disabled={groupIndex === schemeDraft.groups.length - 1}
-                                        className={cn(
-                                          'rounded-[10px] border text-[12px] font-semibold',
-                                          groupIndex < schemeDraft.groups.length - 1
-                                            ? `border-[#dbe5ef] bg-white text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff] ${schemeModalSurfaceButtonClass}`
-                                            : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
-                                        )}
-                                        style={groupIndex < schemeDraft.groups.length - 1 ? staticWorkbenchMotionStyle : undefined}
-                                      >
-                                        ↓
-                                      </button>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeSchemeGroup(group.id)}
-                                      className={cn(
-                                        'mt-2 w-full rounded-[10px] border border-[#f1d4d8] bg-[#fff7f7] px-3 py-2 text-[11px] font-semibold text-rose-600 hover:border-[#edc2ca] hover:bg-[#fff1f1]',
-                                        schemeModalSurfaceButtonClass,
-                                      )}
-                                      style={staticWorkbenchMotionStyle}
-                                    >
-                                      删除分组
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="grid gap-3">
-                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-                              <div className="rounded-[16px] border border-[#e6edf6] bg-white px-3 py-3 shadow-[0_14px_28px_-28px_rgba(15,23,42,0.16)]">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[12px] font-semibold text-slate-800">字段筛选</span>
-                                    <span className="rounded-full border border-[#e5ecf5] bg-[#f8fbff] px-2 py-1 text-[10px] font-medium text-slate-500">
-                                      {visibleSchemeFieldRows.length} 条结果
-                                    </span>
-                                  </div>
-                                  <span className="rounded-full border border-[#e5ecf5] bg-[#f8fbff] px-2 py-1 text-[10px] font-medium text-slate-500">
-                                    当前方案 {selectedSchemeFieldCount} 字段
-                                  </span>
-                                </div>
-                                <input
-                                  ref={schemeFieldSearchInputRef}
-                                  value={schemeFieldKeyword}
-                                  onChange={(event) => setSchemeFieldKeyword(event.target.value)}
-                                  placeholder="搜索字段，按 / 快速聚焦"
-                                  className={cn(
-                                    'mt-3 h-10 w-full rounded-[12px] border border-[#d8e3ef] bg-[#fbfdff] px-3 text-[12px] text-slate-700 outline-none placeholder:text-slate-400',
-                                    schemeModalInputClass,
-                                  )}
-                                  style={staticWorkbenchMotionStyle}
-                                />
-                                <div className="mt-2 inline-flex rounded-[10px] border border-[#dbe5ef] bg-[#fbfdff] p-1">
-                                  {([
-                                    { key: 'all' as const, label: `全部 ${visibleSchemeFieldRows.length}` },
-                                    { key: 'selected' as const, label: `本组已选 ${filteredSelectedSchemeFieldCount}` },
-                                    { key: 'unassigned' as const, label: `未分配 ${filteredUnassignedSchemeFieldCount}` },
-                                  ]).map((item) => (
-                                    <button
-                                      key={item.key}
-                                      type="button"
-                                      onClick={() => setSchemeFieldFilterMode(item.key)}
-                                      className={cn(
-                                        'rounded-[8px] px-2.5 py-1.5 text-[10px] font-semibold transition-[background-color,color,box-shadow]',
-                                        schemeFieldFilterMode === item.key ? 'bg-primary text-white shadow-[0_10px_24px_-24px_rgba(59,130,246,0.45)]' : 'text-slate-500 hover:bg-white',
-                                      )}
-                                      style={staticWorkbenchMotionStyle}
-                                    >
-                                      {item.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="rounded-[16px] border border-[#e6edf6] bg-[linear-gradient(180deg,#fbfdff_0%,#f7fbff_100%)] px-3 py-3 shadow-[0_14px_28px_-28px_rgba(15,23,42,0.16)]">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[12px] font-semibold text-slate-800">预览宽度</span>
-                                  <span className="rounded-full border border-[#e5ecf5] bg-white px-2 py-1 text-[10px] font-medium text-slate-500">即时写入方案</span>
-                                </div>
-                                <div className="mt-3 inline-flex rounded-[10px] border border-[#dbe5ef] bg-white p-1">
-                                  {PREVIEW_WIDTH_PRESETS.map((preset) => (
-                                    <button
-                                      key={preset.key}
-                                      type="button"
-                                      onClick={() => handleSchemePreviewWorkbenchWidthPresetSelect(preset.value)}
-                                      className={cn(
-                                        'rounded-[8px] px-2.5 py-1 text-[10px] font-semibold transition-[background-color,color,box-shadow]',
-                                        normalizePreviewWorkbenchWidth(Number(schemePreviewWorkbenchWidthInput) || previewWorkbenchWidth) === preset.value
-                                          ? 'bg-primary text-white shadow-[0_10px_24px_-24px_rgba(59,130,246,0.45)]'
-                                          : 'text-slate-500 hover:bg-[#f8fbff]',
-                                      )}
-                                      style={staticWorkbenchMotionStyle}
-                                    >
-                                      {preset.label}
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                  <input
-                                    type="range"
-                                    min={PREVIEW_WIDTH_MIN}
-                                    max={PREVIEW_WIDTH_MAX}
-                                    step={20}
-                                    value={Number(schemePreviewWorkbenchWidthInput) || previewWorkbenchWidth}
-                                    onChange={(event) => handleSchemePreviewWorkbenchWidthSliderChange(Number(event.target.value))}
-                                    className="h-4 min-w-[180px] flex-1 accent-primary"
-                                  />
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    pattern="[0-9]*"
-                                    value={schemePreviewWorkbenchWidthInput}
-                                    onChange={(event) => handleSchemePreviewWorkbenchWidthInputChange(event.target.value)}
-                                    onBlur={handleSchemePreviewWorkbenchWidthInputBlur}
-                                    onKeyDown={handleSchemePreviewWorkbenchWidthInputKeyDown}
-                                    className={cn(
-                                      'h-8 w-[84px] rounded-[10px] border border-[#d8e3ef] bg-white px-2 text-center text-[11px] text-slate-700 outline-none',
-                                      schemeModalInputClass,
-                                    )}
-                                    style={staticWorkbenchMotionStyle}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                            <div className="rounded-[16px] border border-[#e6edf6] bg-[#fbfdff] px-3 py-3 shadow-[0_14px_28px_-28px_rgba(15,23,42,0.12)]">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="text-[12px] font-semibold text-slate-800">当前分组批量动作</div>
-                                  <div className="rounded-full border border-[#e5ecf5] bg-white px-2 py-1 text-[10px] font-medium text-slate-500">
-                                    {selectedSchemeBatchFieldIds.length} 项
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <button
-                                    type="button"
-                                    disabled={!selectedSchemeGroup || selectedSchemeGroupIndex <= 0 || selectedSchemeBatchFieldIds.length === 0}
-                                    onClick={() => moveCurrentSchemeGroupFields('up')}
-                                    className={cn(
-                                      'rounded-[9px] border px-2.5 py-1.5 text-[10px] font-semibold',
-                                      selectedSchemeGroup && selectedSchemeGroupIndex > 0 && selectedSchemeBatchFieldIds.length > 0
-                                        ? `border-[#d8e3ef] bg-white text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff] ${schemeModalSurfaceButtonClass}`
-                                        : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
-                                    )}
-                                    style={selectedSchemeGroup && selectedSchemeGroupIndex > 0 && selectedSchemeBatchFieldIds.length > 0 ? staticWorkbenchMotionStyle : undefined}
-                                  >
-                                    整组上移
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={!selectedSchemeGroup || selectedSchemeGroupIndex < 0 || selectedSchemeGroupIndex >= schemeDraft.groups.length - 1 || selectedSchemeBatchFieldIds.length === 0}
-                                    onClick={() => moveCurrentSchemeGroupFields('down')}
-                                    className={cn(
-                                      'rounded-[9px] border px-2.5 py-1.5 text-[10px] font-semibold',
-                                      selectedSchemeGroup && selectedSchemeGroupIndex >= 0 && selectedSchemeGroupIndex < schemeDraft.groups.length - 1 && selectedSchemeBatchFieldIds.length > 0
-                                        ? `border-[#d8e3ef] bg-white text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff] ${schemeModalSurfaceButtonClass}`
-                                        : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
-                                    )}
-                                    style={selectedSchemeGroup && selectedSchemeGroupIndex >= 0 && selectedSchemeGroupIndex < schemeDraft.groups.length - 1 && selectedSchemeBatchFieldIds.length > 0 ? staticWorkbenchMotionStyle : undefined}
-                                  >
-                                    整组下移
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={selectedSchemeBatchFieldIds.length === 0}
-                                    onClick={() => moveCurrentSchemeGroupFields('unassigned')}
-                                    className={cn(
-                                      'rounded-[9px] border px-2.5 py-1.5 text-[10px] font-semibold',
-                                      selectedSchemeBatchFieldIds.length > 0
-                                        ? `border-[#d8e3ef] bg-white text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff] ${schemeModalSurfaceButtonClass}`
-                                        : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
-                                    )}
-                                    style={selectedSchemeBatchFieldIds.length > 0 ? staticWorkbenchMotionStyle : undefined}
-                                  >
-                                    移到未分配
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setIsBatchSizePanelOpen((current) => !current)}
-                                    className={cn(
-                                      'rounded-[9px] border border-[#d8e3ef] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                                      schemeModalSurfaceButtonClass,
-                                    )}
-                                    style={staticWorkbenchMotionStyle}
-                                  >
-                                    {isBatchSizePanelOpen ? '收起尺寸' : '批量尺寸'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={applySchemeBatchFieldSize}
-                                    disabled={selectedSchemeBatchFieldIds.length === 0}
-                                    className={cn(
-                                      'rounded-[9px] border px-3 py-1.5 text-[10px] font-semibold',
-                                      selectedSchemeBatchFieldIds.length > 0
-                                        ? `border-primary/20 bg-primary/8 text-primary hover:border-primary/28 hover:bg-primary/12 ${schemeModalSurfaceButtonClass}`
-                                        : 'cursor-not-allowed border-[#eef2f7] bg-[#f8fafc] text-slate-300',
-                                    )}
-                                    style={selectedSchemeBatchFieldIds.length > 0 ? staticWorkbenchMotionStyle : undefined}
-                                  >
-                                    应用批量值
-                                  </button>
-                                </div>
-                              </div>
-                              {isBatchSizePanelOpen ? (
-                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                  <label className="grid gap-1 text-[10px] font-medium text-slate-500">
-                                    <span>批量宽度</span>
-                                    <input
-                                      type="text"
-                                      inputMode="numeric"
-                                      pattern="[0-9]*"
-                                      value={schemeBatchSizeInput.w}
-                                      onChange={(event) => setSchemeBatchSizeInput((current) => ({
-                                        ...current,
-                                        w: event.target.value.replace(/[^\d]/g, ''),
-                                      }))}
-                                      onKeyDown={(event) => handleSchemeFieldSizeInputKeyDown(
-                                        event,
-                                        applySchemeBatchFieldSize,
-                                        () => setSchemeBatchSizeInput((current) => ({ ...current, w: '' })),
-                                      )}
-                                      className={cn(
-                                        'h-8 rounded-[10px] border border-[#d8e3ef] bg-white px-3 text-[11px] text-slate-700 outline-none',
-                                        schemeModalInputClass,
-                                      )}
-                                      style={staticWorkbenchMotionStyle}
-                                      placeholder="如 280"
-                                    />
-                                  </label>
-                                  <label className="grid gap-1 text-[10px] font-medium text-slate-500">
-                                    <span>批量高度</span>
-                                    <input
-                                      type="text"
-                                      inputMode="numeric"
-                                      pattern="[0-9]*"
-                                      value={schemeBatchSizeInput.h}
-                                      onChange={(event) => setSchemeBatchSizeInput((current) => ({
-                                        ...current,
-                                        h: event.target.value.replace(/[^\d]/g, ''),
-                                      }))}
-                                      onKeyDown={(event) => handleSchemeFieldSizeInputKeyDown(
-                                        event,
-                                        applySchemeBatchFieldSize,
-                                        () => setSchemeBatchSizeInput((current) => ({ ...current, h: '' })),
-                                      )}
-                                      className={cn(
-                                        'h-8 rounded-[10px] border border-[#d8e3ef] bg-white px-3 text-[11px] text-slate-700 outline-none',
-                                        schemeModalInputClass,
-                                      )}
-                                      style={staticWorkbenchMotionStyle}
-                                      placeholder="如 36"
-                                    />
-                                  </label>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                        {selectedSchemeGroup ? visibleSchemeFieldRows.length > 0 ? visibleSchemeFieldRows.map((row) => (
-                          <ArchiveLayoutSchemeFieldRow
-                            key={row.fieldId}
-                            assignedGroupName={row.assignedGroupName}
-                            canMoveToNextGroup={row.canMoveToNextGroup}
-                            canMoveToPreviousGroup={row.canMoveToPreviousGroup}
-                            checked={row.checked}
-                            fieldId={row.fieldId}
-                            heightInput={row.heightInput}
-                            isExpanded={row.isExpanded}
-                            label={row.label}
-                            onCommitSizeDraft={handleCommitSchemeFieldSizeDraft}
-                            onHandleFieldSizeInputKeyDown={handleSchemeFieldSizeInputKeyDown}
-                            onMoveField={moveSchemeFieldToGroup}
-                            onNudgeSizeDraft={handleNudgeSchemeFieldSizeDraft}
-                            onResetSizeDraft={handleResetSchemeFieldSizeDraft}
-                            onToggleChecked={handleSchemeFieldCheckedChange}
-                            onToggleExpanded={handleToggleSchemeFieldExpanded}
-                            onUpdateSizeDraft={handleSchemeFieldSizeDraftChange}
-                            resolvedHeight={row.resolvedHeight}
-                            resolvedWidth={row.resolvedWidth}
-                            schemeModalCardClass={schemeModalCardClass}
-                            schemeModalInputClass={schemeModalInputClass}
-                            schemeModalSelectedCardClass={schemeModalSelectedCardClass}
-                            schemeModalSurfaceButtonClass={schemeModalSurfaceButtonClass}
-                            showAssignedGroupName={row.showAssignedGroupName}
-                            staticWorkbenchMotionStyle={staticWorkbenchMotionStyle}
-                            title={row.title}
-                            widthInput={row.widthInput}
-                          />
-                        )) : (
-                          <div className="rounded-[16px] border border-dashed border-[#d8e3ef] bg-[#f8fbff] px-4 py-8 text-center">
-                            <div className="text-[12px] font-semibold text-slate-600">没有匹配字段</div>
-                            <div className="mt-1 text-[11px] text-slate-400">换个关键词，或切换到“全部 / 未分配”继续挑选。</div>
-                          </div>
-                        ) : (
-                          <div className="rounded-[16px] border border-dashed border-[#d8e3ef] bg-[#f8fbff] px-4 py-8 text-center text-[12px] text-slate-400">
-                            先选择一个分组，再勾选字段
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#edf2f7] px-4 py-3">
-                        <div className="text-[12px] text-slate-500">{schemeDraft.groups.length} 个分组 · {countSchemeFields(schemeDraft)} 个已选字段</div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={saveSchemeDraft}
-                            className={cn(
-                              'rounded-[12px] border border-[#dbe5ef] bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:border-[#cddaea] hover:bg-[#f8fbff]',
-                              schemeModalSurfaceButtonClass,
-                            )}
-                            style={staticWorkbenchMotionStyle}
-                          >
-                            保存
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              saveSchemeDraft();
-                              applySchemeDraft(false);
-                            }}
-                            className="rounded-[12px] border border-primary/20 bg-primary px-4 py-2 text-[12px] font-semibold text-white transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-[1px] hover:bg-primary/90 hover:shadow-[0_16px_28px_-20px_rgba(59,130,246,0.42)] active:translate-y-0"
-                            style={staticWorkbenchMotionStyle}
-                          >
-                            保存并放入布局
-                          </button>
-                        </div>
-                      </div>
-                    </section>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </>,
+                );
+              })() : null}
+            </DragOverlay>,
             globalThis.document.body,
           )
         : null}
+      <ArchiveLayoutFieldContextMenuOverlay
+        menu={fieldContextMenu}
+        onClose={closeFieldContextMenu}
+        onEdit={() => {
+          if (fieldContextMenu) {
+            openFieldEditor(fieldContextMenu.fieldId);
+          }
+        }}
+        onRemove={() => {
+          if (fieldContextMenu) {
+            removeField(fieldContextMenu.fieldId);
+          }
+        }}
+      />
       {openFieldEditorId && typeof globalThis.document !== 'undefined'
         ? createPortal(
             <>
@@ -4283,7 +4587,7 @@ export const ArchiveLayoutFieldLayoutEditor = React.memo(function ArchiveLayoutF
             globalThis.document.body,
           )
         : null}
-    </div>
+    </DndContext>
   );
 });
 

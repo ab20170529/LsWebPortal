@@ -12,6 +12,10 @@ type DesignerWorkbenchDropLaneProps = {
   data: Record<string, unknown>;
   dropId: string;
   key?: React.Key;
+  onDragEnter?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragLeave?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDrop?: (event: React.DragEvent<HTMLDivElement>) => void;
   style?: React.CSSProperties;
 };
 
@@ -20,6 +24,10 @@ export function DesignerWorkbenchDropLane({
   className,
   data,
   dropId,
+  onDragEnter,
+  onDragLeave,
+  onDragOver,
+  onDrop,
   style,
 }: DesignerWorkbenchDropLaneProps): React.JSX.Element {
   const { setNodeRef } = useDroppable({
@@ -28,7 +36,15 @@ export function DesignerWorkbenchDropLane({
   });
 
   return (
-    <div ref={setNodeRef} className={className} style={style}>
+    <div
+      ref={setNodeRef}
+      className={className}
+      style={style}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       {children}
     </div>
   );
@@ -39,7 +55,9 @@ type DesignerWorkbenchDraggableItemProps = {
   className: string;
   data: Record<string, unknown>;
   dragId: string;
+  dragOverlayOnly?: boolean;
   dropId: string;
+  droppable?: boolean;
   itemAttributes?: Record<string, string>;
   key?: React.Key;
   onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -61,7 +79,9 @@ export function DesignerWorkbenchDraggableItem({
   className,
   data,
   dragId,
+  dragOverlayOnly = false,
   dropId,
+  droppable = true,
   itemAttributes,
   onClick,
   onContextMenu,
@@ -76,13 +96,14 @@ export function DesignerWorkbenchDraggableItem({
   style,
   tabIndex = 0,
 }: DesignerWorkbenchDraggableItemProps): React.JSX.Element {
-  const { attributes, listeners, setNodeRef: setDragNodeRef, transform } = useDraggable({
+  const { attributes, listeners, setNodeRef: setDragNodeRef, transform, isDragging } = useDraggable({
     id: dragId,
     data,
   });
   const { setNodeRef: setDropNodeRef } = useDroppable({
     id: dropId,
     data,
+    disabled: !droppable,
   });
   const {
     attributes: sortableAttributes,
@@ -112,7 +133,9 @@ export function DesignerWorkbenchDraggableItem({
       return;
     }
     setDragNodeRef(node);
-    setDropNodeRef(node);
+    if (droppable) {
+      setDropNodeRef(node);
+    }
   };
   const dragStyle = sortable
     ? {
@@ -132,6 +155,12 @@ export function DesignerWorkbenchDraggableItem({
         willChange: sortableDragging ? 'transform' : undefined,
         zIndex: sortableDragging ? 20 : undefined,
       }
+    : dragOverlayOnly
+      ? {
+          ...(style ?? {}),
+          touchAction: 'manipulation',
+          opacity: isDragging ? 0.56 : style?.opacity,
+        }
     : transform
       ? {
           ...(style ?? {}),
