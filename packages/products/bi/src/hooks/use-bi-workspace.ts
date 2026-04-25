@@ -57,6 +57,14 @@ function mergeLayouts(nodes: BiDirectoryNode[]) {
   return nextLayout;
 }
 
+function buildAutoLayoutMap(nodes: BiDirectoryNode[]) {
+  const nextLayout: Record<number, BiCanvasMeta> = {};
+  buildAutoLayout(nodes).forEach((value, key) => {
+    nextLayout[key] = value;
+  });
+  return nextLayout;
+}
+
 const WORKSPACE_ERROR = 'BI 工作台操作失败。';
 const WORKSPACE_LOAD_ERROR = 'BI 工作台加载失败。';
 const PROMPT_PREVIEW_ERROR = '提示词预览失败。';
@@ -165,7 +173,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       setNodeTypes(nextNodeTypes);
       setPromptTemplates(nextTemplates);
       setAllScreens(nextAllScreens);
-      setLayoutMap(mergeLayouts(nextNodes));
+      setLayoutMap(buildAutoLayoutMap(nextNodes));
     });
 
     const nextFlatNodes = flattenDirectoryNodes(nextNodes);
@@ -315,39 +323,24 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
           ? `${parentNode.treePath ?? `/${parentNode.nodeCode}`}/${payload.nodeCode}`
           : `/${payload.nodeCode}`,
       };
+      const optimisticNodes = upsertDirectoryNode(nodes, optimisticNode);
 
       startTransition(() => {
-        setNodes((current) => upsertDirectoryNode(current, optimisticNode));
-        setLayoutMap((current) => ({
-          ...current,
-          [tempNodeId]: {
-            ...getNodeCanvasMeta(optimisticNode),
-            ...(payload.canvasMeta ?? {}),
-          },
-        }));
-        setSelectedNodeId(tempNodeId);
+        setNodes(optimisticNodes);
+        setLayoutMap(buildAutoLayoutMap(optimisticNodes));
       });
 
       setIsMutating(true);
       setError(null);
       try {
         const saved = await biApi.createDirectory(payload);
+        const nextNodes = upsertDirectoryNode(removeDirectoryNode(optimisticNodes, tempNodeId), saved);
         startTransition(() => {
-          setNodes((current) => upsertDirectoryNode(removeDirectoryNode(current, tempNodeId), saved));
-          setLayoutMap((current) => {
-            const optimisticLayout = current[tempNodeId];
-            return {
-              ...removeLayoutEntries(current, [tempNodeId]),
-              [saved.id]: {
-                ...getNodeCanvasMeta(saved),
-                ...(saved.canvasMeta ?? payload.canvasMeta ?? {}),
-                ...(optimisticLayout ?? {}),
-              },
-            };
-          });
-          setSelectedNodeId((current) => (current === tempNodeId ? saved.id : current));
+          setNodes(nextNodes);
+          setLayoutMap(buildAutoLayoutMap(nextNodes));
+          setSelectedNodeId(saved.id);
         });
-        return;
+        return saved;
       } catch (mutationError) {
         startTransition(() => {
           setNodes((current) => removeDirectoryNode(current, tempNodeId));
@@ -361,7 +354,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       }
     }
 
-    await runLocalMutation(
+    return runLocalMutation(
       async () => biApi.updateDirectory(id, payload),
       async (saved) => {
         startTransition(() => {
@@ -622,10 +615,12 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
   }
 
   async function saveCanvasLayout() {
-    const payload: DirectoryCanvasLayoutItemPayload[] = flatNodes.map((node) => ({
-      canvasMeta: layoutMap[node.id] ?? getNodeCanvasMeta(node),
-      id: node.id,
-    }));
+    const payload: DirectoryCanvasLayoutItemPayload[] = flatNodes
+      .filter((node) => node.id > 0)
+      .map((node) => ({
+        canvasMeta: layoutMap[node.id] ?? getNodeCanvasMeta(node),
+        id: node.id,
+      }));
 
     await runLocalMutation(
       async () => biApi.saveCanvasLayout(payload),
@@ -660,13 +655,14 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     const previousNodes = nodes;
     const previousLayoutMap = layoutMap;
     const previousSelectedNodeId = selectedNodeId;
-    const remainingNodes = flatNodes.filter((node) => !subtreeNodeIds.has(node.id));
+    const remainingNodes = removeDirectoryNode(nodes, nodeId);
+    const remainingFlatNodes = flattenDirectoryNodes(remainingNodes);
     const fallbackSelectedNodeId =
-      targetNode.parentId ?? remainingNodes[0]?.id ?? null;
+      targetNode.parentId ?? remainingFlatNodes[0]?.id ?? null;
 
     startTransition(() => {
-      setNodes((current) => removeDirectoryNode(current, nodeId));
-      setLayoutMap((current) => removeLayoutEntries(current, subtreeNodeIds));
+      setNodes(remainingNodes);
+      setLayoutMap(buildAutoLayoutMap(remainingNodes));
       setSelectedNodeId((current) =>
         current != null && subtreeNodeIds.has(current) ? fallbackSelectedNodeId : current,
       );
@@ -702,6 +698,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     autoLayout,
     bindNodeSourceAssets,
     boundDatasources,
+    clearError: () => setError(null),
     createDatasource,
     createScreen,
     createShareToken,

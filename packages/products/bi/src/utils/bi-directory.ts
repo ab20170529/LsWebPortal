@@ -1,7 +1,12 @@
 import type { BiCanvasMeta, BiDataAsset, BiDatasource, BiDirectoryNode, BiScreen } from '../types';
 
 export const DEFAULT_NODE_WIDTH = 224;
-export const DEFAULT_NODE_HEIGHT = 132;
+export const DEFAULT_NODE_HEIGHT = 148;
+const AUTO_LAYOUT_START_X = 64;
+const AUTO_LAYOUT_START_Y = 120;
+const AUTO_LAYOUT_COLUMN_GAP = 280;
+const AUTO_LAYOUT_ROW_GAP = 204;
+const AUTO_LAYOUT_ROOT_GAP = 104;
 
 const NODE_TYPE_LABELS: Record<string, string> = {
   ANALYSIS_DIM: '分析维度',
@@ -91,31 +96,62 @@ export function getNodeCanvasMeta(node: BiDirectoryNode, overrides?: Record<numb
 }
 
 export function buildAutoLayout(nodes: BiDirectoryNode[]) {
-  const flatNodes = flattenDirectoryNodes(nodes);
-  const levels = new Map<number, BiDirectoryNode[]>();
-
-  flatNodes.forEach((node) => {
-    const level = Number(node.level ?? 1);
-    const group = levels.get(level) ?? [];
-    group.push(node);
-    levels.set(level, group);
-  });
-
-  const orderedLevels = Array.from(levels.keys()).sort((left, right) => left - right);
   const layout = new Map<number, BiCanvasMeta>();
 
-  orderedLevels.forEach((level) => {
-    const group = levels.get(level) ?? [];
-    group.forEach((node, index) => {
-      const offsetX = Math.max(0, level - 1) * 280;
+  type LayoutCursor = {
+    nextY: number;
+    topY: number;
+  };
+
+  const placeSubtree = (node: BiDirectoryNode, depth: number, startY: number): LayoutCursor => {
+    const children = node.children ?? [];
+    const baseMeta = getNodeCanvasMeta(node);
+
+    if (children.length === 0) {
       layout.set(node.id, {
         ...node.canvasMeta,
-        height: node.canvasMeta?.height ?? DEFAULT_NODE_HEIGHT,
-        width: node.canvasMeta?.width ?? DEFAULT_NODE_WIDTH,
-        x: 64 + offsetX,
-        y: 120 + index * 156,
+        height: baseMeta.height,
+        width: baseMeta.width,
+        x: AUTO_LAYOUT_START_X + depth * AUTO_LAYOUT_COLUMN_GAP,
+        y: startY,
       });
+      return {
+        nextY: startY + AUTO_LAYOUT_ROW_GAP,
+        topY: startY,
+      };
+    }
+
+    let cursorY = startY;
+    const childTopYs: number[] = [];
+
+    children.forEach((child) => {
+      const childLayout = placeSubtree(child, depth + 1, cursorY);
+      childTopYs.push(childLayout.topY);
+      cursorY = childLayout.nextY;
     });
+
+    const firstChildTopY = childTopYs[0] ?? startY;
+    const lastChildTopY = childTopYs[childTopYs.length - 1] ?? startY;
+    const currentTopY = Math.round((firstChildTopY + lastChildTopY) / 2);
+
+    layout.set(node.id, {
+      ...node.canvasMeta,
+      height: baseMeta.height,
+      width: baseMeta.width,
+      x: AUTO_LAYOUT_START_X + depth * AUTO_LAYOUT_COLUMN_GAP,
+      y: currentTopY,
+    });
+
+    return {
+      nextY: cursorY,
+      topY: currentTopY,
+    };
+  };
+
+  let rootStartY = AUTO_LAYOUT_START_Y;
+  nodes.forEach((rootNode) => {
+    const subtreeLayout = placeSubtree(rootNode, 0, rootStartY);
+    rootStartY = subtreeLayout.nextY + AUTO_LAYOUT_ROOT_GAP;
   });
 
   return layout;

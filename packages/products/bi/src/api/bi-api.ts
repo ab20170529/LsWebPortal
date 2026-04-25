@@ -292,6 +292,13 @@ export const biApi = {
   getRuntimeByScreen(screenCode: string) {
     return unwrap<BiRuntimeScreen>(biApiClient.request(`/api/bi/runtime/screen/${screenCode}`));
   },
+  getPreviewRuntimeByScreen(screenCode: string, versionId?: number | null) {
+    return unwrap<BiRuntimeScreen>(
+      biApiClient.request(`/api/bi/runtime/screen/${screenCode}/preview`, {
+        query: { versionId: versionId ?? undefined },
+      }),
+    );
+  },
   getShareRuntime(token: string) {
     return unwrap<BiRuntimeScreen>(biApiClient.request(`/api/bi/share/${token}`));
   },
@@ -367,6 +374,15 @@ export const biApi = {
       biApiClient.request(`/api/bi/runtime/screen/${screenCode}/query`, {
         body: { params: params ?? {} },
         method: 'POST',
+      }),
+    );
+  },
+  queryPreviewRuntimeByScreen(screenCode: string, versionId?: number | null, params?: Record<string, unknown>) {
+    return unwrap<BiRuntimeScreen>(
+      biApiClient.request(`/api/bi/runtime/screen/${screenCode}/preview/query`, {
+        body: { params: params ?? {} },
+        method: 'POST',
+        query: { versionId: versionId ?? undefined },
       }),
     );
   },

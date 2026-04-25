@@ -1,11 +1,17 @@
-import { Button } from '@lserp/ui';
+import { Button, cx } from '@lserp/ui';
 
 import type { BiDirectoryNode, BiScreen } from '../../types';
 import { getNodeTypeLabel, getStatusLabel } from '../../utils/bi-directory';
 import type { BiArchiveTab, BiWorkspaceSection } from '../../utils/bi-workspace-view-state';
 
 type BiNodeContextPanelProps = {
+  activeArchiveTab: BiArchiveTab;
+  activeSection: BiWorkspaceSection;
+  canDeleteNode: boolean;
+  deleteHint: string;
   node: BiDirectoryNode | null;
+  onDeleteNode: () => void;
+  onEditNode: () => void;
   onOpenArchiveTab: (tab: BiArchiveTab) => void;
   onOpenSection: (section: BiWorkspaceSection) => void;
   onQuickCreateExternalArchive: () => void;
@@ -14,20 +20,31 @@ type BiNodeContextPanelProps = {
 };
 
 export function BiNodeContextPanel({
+  activeArchiveTab,
+  activeSection,
+  canDeleteNode,
+  deleteHint,
   node,
+  onDeleteNode,
+  onEditNode,
   onOpenArchiveTab,
   onOpenSection,
   onQuickCreateExternalArchive,
   onQuickDesignInternalArchive,
   screens,
 }: BiNodeContextPanelProps) {
+  const isArchiveSection = activeSection === 'archives';
+  const isSourceSection = activeSection === 'sources';
+  const isDesignArchiveActive = isArchiveSection && activeArchiveTab === 'design';
+  const isArchiveBaseActive = isArchiveSection && activeArchiveTab === 'base';
+
   return (
     <aside className="bi-context-panel">
       <div className="bi-context-panel-header">
         <div>
           <div className="bi-context-panel-title">节点摘要</div>
           <div className="bi-context-panel-subtitle">
-            {node ? `当前选中：${node.nodeName}` : '请先从目录画布中选择一个节点'}
+            {node ? `当前选中：${node.nodeName}` : '请先从目录画布中选择一个节点。'}
           </div>
         </div>
       </div>
@@ -67,17 +84,60 @@ export function BiNodeContextPanel({
                 </div>
                 <div className="bi-panel-card">
                   <div className="bi-panel-form">
-                    <Button onClick={onQuickDesignInternalArchive}>设计内置 BI</Button>
-                    <Button onClick={onQuickCreateExternalArchive} tone="ghost">
+                    <Button className="bi-panel-action" onClick={onEditNode} tone="ghost">
+                      编辑当前节点
+                    </Button>
+                    <Button
+                      className={cx('bi-panel-action', isDesignArchiveActive ? 'is-active' : '')}
+                      onClick={onQuickDesignInternalArchive}
+                      tone="ghost"
+                    >
+                      设计内置 BI
+                    </Button>
+                    <Button
+                      className={cx(
+                        'bi-panel-action',
+                        isArchiveBaseActive && screens.every((screen) => screen.biType !== 'INTERNAL')
+                          ? 'is-active'
+                          : '',
+                      )}
+                      onClick={onQuickCreateExternalArchive}
+                      tone="ghost"
+                    >
                       新建外链 BI
                     </Button>
-                    <Button onClick={() => onOpenArchiveTab('base')} tone="ghost">
+                    <Button
+                      className={cx('bi-panel-action', isArchiveBaseActive ? 'is-active' : '')}
+                      onClick={() => onOpenArchiveTab('base')}
+                      tone="ghost"
+                    >
                       管理 BI 档案
                     </Button>
-                    <Button onClick={() => onOpenSection('sources')} tone="ghost">
+                    <Button
+                      className={cx('bi-panel-action', isSourceSection ? 'is-active' : '')}
+                      onClick={() => onOpenSection('sources')}
+                      tone="ghost"
+                    >
                       管理分析源
                     </Button>
                   </div>
+                </div>
+              </section>
+
+              <section className="bi-panel-section bi-panel-danger-section">
+                <div className="bi-panel-section-header">
+                  <div className="bi-panel-section-title">危险操作</div>
+                </div>
+                <div className="bi-panel-card bi-panel-card-danger">
+                  <Button
+                    className="bi-button-danger"
+                    disabled={!canDeleteNode}
+                    onClick={onDeleteNode}
+                    tone="ghost"
+                  >
+                    删除节点
+                  </Button>
+                  <div className="bi-panel-note bi-panel-note-danger">{deleteHint}</div>
                 </div>
               </section>
 
@@ -134,7 +194,7 @@ export function BiNodeContextPanel({
             </>
           ) : (
             <div className="bi-panel-empty">
-              先在目录画布里选择一个节点。选中后，这里会显示节点摘要、已绑定分析源以及进入 BI 档案设计的快捷入口。
+              先在目录画布里选择一个节点。选中后，这里会显示节点摘要、已绑定分析源，以及进入 BI 档案设计的快捷入口。
             </div>
           )}
         </div>

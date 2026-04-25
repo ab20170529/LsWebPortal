@@ -1,55 +1,94 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BiDatasource } from '../types';
-import {
-  collectAllowedTables,
-  getGenerationStatusLabel,
-  getNodeTypeLabel,
-  getPublishModeLabel,
-  getScreenDesignStatusLabel,
-  getStatusLabel,
-} from './bi-directory';
+import type { BiDirectoryNode } from '../types';
+import { buildAutoLayout } from './bi-directory';
 
-const datasources: BiDatasource[] = [
+const forest: BiDirectoryNode[] = [
   {
-    assets: [
+    boundAssets: [],
+    children: [
       {
-        assetCode: 'sales_table',
-        assetName: '销售事实表',
-        assetType: 'TABLE',
-        datasourceId: 1,
-        fields: [],
+        boundAssets: [],
+        children: [],
+        datasourceIds: [],
         id: 11,
-        sourceTables: [],
-        tableName: 'dw_sales',
-        tableSchema: 'dbo',
-      },
-      {
-        assetCode: 'region_sql',
-        assetName: '区域排名 SQL',
-        assetType: 'SQL',
-        datasourceId: 1,
-        fields: [],
-        id: 12,
-        sourceTables: ['dbo.dw_region', 'dbo.dw_sales'],
+        level: 2,
+        nodeCode: 'root_a_dept',
+        nodeName: '一级1-部门',
+        nodeType: 'DEPARTMENT',
+        parentId: 10,
+        sourceAssetIds: [],
+        status: 'ACTIVE',
       },
     ],
-    id: 1,
-    name: '销售分析源',
-    sourceCode: 'sales_ds',
+    datasourceIds: [],
+    id: 10,
+    level: 1,
+    nodeCode: 'root_a',
+    nodeName: '一级1',
+    nodeType: 'COMPANY',
+    parentId: null,
+    sourceAssetIds: [],
+    status: 'ACTIVE',
+  },
+  {
+    boundAssets: [],
+    children: [
+      {
+        boundAssets: [],
+        children: [],
+        datasourceIds: [],
+        id: 21,
+        level: 2,
+        nodeCode: 'root_b_dept',
+        nodeName: '一级2-部门',
+        nodeType: 'DEPARTMENT',
+        parentId: 20,
+        sourceAssetIds: [],
+        status: 'ACTIVE',
+      },
+    ],
+    datasourceIds: [],
+    id: 20,
+    level: 1,
+    nodeCode: 'root_b',
+    nodeName: '一级2',
+    nodeType: 'COMPANY',
+    parentId: null,
+    sourceAssetIds: [],
+    status: 'ACTIVE',
   },
 ];
 
 describe('bi directory helpers', () => {
-  it('collects table whitelist from table assets and sql source tables', () => {
-    expect(collectAllowedTables(datasources)).toEqual(['dbo.dw_sales', 'dbo.dw_region']);
-  });
+  it('keeps separate root trees in distinct auto-layout bands', () => {
+    const layout = buildAutoLayout(forest);
 
-  it('maps labels to deliverable Chinese copy', () => {
-    expect(getNodeTypeLabel('ANALYSIS_DIM')).toBe('分析维度');
-    expect(getStatusLabel('ACTIVE')).toBe('已生效');
-    expect(getScreenDesignStatusLabel('FAILED')).toBe('生成失败');
-    expect(getGenerationStatusLabel('RUNNING')).toBe('生成中');
-    expect(getPublishModeLabel('DRAFT')).toBe('仅生成草稿');
+    const rootOne = layout.get(10);
+    const rootOneChild = layout.get(11);
+    const rootTwo = layout.get(20);
+    const rootTwoChild = layout.get(21);
+
+    expect(rootOne).toBeDefined();
+    expect(rootOneChild).toBeDefined();
+    expect(rootTwo).toBeDefined();
+    expect(rootTwoChild).toBeDefined();
+
+    if (!rootOne || !rootOneChild || !rootTwo || !rootTwoChild) {
+      throw new Error('auto layout should place every node in the forest');
+    }
+
+    const rootOneX = rootOne.x ?? 0;
+    const rootOneChildX = rootOneChild.x ?? 0;
+    const rootOneChildY = rootOneChild.y ?? 0;
+    const rootTwoX = rootTwo.x ?? 0;
+    const rootTwoY = rootTwo.y ?? 0;
+    const rootTwoChildX = rootTwoChild.x ?? 0;
+    const rootTwoChildY = rootTwoChild.y ?? 0;
+
+    expect(rootOneChildX).toBeGreaterThan(rootOneX);
+    expect(rootTwoChildX).toBeGreaterThan(rootTwoX);
+    expect(rootTwoY).toBeGreaterThan(rootOneChildY + 200);
+    expect(rootTwoChildY).toBeGreaterThan(rootOneChildY + 200);
   });
 });

@@ -22,17 +22,27 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
       setError(null);
 
       try {
+        const previewVersionIdRaw = new URLSearchParams(window.location.search).get('previewVersionId');
+        const previewVersionId =
+          route.kind === 'screen' && previewVersionIdRaw && Number.isFinite(Number(previewVersionIdRaw))
+            ? Number(previewVersionIdRaw)
+            : null;
+
         const meta =
           route.kind === 'node'
             ? await biApi.getRuntimeByNode(route.value)
             : route.kind === 'screen'
-              ? await biApi.getRuntimeByScreen(route.value)
+              ? previewVersionId != null
+                ? await biApi.getPreviewRuntimeByScreen(route.value, previewVersionId)
+                : await biApi.getRuntimeByScreen(route.value)
               : await biApi.getShareRuntime(route.value);
 
         const withData =
           meta.biType === 'INTERNAL'
             ? route.kind === 'share'
               ? await biApi.queryShareRuntime(route.value)
+              : route.kind === 'screen' && previewVersionId != null
+                ? await biApi.queryPreviewRuntimeByScreen(route.value, previewVersionId)
               : await biApi.queryRuntimeByScreen(meta.screenCode)
             : meta;
 
