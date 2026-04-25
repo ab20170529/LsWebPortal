@@ -504,6 +504,15 @@ export function BiArchiveManagementPanel({
                 ) : null}
               </div>
 
+              <div className="bi-panel-note bi-panel-guide">
+                <div className="bi-panel-guide-title">这一页怎么用</div>
+                <div className="bi-panel-guide-list">
+                  <div className="bi-panel-guide-item">1. 做系统内页面时，BI 类型选“内置 BI”，保存后再去“设计与生成”。</div>
+                  <div className="bi-panel-guide-item">2. 做外部跳转页面时，BI 类型选“外链 BI”，重点填“外链地址”和“打开方式”。</div>
+                  <div className="bi-panel-guide-item">3. 点击保存后，左侧档案列表会新增或更新当前档案。</div>
+                </div>
+              </div>
+
               <div className="bi-panel-form">
                 <div className="bi-form-grid bi-form-grid-2">
                   <label className="bi-panel-field">
@@ -566,6 +575,9 @@ export function BiArchiveManagementPanel({
                     </select>
                   </label>
                 </div>
+                <div className="bi-panel-help">
+                  `内置 BI` 适合做系统里自己设计的大屏和页面；`外链 BI` 适合跳转到外部系统地址。
+                </div>
 
                 <label className="bi-panel-field">
                   <span className="bi-panel-label">业务说明</span>
@@ -578,6 +590,7 @@ export function BiArchiveManagementPanel({
                     value={baseForm.businessNote}
                   />
                 </label>
+                <div className="bi-panel-help">写这个档案主要解决什么业务问题，给谁看，用来做什么判断。</div>
                 <label className="bi-panel-field">
                   <span className="bi-panel-label">设计说明</span>
                   <textarea
@@ -589,6 +602,7 @@ export function BiArchiveManagementPanel({
                     value={baseForm.designNote}
                   />
                 </label>
+                <div className="bi-panel-help">写页面结构和展示重点，比如“上方核心指标，中间趋势，底部区域对比”。</div>
                 <label className="bi-panel-field">
                   <span className="bi-panel-label">最近一次设计提示词</span>
                   <textarea
@@ -600,6 +614,7 @@ export function BiArchiveManagementPanel({
                     value={baseForm.latestDesignPrompt}
                   />
                 </label>
+                <div className="bi-panel-help">这里记录最近一次给 AI 的提示词，后面继续生成或复盘时会更方便。</div>
                 <label className="bi-panel-field">
                   <span className="bi-panel-label">扩展元信息 JSON</span>
                   <textarea
@@ -612,9 +627,13 @@ export function BiArchiveManagementPanel({
                     value={baseForm.designMetaText}
                   />
                 </label>
+                <div className="bi-panel-help">这个是给高级扩展用的；如果现在不确定怎么填，可以先留空。</div>
 
                 {baseForm.biType === 'EXTERNAL' ? (
                   <div className="bi-panel-card bi-panel-card-muted">
+                    <div className="bi-panel-card-subtitle">
+                      外链 BI 最少只需要配置“外链地址 + 打开方式”。保存后，这个节点下面会出现一条外链档案，访问时会按这里的规则打开外部页面。
+                    </div>
                     <div className="bi-panel-card-title">外链配置</div>
                     <div className="bi-form-grid bi-form-grid-2">
                       <label className="bi-panel-field">
@@ -625,6 +644,7 @@ export function BiArchiveManagementPanel({
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             setBaseForm((current) => ({ ...current, externalTargetUrl: event.target.value }))
                           }
+                          placeholder="例如：https://example.com/dashboard"
                           value={baseForm.externalTargetUrl}
                         />
                       </label>
@@ -665,6 +685,7 @@ export function BiArchiveManagementPanel({
                             externalQueryParamMappingText: event.target.value,
                           }))
                         }
+                        placeholder='例如：{"nodeId":"current_node_id","month":"selected_month"}'
                         value={baseForm.externalQueryParamMappingText}
                       />
                     </label>
@@ -874,6 +895,16 @@ export function BiArchiveManagementPanel({
                   <div className="bi-panel-empty">请先选择一个节点，再开始设计内置 BI。</div>
                 )}
 
+                <div className="bi-panel-note bi-panel-guide">
+                  <div className="bi-panel-guide-title">设计内置 BI 的推荐步骤</div>
+                  <div className="bi-panel-guide-list">
+                    <div className="bi-panel-guide-item">1. 先确认当前节点已经绑定分析源，否则 AI 生成出来的内容会比较空。</div>
+                    <div className="bi-panel-guide-item">2. 选择提示词模板后，先点“预览提示词”，确认生成方向没问题。</div>
+                    <div className="bi-panel-guide-item">3. 再点“生成草稿”，系统会生成一个可继续修改的版本草稿。</div>
+                    <div className="bi-panel-guide-item">4. 最后到下方版本内容继续调整、保存，再去“发布分享”。</div>
+                  </div>
+                </div>
+
                 <div className="bi-panel-form">
                   <label className="bi-panel-field">
                     <span className="bi-panel-label">提示词模板</span>
@@ -890,6 +921,7 @@ export function BiArchiveManagementPanel({
                       ))}
                     </select>
                   </label>
+                  <div className="bi-panel-help">先选一个模板，等于先确定“生成页面时走哪种思路”。</div>
                   <label className="bi-panel-field">
                     <span className="bi-panel-label">业务提示词</span>
                     <textarea
@@ -899,6 +931,9 @@ export function BiArchiveManagementPanel({
                       value={manualPrompt}
                     />
                   </label>
+                  <div className="bi-panel-help">
+                    这里直接写你想让页面重点展示什么，比如“看营收趋势、异常波动、区域对比、Top 门店”。
+                  </div>
                   <div className="bi-panel-note">
                     当前可用上下文：{sourceAssetIds.length} 个分析源资产，{allowedTables.length} 张允许表，{fieldCoverage.length}{' '}
                     个字段说明。

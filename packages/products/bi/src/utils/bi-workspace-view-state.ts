@@ -50,10 +50,10 @@ export function buildBiWorkspaceViewSearch(state: Partial<BiWorkspaceViewState>)
   if (nextState.section !== DEFAULT_STATE.section) {
     params.set('section', nextState.section);
   }
-  if (nextState.nodeId) {
+  if (nextState.nodeId && nextState.nodeId > 0) {
     params.set('nodeId', String(nextState.nodeId));
   }
-  if (nextState.screenId) {
+  if (nextState.screenId && nextState.screenId > 0) {
     params.set('screenId', String(nextState.screenId));
   }
   if (nextState.section === 'archives' && nextState.tab !== DEFAULT_STATE.tab) {

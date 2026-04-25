@@ -137,6 +137,20 @@ export function ExternalLinkIcon(props: IconProps) {
   );
 }
 
+export function TrashIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path
+        d="M5 7h14M10 11v6M14 11v6M9 7l.6-2h4.8l.6 2M7 7l.8 13h8.4L17 7"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </IconBase>
+  );
+}
+
 export function DatabaseIcon(props: IconProps) {
   return (
     <IconBase {...props}>
@@ -154,6 +168,20 @@ export function CodeIcon(props: IconProps) {
   return (
     <IconBase {...props}>
       <path d="m9 8-4 4 4 4M15 8l4 4-4 4M13 6l-2 12" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </IconBase>
+  );
+}
+
+export function EditIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path
+        d="M4 20h4l9.5-9.5a2.12 2.12 0 1 0-3-3L5 17v3ZM13.5 6.5l3 3"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
     </IconBase>
   );
 }
