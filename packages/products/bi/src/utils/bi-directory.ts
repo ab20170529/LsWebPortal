@@ -5,8 +5,8 @@ export const DEFAULT_NODE_HEIGHT = 148;
 const AUTO_LAYOUT_START_X = 64;
 const AUTO_LAYOUT_START_Y = 120;
 const AUTO_LAYOUT_COLUMN_GAP = 280;
-const AUTO_LAYOUT_ROW_GAP = 204;
-const AUTO_LAYOUT_ROOT_GAP = 104;
+const AUTO_LAYOUT_ROW_GAP = 172;
+const AUTO_LAYOUT_ROOT_GAP = 80;
 
 const NODE_TYPE_LABELS: Record<string, string> = {
   ANALYSIS_DIM: '分析维度',

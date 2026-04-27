@@ -3,7 +3,7 @@
  */
 
 const env = {
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
   authEndpoint: import.meta.env.VITE_AUTH_ENDPOINT || '/api/auth',
   systemEndpoint: import.meta.env.VITE_SYSTEM_ENDPOINT || '/api/system',
   appEnv: import.meta.env.VITE_APP_ENV || 'development',

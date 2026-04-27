@@ -23,8 +23,11 @@ export interface EmployeeOption {
 }
 
 export interface IdentityLoginPayload {
+  basename: string;
   employeeId: number;
   password: string;
+  serverip: string;
+  serverport: number;
 }
 
 export interface CompanySessionPayload {

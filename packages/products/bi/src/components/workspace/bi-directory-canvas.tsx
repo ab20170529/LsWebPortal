@@ -31,12 +31,14 @@ type ConnectorLine = {
   fromX: number;
   fromY: number;
   id: string;
+  isOnlyChild: boolean;
   toId: number;
   toX: number;
   toY: number;
 };
 
-const CONNECTOR_ARROW_GAP = 28;
+
+
 
 function SaveStageIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -82,7 +84,6 @@ export function BiDirectoryCanvas({
   const [highlightedNodeId, setHighlightedNodeId] = useState<number | null>(null);
   const branchFocusEnabled = false;
   const flatNodes = useMemo(() => flattenDirectoryNodes(nodes), [nodes]);
-  const dragFrameIdState = useMemo(() => ({ current: null as number | null }), []);
   const selectedNode = useMemo(
     () => flatNodes.find((node) => node.id === selectedNodeId) ?? null,
     [flatNodes, selectedNodeId],
@@ -154,62 +155,28 @@ export function BiDirectoryCanvas({
         }
         const parentLayout = getNodeCanvasMeta(parent, layoutMap);
         const nodeLayout = getNodeCanvasMeta(node, layoutMap);
+        // 判断父节点是否只有这一个子节点
+        const siblings = (parent.children ?? []).filter((c) => !c.parentId || c.parentId === parent.id);
+        const isOnly = siblings.length <= 1;
         return [
           {
             fromX: parentLayout.x + parentLayout.width,
             fromY: parentLayout.y + parentLayout.height / 2,
             fromId: parent.id,
             id: `${parent.id}-${node.id}`,
+            isOnlyChild: isOnly,
             toId: node.id,
-            toX: nodeLayout.x - CONNECTOR_ARROW_GAP,
+            toX: nodeLayout.x,
             toY: nodeLayout.y + nodeLayout.height / 2,
           },
         ];
       });
   }, [layoutMap, nodeIndex, visibleNodes]);
 
-  function handlePointerDown(node: BiDirectoryNode, event: { clientX: number; clientY: number }) {
-    const layout = getNodeCanvasMeta(node, layoutMap);
-    const dragState = {
-      nodeId: node.id,
-      originX: layout.x,
-      originY: layout.y,
-      pendingX: layout.x,
-      pendingY: layout.y,
-      pointerX: event.clientX,
-      pointerY: event.clientY,
-    };
-
-    const release = () => {
-      if (dragFrameIdState.current !== null) {
-        window.cancelAnimationFrame(dragFrameIdState.current);
-        dragFrameIdState.current = null;
-        onUpdateNodeLayout(dragState.nodeId, {
-          x: dragState.pendingX,
-          y: dragState.pendingY,
-        });
-      }
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', release);
-    };
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      dragState.pendingX = Math.max(40, dragState.originX + moveEvent.clientX - dragState.pointerX);
-      dragState.pendingY = Math.max(40, dragState.originY + moveEvent.clientY - dragState.pointerY);
-      if (dragFrameIdState.current !== null) {
-        return;
-      }
-      dragFrameIdState.current = window.requestAnimationFrame(() => {
-        dragFrameIdState.current = null;
-        onUpdateNodeLayout(dragState.nodeId, {
-          x: dragState.pendingX,
-          y: dragState.pendingY,
-        });
-      });
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', release, { once: true });
+  // 节点拖动已禁用
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function handlePointerDown(_node: BiDirectoryNode, _event: { clientX: number; clientY: number }) {
+    // 拖动功能暂时关闭，如需恢复请还原此函数
   }
 
   function handleCanvasMouseDown(event: React.MouseEvent<HTMLDivElement>) {
@@ -488,36 +455,20 @@ export function BiDirectoryCanvas({
         ) : (
           <div className="bi-canvas-stage" style={{ height: canvasHeight, width: canvasWidth }}>
             <svg className="bi-canvas-links" height={canvasHeight} width={canvasWidth}>
-              <defs>
-                <marker
-                  id="bi-canvas-arrow"
-                  markerHeight="7"
-                  markerWidth="10"
-                  orient="auto"
-                  refX="10"
-                  refY="3.5"
-                >
-                  <polygon fill="#94A3B8" points="0 0, 10 3.5, 0 7" />
-                </marker>
-                <marker
-                  id="bi-canvas-arrow-related"
-                  markerHeight="7"
-                  markerWidth="10"
-                  orient="auto"
-                  refX="10"
-                  refY="3.5"
-                >
-                  <polygon fill="#60A5FA" points="0 0, 10 3.5, 0 7" />
-                </marker>
-              </defs>
               {connectors.map((line) => {
-                const midX = line.fromX + (line.toX - line.fromX) * 0.48;
+                const d = line.isOnlyChild
+                  // 单个子节点：水平向右延伸，然后垂直连接到子节点（直角折线）
+                  ? `M${line.fromX} ${line.fromY} L${line.toX} ${line.fromY} L${line.toX} ${line.toY}`
+                  // 多个子节点：贝塞尔曲线
+                  : (() => {
+                      const midX = line.fromX + (line.toX - line.fromX) * 0.48;
+                      return `M${line.fromX} ${line.fromY} C${midX} ${line.fromY} ${midX} ${line.toY} ${line.toX} ${line.toY}`;
+                    })();
                 return (
                   <path
                     className="is-related"
                     key={line.id}
-                    d={`M${line.fromX} ${line.fromY} C${midX} ${line.fromY} ${midX} ${line.toY} ${line.toX} ${line.toY}`}
-                    markerEnd="url(#bi-canvas-arrow-related)"
+                    d={d}
                   />
                 );
               })}

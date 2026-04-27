@@ -17,6 +17,7 @@ import {
   type BiArchiveTab,
   type BiWorkspaceSection,
 } from '../utils/bi-workspace-view-state';
+import { Button, Card } from '@lserp/ui';
 
 function resolveLatestVersionId(versions: Array<{ id: number; versionNo?: number | null }>) {
   if (versions.length === 0) {
@@ -87,6 +88,11 @@ export function BiWorkspacePage() {
   const [createPresetType, setCreatePresetType] = useState<'EXTERNAL' | 'INTERNAL' | null>(null);
   const [canvasFocusRequest, setCanvasFocusRequest] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // 节点编辑弹窗状态
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editModalNode, setEditModalNode] = useState<BiDirectoryNode | null>(null);
+  const [editFormName, setEditFormName] = useState('');
+  const [editFormCode, setEditFormCode] = useState('');
   const workspace = useBiWorkspace({
     initialSelectedNodeId: initialView.nodeId,
     initialSelectedScreenId: initialView.screenId,
@@ -288,11 +294,13 @@ export function BiWorkspacePage() {
       return;
     }
 
+    const baseCode =
+      slugifyCode(targetNode.nodeCode || targetNode.nodeName) || 'bi_screen';
     const created = await workspace.createScreen({
       biType: 'INTERNAL',
       name: `${targetNode.nodeName}内置BI`,
       nodeId: targetNode.id,
-      screenCode: `${slugifyCode(targetNode.nodeCode || targetNode.nodeName) || 'bi_screen'}_internal`,
+      screenCode: `${baseCode}_internal_${Date.now()}`,
     });
     if (created && typeof created === 'object' && 'id' in created) {
       const createdScreen = created as { id: number; nodeId: number };
@@ -314,25 +322,34 @@ export function BiWorkspacePage() {
     openArchiveTab('base');
   }
 
-  function handleEditNode(targetNode: BiDirectoryNode | null = workspace.selectedNode) {
+  function openEditModal(targetNode: BiDirectoryNode | null = workspace.selectedNode) {
     if (!targetNode || targetNode.id < 0) {
       return;
     }
+    setEditModalNode(targetNode);
+    setEditFormName(targetNode.nodeName);
+    setEditFormCode(targetNode.nodeCode);
+    setEditModalOpen(true);
+  }
 
-    const nextNodeName = window.prompt('请输入节点名称', targetNode.nodeName)?.trim();
-    if (nextNodeName == null) {
+  function closeEditModal() {
+    setEditModalOpen(false);
+    setEditModalNode(null);
+    setEditFormName('');
+    setEditFormCode('');
+  }
+
+  function handleSubmitEdit() {
+    if (!editModalNode) {
       return;
     }
+    const nextNodeName = editFormName.trim();
+    const nextNodeCodeInput = editFormCode.trim();
+
     if (!nextNodeName) {
       window.alert('节点名称不能为空。');
       return;
     }
-
-    const nextNodeCodeInput = window.prompt('请输入节点编码', targetNode.nodeCode)?.trim();
-    if (nextNodeCodeInput == null) {
-      return;
-    }
-
     const nextNodeCode = slugifyCode(nextNodeCodeInput);
     if (!nextNodeCode) {
       window.alert('节点编码不能为空，且需包含字母或数字。');
@@ -342,21 +359,27 @@ export function BiWorkspacePage() {
     void workspace
       .saveDirectory(
         {
-          canvasMeta: workspace.layoutMap[targetNode.id] ?? targetNode.canvasMeta ?? undefined,
+          canvasMeta: workspace.layoutMap[editModalNode.id] ?? editModalNode.canvasMeta ?? undefined,
           nodeCode: nextNodeCode,
           nodeName: nextNodeName,
-          nodeType: targetNode.nodeType,
-          orderNo: targetNode.orderNo ?? 0,
-          parentId: targetNode.parentId ?? null,
-          status: targetNode.status ?? 'ACTIVE',
+          nodeType: editModalNode.nodeType,
+          orderNo: editModalNode.orderNo ?? 0,
+          parentId: editModalNode.parentId ?? null,
+          status: editModalNode.status ?? 'ACTIVE',
         },
-        targetNode.id,
+        editModalNode.id,
       )
       .then(() => {
-        workspace.setSelectedNodeId(targetNode.id);
+        workspace.setSelectedNodeId(editModalNode.id);
         setToastMessage('节点内容已更新。');
+        closeEditModal();
       })
       .catch(() => undefined);
+  }
+
+  function handleEditNode(targetNode: BiDirectoryNode | null = workspace.selectedNode) {
+    // 现在通过弹窗编辑，不再使用 window.prompt
+    openEditModal(targetNode);
   }
 
   function handleDeleteNode(targetNode: BiDirectoryNode | null = workspace.selectedNode) {
@@ -405,6 +428,31 @@ export function BiWorkspacePage() {
         setToastMessage(`节点已删除，已回到${fallbackNodeName}。`);
       })
       .catch(() => undefined);
+  }
+
+  function handleOpenPreview() {
+    if (!previewState.href) {
+      setToastMessage(previewState.statusText ?? '请先选择节点，并确保当前已有可预览内容。');
+      return;
+    }
+
+    window.open(previewState.href, '_blank', 'noopener,noreferrer');
+  }
+
+  function handlePublishCurrent() {
+    if (!workspace.selectedScreen || !publishVersionId) {
+      return;
+    }
+
+    if (
+      workspace.generationTask?.screenId === workspace.selectedScreen.id &&
+      workspace.generationTask.versionId === publishVersionId
+    ) {
+      void workspace.publishGeneratedVersion(workspace.selectedScreen.id, publishVersionId);
+      return;
+    }
+
+    void workspace.publishScreenVersion(workspace.selectedScreen.id, publishVersionId);
   }
 
   if (workspace.isLoading && workspace.nodes.length === 0) {
@@ -494,6 +542,7 @@ export function BiWorkspacePage() {
               onRegenerateVersion={workspace.regenerateVersion}
               onRevokeShareToken={workspace.revokeShareToken}
               onSaveScreenVersion={workspace.saveScreenVersion}
+              onClearWorkspaceError={workspace.clearError}
               onSelectNode={(nodeId) => workspace.setSelectedNodeId(nodeId)}
               onSelectScreen={workspace.setSelectedScreenId}
               onUpdateScreen={workspace.updateScreen}
@@ -519,17 +568,22 @@ export function BiWorkspacePage() {
             activeArchiveTab={activeArchiveTab}
             activeSection={activeSection}
             canDeleteNode={deleteState.canDelete}
+            canPreviewCurrent={previewState.canPreview}
+            canPublishCurrent={Boolean(workspace.selectedScreen && publishVersionId)}
             deleteHint={deleteState.hint}
             node={workspace.selectedNode}
             onDeleteNode={() => handleDeleteNode()}
             onEditNode={() => handleEditNode()}
             onOpenArchiveTab={openArchiveTab}
+            onOpenPreview={handleOpenPreview}
             onOpenSection={openSection}
+            onPublishCurrent={handlePublishCurrent}
             onQuickCreateExternalArchive={handleCreateExternalArchive}
             onQuickDesignInternalArchive={() => {
               void handleDesignInternalArchive();
             }}
-            screens={workspace.screens}
+            previewHint={previewState.statusText}
+            screens={selectedNodeScreens}
           />
         }
         onToggleContext={() => setContextCollapsed((collapsed) => !collapsed)}
@@ -554,31 +608,129 @@ export function BiWorkspacePage() {
               }
               void handleDesignInternalArchive();
             }}
-            onOpenPreview={() => {
-              if (!previewState.href) {
-                setToastMessage(previewState.statusText ?? '请先选择节点，并确保当前已有可预览内容。');
-                return;
-              }
-              window.open(previewState.href, '_blank', 'noopener,noreferrer');
-            }}
-            onPublish={() => {
-              if (!workspace.selectedScreen || !publishVersionId) {
-                return;
-              }
-              if (
-                workspace.generationTask?.screenId === workspace.selectedScreen.id &&
-                workspace.generationTask.versionId === publishVersionId
-              ) {
-                void workspace.publishGeneratedVersion(workspace.selectedScreen.id, publishVersionId);
-                return;
-              }
-              void workspace.publishScreenVersion(workspace.selectedScreen.id, publishVersionId);
-            }}
+            onOpenPreview={handleOpenPreview}
+            onPublish={handlePublishCurrent}
             previewStatusText={previewState.statusText}
             screenName={workspace.selectedScreen?.name ?? workspace.selectedNode?.nodeName ?? null}
           />
         }
       />
+      {/* 节点编辑弹窗 */}
+      {editModalOpen && editModalNode ? (
+        <div
+          className="bi-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeEditModal();
+            }
+          }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: '12px',
+              padding: '32px',
+              width: '420px',
+              maxWidth: '90vw',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 20px', fontSize: '18px', fontWeight: 700 }}>
+              编辑节点「{editModalNode.nodeName}」
+            </h3>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px' }}>
+                节点名称
+              </label>
+              <input
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#3b82f6';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#d1d5db';
+                  e.target.style.boxShadow = 'none';
+                }}
+                onChange={(e) => setEditFormName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSubmitEdit();
+                  }
+                }}
+                value={editFormName}
+              />
+            </div>
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px' }}>
+                节点编码
+              </label>
+              <input
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+                onChange={(e) => setEditFormCode(e.target.value)}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#3b82f6';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = '#d1d5db';
+                  e.target.style.boxShadow = 'none';
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSubmitEdit();
+                  }
+                }}
+                value={editFormCode}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <Button
+                onClick={closeEditModal}
+                tone="ghost"
+                type="button"
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleSubmitEdit}
+                type="button"
+              >
+                保存
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

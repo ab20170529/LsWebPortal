@@ -1621,6 +1621,192 @@
   line-height: 1.75;
 }
 
+.bi-context-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.bi-context-state-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.94);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.76);
+  padding: 12px;
+}
+
+.bi-context-state-card.is-complete {
+  border-color: rgba(16, 185, 129, 0.24);
+  background: linear-gradient(180deg, rgba(236, 253, 245, 0.92), rgba(240, 253, 250, 0.84));
+}
+
+.bi-context-state-card.is-pending {
+  border-color: rgba(191, 219, 254, 0.92);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.9), rgba(248, 250, 252, 0.88));
+}
+
+.bi-context-state-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bi-context-state-label {
+  color: var(--bi-text-main);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.bi-context-state-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--bi-text-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.bi-context-state-card.is-complete .bi-context-state-badge {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.bi-context-state-text {
+  color: var(--bi-text-muted);
+  font-size: 11px;
+  line-height: 1.75;
+}
+
+.bi-context-guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bi-context-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 14px;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.bi-context-guide-card.is-next {
+  border-color: rgba(37, 99, 235, 0.3);
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.08);
+}
+
+.bi-context-guide-card.is-complete {
+  border-color: rgba(16, 185, 129, 0.24);
+  background: linear-gradient(180deg, rgba(240, 253, 250, 0.92), rgba(255, 255, 255, 0.96));
+}
+
+.bi-context-guide-card.is-blocked {
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.bi-context-guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bi-context-guide-stepno {
+  color: var(--bi-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.bi-context-guide-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  padding: 4px 9px;
+  color: var(--bi-text-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.bi-context-guide-card.is-next .bi-context-guide-state {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.bi-context-guide-card.is-complete .bi-context-guide-state {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.bi-context-guide-title {
+  color: var(--bi-text-main);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.bi-context-guide-text {
+  color: var(--bi-text-muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.bi-context-guide-action {
+  justify-content: center;
+}
+
+.bi-context-guide-action.is-complete {
+  border-color: rgba(16, 185, 129, 0.18) !important;
+  color: #047857 !important;
+}
+
+.bi-context-next-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(191, 219, 254, 0.92);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(255, 255, 255, 0.96));
+  padding: 14px;
+}
+
+.bi-context-next-kicker {
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bi-context-next-title {
+  color: var(--bi-text-main);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.bi-context-next-text {
+  color: var(--bi-text-muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.bi-context-next-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .bi-settings-stage {
   min-height: 0;
   overflow: auto;

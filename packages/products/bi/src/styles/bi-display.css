@@ -841,18 +841,33 @@
 .bi-runtime-empty-state,
 .bi-runtime-external-state,
 .bi-runtime-module {
-  border: 1px solid rgba(39, 39, 42, 0.96);
-  border-radius: 12px;
-  background: rgba(15, 15, 18, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
   padding: 16px 18px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
 }
 
 .bi-runtime-summary-label,
 .bi-runtime-module-tag {
-  color: #9ca3af;
+  color: #64748b;
   font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+.bi-runtime-summary-text,
+.bi-runtime-module-text,
+.bi-runtime-external-text,
+.bi-runtime-external-url {
+  color: #475569;
+}
+
+.bi-runtime-empty-state,
+.bi-runtime-external-state,
+.bi-runtime-empty-inline,
+.bi-runtime-table-empty {
+  color: #64748b;
 }
 
 .bi-runtime-grid {
@@ -867,12 +882,14 @@
 
 .bi-runtime-module {
   height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .bi-runtime-module--metric {
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--bi-display-accent) 14%, transparent), transparent 40%),
-    rgba(15, 15, 18, 0.94);
+    radial-gradient(circle at top right, color-mix(in srgb, var(--bi-display-accent) 16%, transparent), transparent 42%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(239, 246, 255, 0.94) 100%);
 }
 
 .bi-runtime-module-head,
@@ -884,7 +901,7 @@
 }
 
 .bi-runtime-module-code {
-  color: #71717a;
+  color: #94a3b8;
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -892,7 +909,7 @@
 
 .bi-runtime-module-title {
   margin-top: 16px;
-  color: #ffffff;
+  color: #0f172a;
   font-size: 20px;
   font-weight: 700;
 }
@@ -903,7 +920,6 @@
   font-size: clamp(44px, 4vw, 64px);
   font-weight: 800;
   line-height: 1;
-  text-shadow: 0 0 24px color-mix(in srgb, var(--bi-display-accent) 22%, transparent);
 }
 
 .bi-runtime-chart-list {
@@ -913,8 +929,20 @@
   margin-top: 18px;
 }
 
+.bi-runtime-chart-canvas-wrap {
+  min-height: 240px;
+  flex: 1;
+  margin-top: 14px;
+}
+
+.bi-runtime-chart-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+}
+
 .bi-runtime-chart-meta {
-  color: #d4d4d8;
+  color: #334155;
   font-size: 13px;
 }
 
@@ -922,7 +950,7 @@
   height: 10px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(39, 39, 42, 0.96);
+  background: rgba(226, 232, 240, 0.92);
 }
 
 .bi-runtime-chart-bar {
@@ -935,8 +963,9 @@
 .bi-runtime-frame-wrap {
   margin-top: 18px;
   overflow: hidden;
-  border: 1px solid rgba(39, 39, 42, 0.96);
+  border: 1px solid rgba(203, 213, 225, 0.74);
   border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .bi-runtime-table {
@@ -947,18 +976,18 @@
 .bi-runtime-table th,
 .bi-runtime-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(39, 39, 42, 0.96);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.88);
   font-size: 13px;
   text-align: left;
 }
 
 .bi-runtime-table th {
-  color: #71717a;
-  background: rgba(10, 10, 12, 0.94);
+  color: #475569;
+  background: rgba(241, 245, 249, 0.92);
 }
 
 .bi-runtime-table td {
-  color: #e4e4e7;
+  color: #1f2937;
 }
 
 .bi-runtime-frame {

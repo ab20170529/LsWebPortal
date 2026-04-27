@@ -16,6 +16,8 @@ const FIXED_EMPLOYEE_DIRECTORY_QUERY = {
   serverport: 16890,
 } as const;
 
+type EmployeeDirectoryQuery = Pick<ServerOption, 'basename' | 'serverip' | 'serverport'>;
+
 type AuthSessionResponse = Omit<AuthSession, 'activeCompany' | 'admin' | 'loginStage'> & {
   activeCompany?: AuthActiveCompany | null;
   admin?: boolean;
@@ -56,10 +58,10 @@ function normalizeSession(session: AuthSessionResponse): AuthSession {
   };
 }
 
-export async function fetchEmployeeOptions(): Promise<EmployeeOption[]> {
+export async function fetchEmployeeOptions(query: EmployeeDirectoryQuery = FIXED_EMPLOYEE_DIRECTORY_QUERY): Promise<EmployeeOption[]> {
   return apiRequest<EmployeeOption[]>(apiConfig.auth.employees, {
     method: 'GET',
-    query: FIXED_EMPLOYEE_DIRECTORY_QUERY,
+    query,
   });
 }
 
@@ -80,12 +82,7 @@ export async function fetchAccessibleCompanies(accessToken: string): Promise<Ser
 }
 
 export async function loginWithIdentity(payload: IdentityLoginPayload): Promise<AuthSession> {
-  const response = await apiRequest<AuthSessionResponse>(apiConfig.auth.identityLogin, {
-    body: payload,
-    method: 'POST',
-  });
-
-  return normalizeSession(response);
+  return loginWithPassword(payload);
 }
 
 export async function activateCompanySession(

@@ -1,5 +1,6 @@
 import { navigate } from '../../router';
 import { EmployeeSelector } from './components/employee-selector';
+import { OrganizationSelector } from './components/organization-selector';
 import { PasswordInput } from './components/password-input';
 import { RememberCredentials } from './components/remember-credentials';
 import { useLoginFormController } from './hooks/use-login-form-controller';
@@ -188,8 +189,22 @@ export function PortalLoginPage({ targetLabel }: PortalLoginPageProps) {
             ) : null}
 
             <form className="space-y-5" onSubmit={handleSubmit}>
+              <OrganizationSelector
+                disabled={controller.isLoadingCompanies || controller.isSubmitting}
+                helperText={controller.companyHelperText}
+                isLoading={controller.isLoadingCompanies}
+                onChange={controller.actions.selectCompany}
+                organizations={controller.companies}
+                selectedKey={controller.form.companyKey}
+              />
+
               <EmployeeSelector
-                disabled={controller.isLoadingEmployees || controller.isSubmitting}
+                disabled={
+                  !controller.selectedCompany
+                  || controller.isLoadingCompanies
+                  || controller.isLoadingEmployees
+                  || controller.isSubmitting
+                }
                 employees={controller.employees}
                 helperText={controller.employeeHelperText}
                 isLoading={controller.isLoadingEmployees}

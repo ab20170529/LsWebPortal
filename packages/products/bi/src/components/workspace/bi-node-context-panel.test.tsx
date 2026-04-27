@@ -39,14 +39,19 @@ describe('BiNodeContextPanel', () => {
         activeArchiveTab="base"
         activeSection="canvas"
         canDeleteNode={false}
+        canPreviewCurrent={false}
+        canPublishCurrent={false}
         deleteHint="当前节点是根节点，但下面还有子节点。只有没有子节点、没有 BI 档案的空根节点才可以删除。"
         node={node}
         onDeleteNode={vi.fn()}
         onEditNode={vi.fn()}
         onOpenArchiveTab={vi.fn()}
+        onOpenPreview={vi.fn()}
         onOpenSection={vi.fn()}
+        onPublishCurrent={vi.fn()}
         onQuickCreateExternalArchive={vi.fn()}
         onQuickDesignInternalArchive={vi.fn()}
+        previewHint={null}
         screens={[]}
       />,
     );

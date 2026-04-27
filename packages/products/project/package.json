@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "@lserp/http": "workspace:*",
-    "@lserp/ui": "workspace:*"
+    "@lserp/ui": "workspace:*",
+    "lucide-react": "^0.546.0"
   },
   "peerDependencies": {
     "react": "^19.0.0"

@@ -175,6 +175,13 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
     let active = true;
 
     const loadCompanies = async () => {
+      if (hasActiveCompany) {
+        setCompanies([]);
+        setCompanyError(null);
+        setIsLoadingCompanies(false);
+        return;
+      }
+
       if (!session.accessToken) {
         if (active) {
           setCompanies([]);
@@ -211,7 +218,7 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
     return () => {
       active = false;
     };
-  }, [session.accessToken]);
+  }, [hasActiveCompany, session.accessToken]);
 
   const activateCompany = async (company: ServerOption) => {
     if (!session.accessToken) {
@@ -335,7 +342,11 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
             ) : null}
 
             <div className="portal-system-gate__side-list mt-6 space-y-3">
-              {isLoadingCompanies ? (
+              {hasActiveCompany ? (
+                <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
+                  当前会话已绑定业务库，可以直接进入系统。
+                </div>
+              ) : isLoadingCompanies ? (
                 <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
                   正在加载可用业务库...
                 </div>

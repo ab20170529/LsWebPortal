@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortalAuth } from '@lserp/auth';
 
-import { fetchEmployeeOptions, loginWithIdentity } from '../services/auth-service';
+import { fetchEmployeeOptions, fetchServerOptions, loginWithIdentity } from '../services/auth-service';
 import { resolvePortalBootstrapPayload } from '../services/portal-bootstrap-service';
 import {
   clearRememberedLoginState,
@@ -10,13 +10,14 @@ import {
   persistLegacyDesignerLoginContext,
   persistRememberedLoginState,
 } from '../services/storage-service';
-import type { AuthSession, EmployeeOption } from '../types';
+import type { AuthSession, EmployeeOption, ServerOption } from '../types';
 
 type UseLoginFormControllerOptions = {
   onSuccess: (session: AuthSession) => void;
 };
 
 type LoginFormState = {
+  companyKey: string;
   employeeId: number | null;
   employeeKeyword: string;
   password: string;
@@ -50,6 +51,7 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
     const remembered = getRememberedLoginState();
 
     return {
+      companyKey: remembered?.organizationKey ?? '',
       employeeId: remembered?.employeeId ?? null,
       employeeKeyword: remembered?.employeeName ?? '',
       password: remembered?.password ?? '',
@@ -57,10 +59,17 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
       showPassword: false,
     };
   });
+  const [companies, setCompanies] = useState<ServerOption[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
   const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const selectedCompany = useMemo(
+    () => companies.find((company) => company.companyKey === form.companyKey) ?? null,
+    [companies, form.companyKey],
+  );
 
   const selectedEmployee = useMemo(() => {
     if (form.employeeId == null) {
@@ -73,39 +82,89 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
   useEffect(() => {
     let active = true;
 
+    const loadCompanies = async () => {
+      setIsLoadingCompanies(true);
+      setErrorMessage(null);
+
+      try {
+        const nextCompanies = await fetchServerOptions();
+        if (!active) {
+          return;
+        }
+
+        const normalizedCompanies = Array.isArray(nextCompanies) ? nextCompanies : [];
+        const remembered = getRememberedLoginState();
+        const rememberedCompany = remembered?.organizationKey
+          ? normalizedCompanies.find((company) => company.companyKey === remembered.organizationKey)
+          : null;
+        const defaultCompany = rememberedCompany ?? normalizedCompanies[0] ?? null;
+
+        setCompanies(normalizedCompanies);
+        setForm((current) => ({
+          ...current,
+          companyKey: current.companyKey || defaultCompany?.companyKey || '',
+        }));
+      } catch (error) {
+        if (active) {
+          setCompanies([]);
+          setErrorMessage(normalizeErrorMessage(error));
+        }
+      } finally {
+        if (active) {
+          setIsLoadingCompanies(false);
+        }
+      }
+    };
+
+    void loadCompanies();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
     const loadEmployees = async () => {
+      if (!selectedCompany) {
+        setEmployees([]);
+        setIsLoadingEmployees(false);
+        return;
+      }
+
       setIsLoadingEmployees(true);
       setErrorMessage(null);
 
       try {
-        const nextEmployees = await fetchEmployeeOptions();
+        const nextEmployees = await fetchEmployeeOptions(selectedCompany);
         if (!active) {
           return;
         }
 
         const normalizedEmployees = Array.isArray(nextEmployees) ? nextEmployees : [];
-        setEmployees(normalizedEmployees);
-
         const remembered = getRememberedLoginState();
-        if (!remembered) {
-          return;
-        }
+        const rememberedMatchesCompany = remembered?.organizationKey === selectedCompany.companyKey;
 
-        const rememberedEmployee = normalizedEmployees.find(
-          (employee) => employee.employeeId === remembered.employeeId,
-        );
+        setEmployees(normalizedEmployees);
+        setForm((current) => {
+          const rememberedEmployee = rememberedMatchesCompany
+            ? normalizedEmployees.find((employee) => employee.employeeId === remembered.employeeId)
+            : null;
+          const currentEmployee = normalizedEmployees.find(
+            (employee) => employee.employeeId === current.employeeId,
+          );
+          const nextEmployee = rememberedEmployee ?? currentEmployee ?? null;
 
-        if (!rememberedEmployee) {
-          return;
-        }
-
-        setForm((current) => ({
-          ...current,
-          employeeId: rememberedEmployee.employeeId,
-          employeeKeyword: rememberedEmployee.employeeName,
-        }));
+          return {
+            ...current,
+            employeeId: nextEmployee?.employeeId ?? null,
+            employeeKeyword: nextEmployee?.employeeName ?? '',
+          };
+        });
       } catch (error) {
         if (active) {
+          setEmployees([]);
           setErrorMessage(normalizeErrorMessage(error));
         }
       } finally {
@@ -120,7 +179,13 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
     return () => {
       active = false;
     };
-  }, []);
+  }, [selectedCompany]);
+
+  const companyHelperText = isLoadingCompanies
+    ? '正在加载业务库...'
+    : companies.length
+      ? `当前可选 ${companies.length} 个业务库。`
+      : '暂未获取到可用业务库。';
 
   const employeeHelperText = isLoadingEmployees
     ? '正在加载可登录人员...'
@@ -129,6 +194,11 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
       : '暂未获取到可登录人员。';
 
   const submit = useCallback(async () => {
+    if (!selectedCompany) {
+      setErrorMessage('请选择业务库。');
+      return;
+    }
+
     if (!selectedEmployee) {
       setErrorMessage('请选择登录人员。');
       return;
@@ -144,12 +214,22 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
 
     try {
       const session = await loginWithIdentity({
+        basename: selectedCompany.basename,
         employeeId: selectedEmployee.employeeId,
         password: form.password,
+        serverip: selectedCompany.serverip,
+        serverport: selectedCompany.serverport,
       });
 
       const normalizedSession: AuthSession = {
         ...session,
+        activeCompany: session.activeCompany ?? {
+          companyKey: session.companyKey ?? selectedCompany.companyKey,
+          datasourceCode: session.datasourceCode,
+          title: session.companyTitle ?? selectedCompany.title,
+        },
+        companyKey: session.companyKey ?? selectedCompany.companyKey,
+        companyTitle: session.companyTitle ?? selectedCompany.title,
         departmentId: selectedEmployee.departmentId || session.departmentId,
         employeeId: selectedEmployee.employeeId,
         employeeName: selectedEmployee.employeeName || session.employeeName,
@@ -168,6 +248,7 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
         persistRememberedLoginState({
           employeeId: selectedEmployee.employeeId,
           employeeName: selectedEmployee.employeeName,
+          organizationKey: selectedCompany.companyKey,
           password: form.password,
         });
       } else {
@@ -187,8 +268,19 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
     form.password,
     form.rememberCredentials,
     onSuccess,
+    selectedCompany,
     selectedEmployee,
   ]);
+
+  const selectCompany = useCallback((companyKey: string) => {
+    setForm((current) => ({
+      ...current,
+      companyKey,
+      employeeId: null,
+      employeeKeyword: '',
+    }));
+    setErrorMessage(null);
+  }, []);
 
   const selectEmployee = useCallback((employeeId: number, employeeName: string) => {
     setForm((current) => ({
@@ -229,6 +321,7 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
 
   return {
     actions: {
+      selectCompany,
       selectEmployee,
       setEmployeeKeyword,
       setPassword,
@@ -236,12 +329,16 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
       toggleRememberCredentials,
       toggleShowPassword,
     },
+    companies,
+    companyHelperText,
     employeeHelperText,
     employees,
     errorMessage,
     form,
+    isLoadingCompanies,
     isLoadingEmployees,
     isSubmitting,
+    selectedCompany,
     selectedEmployee,
   };
 }

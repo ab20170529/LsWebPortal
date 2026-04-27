@@ -1,42 +1,196 @@
 import { Button, cx } from '@lserp/ui';
 
 import type { BiDirectoryNode, BiScreen } from '../../types';
-import { getNodeTypeLabel, getStatusLabel } from '../../utils/bi-directory';
+import {
+  getNodeTypeLabel,
+  getPublishedVersionId,
+  getStatusLabel,
+} from '../../utils/bi-directory';
 import type { BiArchiveTab, BiWorkspaceSection } from '../../utils/bi-workspace-view-state';
 
 type BiNodeContextPanelProps = {
   activeArchiveTab: BiArchiveTab;
   activeSection: BiWorkspaceSection;
   canDeleteNode: boolean;
+  canPreviewCurrent: boolean;
+  canPublishCurrent: boolean;
   deleteHint: string;
   node: BiDirectoryNode | null;
   onDeleteNode: () => void;
   onEditNode: () => void;
   onOpenArchiveTab: (tab: BiArchiveTab) => void;
+  onOpenPreview: () => void;
   onOpenSection: (section: BiWorkspaceSection) => void;
+  onPublishCurrent: () => void;
   onQuickCreateExternalArchive: () => void;
   onQuickDesignInternalArchive: () => void;
+  previewHint?: string | null;
   screens: BiScreen[];
 };
+
+type GuideStepTone = 'blocked' | 'complete' | 'next';
+
+type GuideStep = {
+  actionLabel: string;
+  description: string;
+  doneLabel: string;
+  isDone: boolean;
+  onAction: () => void;
+  stepNo: number;
+  title: string;
+  tone: GuideStepTone;
+};
+
+function getStepTone(isDone: boolean, isReady: boolean): GuideStepTone {
+  if (isDone) {
+    return 'complete';
+  }
+
+  return isReady ? 'next' : 'blocked';
+}
+
+function getStepStateLabel(step: GuideStep) {
+  if (step.isDone) {
+    return step.doneLabel;
+  }
+
+  if (step.tone === 'next') {
+    return '下一步';
+  }
+
+  return '前置未完成';
+}
 
 export function BiNodeContextPanel({
   activeArchiveTab,
   activeSection,
   canDeleteNode,
+  canPreviewCurrent,
+  canPublishCurrent,
   deleteHint,
   node,
   onDeleteNode,
   onEditNode,
   onOpenArchiveTab,
+  onOpenPreview,
   onOpenSection,
+  onPublishCurrent,
   onQuickCreateExternalArchive,
   onQuickDesignInternalArchive,
+  previewHint,
   screens,
 }: BiNodeContextPanelProps) {
   const isArchiveSection = activeSection === 'archives';
   const isSourceSection = activeSection === 'sources';
   const isDesignArchiveActive = isArchiveSection && activeArchiveTab === 'design';
   const isArchiveBaseActive = isArchiveSection && activeArchiveTab === 'base';
+
+  const sourceAssetCount = node?.sourceAssetIds.length ?? 0;
+  const internalScreen = screens.find((screen) => screen.biType === 'INTERNAL') ?? null;
+  const hasInternalArchive = Boolean(internalScreen);
+  const hasVersionDraft = Boolean(internalScreen?.versions?.length);
+  const hasPublishedVersion = Boolean(getPublishedVersionId(internalScreen));
+  const hasPreviewReady = canPreviewCurrent;
+  const canCreateInternalArchive = sourceAssetCount > 0;
+  const canGenerateDraft = hasInternalArchive;
+  const canPublishStep = hasVersionDraft;
+
+  const setupStates = [
+    {
+      description: sourceAssetCount > 0 ? `${sourceAssetCount} 个资产已绑定` : '先绑定至少 1 个分析资产',
+      done: sourceAssetCount > 0,
+      label: '分析源',
+    },
+    {
+      description: hasInternalArchive ? '当前节点已存在内置 BI' : '建议先创建一个内置 BI 档案',
+      done: hasInternalArchive,
+      label: '内置 BI',
+    },
+    {
+      description: hasVersionDraft ? '已经有可编辑版本' : '还没有可生成或可编辑的版本',
+      done: hasVersionDraft,
+      label: '草稿版本',
+    },
+    {
+      description: hasPublishedVersion ? '已具备展示运行版本' : '需要发布一个版本后才能稳定展示',
+      done: hasPublishedVersion,
+      label: '已发布',
+    },
+    {
+      description: hasPreviewReady
+        ? '当前节点已经可以打开预览页面校验展示效果'
+        : (previewHint ?? '完成生成后可以先预览，再决定是否继续发布或展示'),
+      done: hasPreviewReady,
+      label: '可预览',
+    },
+  ];
+
+  const guideSteps: GuideStep[] = [
+    {
+      actionLabel: '去绑定分析源',
+      description: sourceAssetCount > 0
+        ? `当前节点已绑定 ${sourceAssetCount} 个分析资产，可直接进入下一步。`
+        : '先把当前节点和表 / SQL 资产绑定起来，后续生成和运行都依赖这里的白名单。',
+      doneLabel: '已完成',
+      isDone: sourceAssetCount > 0,
+      onAction: () => onOpenSection('sources'),
+      stepNo: 1,
+      title: '绑定分析源',
+      tone: getStepTone(sourceAssetCount > 0, true),
+    },
+    {
+      actionLabel: '创建或打开内置 BI',
+      description: hasInternalArchive
+        ? '当前节点已经有内置 BI，可以继续生成草稿或维护内容。'
+        : '系统会为当前节点创建一个内置 BI 档案，并切到设计与生成页面。',
+      doneLabel: '已创建',
+      isDone: hasInternalArchive,
+      onAction: onQuickDesignInternalArchive,
+      stepNo: 2,
+      title: '创建内置 BI',
+      tone: getStepTone(hasInternalArchive, canCreateInternalArchive),
+    },
+    {
+      actionLabel: '去设计与生成',
+      description: hasVersionDraft
+        ? '当前节点已经有版本草稿，可以继续发布或预览。'
+        : '在设计页里填写提示词、生成草稿，或者手工维护当前版本内容。',
+      doneLabel: '已有草稿',
+      isDone: hasVersionDraft,
+      onAction: () => onOpenArchiveTab('design'),
+      stepNo: 3,
+      title: '生成草稿',
+      tone: getStepTone(hasVersionDraft, canGenerateDraft),
+    },
+    {
+      actionLabel: canPublishCurrent ? '直接发布当前版本' : '去版本与发布',
+      description: hasPublishedVersion
+        ? '当前节点已经存在已发布版本，展示系统可直接读取。'
+        : '发布后 BI 展示系统才能稳定读取这个节点的大屏内容。',
+      doneLabel: '已发布',
+      isDone: hasPublishedVersion,
+      onAction: canPublishCurrent ? onPublishCurrent : () => onOpenArchiveTab('versions'),
+      stepNo: 4,
+      title: '发布版本',
+      tone: getStepTone(hasPublishedVersion, canPublishStep),
+    },
+    {
+      actionLabel: '打开预览页面',
+      description: hasPreviewReady
+        ? (previewHint ?? '当前节点已经可以预览，请确认页面内容和展示效果。')
+        : '预览需要先生成版本；如果要让展示系统读取，还需要至少发布一个版本。',
+      doneLabel: '可预览',
+      isDone: false,
+      onAction: onOpenPreview,
+      stepNo: 5,
+      title: '验证预览',
+      tone: getStepTone(false, hasPreviewReady),
+    },
+  ];
+
+  const recommendedStep =
+    guideSteps.find((step) => !step.isDone && step.tone === 'next')
+    ?? (hasPreviewReady ? guideSteps[4] : null);
 
   return (
     <aside className="bi-context-panel">
@@ -69,7 +223,7 @@ export function BiNodeContextPanel({
                   </div>
                   <div className="bi-info-item">
                     <span className="bi-info-label">分析源资产</span>
-                    <span className="bi-info-value">{node.sourceAssetIds.length}</span>
+                    <span className="bi-info-value">{sourceAssetCount}</span>
                   </div>
                   <div className="bi-info-item">
                     <span className="bi-info-label">BI 档案</span>
@@ -80,7 +234,87 @@ export function BiNodeContextPanel({
 
               <section className="bi-panel-section">
                 <div className="bi-panel-section-header">
-                  <div className="bi-panel-section-title">快捷操作</div>
+                  <div className="bi-panel-section-title">节点就绪度</div>
+                  <div className="bi-panel-section-caption">先补齐前置条件，再进入下一步</div>
+                </div>
+                <div className="bi-context-state-grid">
+                  {setupStates.map((item) => (
+                    <div
+                      key={item.label}
+                      className={cx('bi-context-state-card', item.done ? 'is-complete' : 'is-pending')}
+                    >
+                      <div className="bi-context-state-head">
+                        <span className="bi-context-state-label">{item.label}</span>
+                        <span className="bi-context-state-badge">{item.done ? '已完成' : '未完成'}</span>
+                      </div>
+                      <div className="bi-context-state-text">{item.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="bi-panel-section">
+                <div className="bi-panel-section-header">
+                  <div className="bi-panel-section-title">配置向导</div>
+                  <div className="bi-panel-section-caption">按 1 到 5 步完成一次节点大屏配置</div>
+                </div>
+                <div className="bi-context-guide-list">
+                  {guideSteps.map((step) => {
+                    const isActionDisabled = step.tone === 'blocked';
+                    return (
+                      <div
+                        key={step.stepNo}
+                        className={cx(
+                          'bi-context-guide-card',
+                          `is-${step.tone}`,
+                        )}
+                      >
+                        <div className="bi-context-guide-head">
+                          <div className="bi-context-guide-stepno">步骤 {step.stepNo}</div>
+                          <div className="bi-context-guide-state">{getStepStateLabel(step)}</div>
+                        </div>
+                        <div className="bi-context-guide-title">{step.title}</div>
+                        <div className="bi-context-guide-text">{step.description}</div>
+                        <Button
+                          className={cx('bi-context-guide-action', step.isDone ? 'is-complete' : '')}
+                          disabled={isActionDisabled}
+                          onClick={step.onAction}
+                          tone="ghost"
+                        >
+                          {step.actionLabel}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {recommendedStep ? (
+                <section className="bi-panel-section">
+                  <div className="bi-panel-section-header">
+                    <div className="bi-panel-section-title">建议下一步</div>
+                  </div>
+                  <div className="bi-context-next-card">
+                    <div className="bi-context-next-kicker">推荐动作</div>
+                    <div className="bi-context-next-title">
+                      {`步骤 ${recommendedStep.stepNo}：${recommendedStep.title}`}
+                    </div>
+                    <div className="bi-context-next-text">{recommendedStep.description}</div>
+                    <div className="bi-context-next-actions">
+                      <Button
+                        disabled={recommendedStep.tone === 'blocked'}
+                        onClick={recommendedStep.onAction}
+                      >
+                        {recommendedStep.actionLabel}
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="bi-panel-section">
+                <div className="bi-panel-section-header">
+                  <div className="bi-panel-section-title">常用操作</div>
                 </div>
                 <div className="bi-panel-card">
                   <div className="bi-panel-form">
@@ -88,56 +322,34 @@ export function BiNodeContextPanel({
                       编辑当前节点
                     </Button>
                     <Button
+                      className={cx('bi-panel-action', isSourceSection ? 'is-active' : '')}
+                      onClick={() => onOpenSection('sources')}
+                      tone="ghost"
+                    >
+                      去绑定分析源
+                    </Button>
+                    <Button
                       className={cx('bi-panel-action', isDesignArchiveActive ? 'is-active' : '')}
                       onClick={onQuickDesignInternalArchive}
                       tone="ghost"
                     >
-                      设计内置 BI
+                      创建或打开内置 BI
                     </Button>
                     <Button
-                      className={cx(
-                        'bi-panel-action',
-                        isArchiveBaseActive && screens.every((screen) => screen.biType !== 'INTERNAL')
-                          ? 'is-active'
-                          : '',
-                      )}
+                      className={cx('bi-panel-action', isArchiveSection ? 'is-active' : '')}
+                      onClick={() => onOpenArchiveTab('base')}
+                      tone="ghost"
+                    >
+                      查看 BI 档案与版本
+                    </Button>
+                    <Button
+                      className="bi-panel-action"
                       onClick={onQuickCreateExternalArchive}
                       tone="ghost"
                     >
                       新建外链 BI
                     </Button>
-                    <Button
-                      className={cx('bi-panel-action', isArchiveBaseActive ? 'is-active' : '')}
-                      onClick={() => onOpenArchiveTab('base')}
-                      tone="ghost"
-                    >
-                      管理 BI 档案
-                    </Button>
-                    <Button
-                      className={cx('bi-panel-action', isSourceSection ? 'is-active' : '')}
-                      onClick={() => onOpenSection('sources')}
-                      tone="ghost"
-                    >
-                      管理分析源
-                    </Button>
                   </div>
-                </div>
-              </section>
-
-              <section className="bi-panel-section bi-panel-danger-section">
-                <div className="bi-panel-section-header">
-                  <div className="bi-panel-section-title">危险操作</div>
-                </div>
-                <div className="bi-panel-card bi-panel-card-danger">
-                  <Button
-                    className="bi-button-danger"
-                    disabled={!canDeleteNode}
-                    onClick={onDeleteNode}
-                    tone="ghost"
-                  >
-                    删除节点
-                  </Button>
-                  <div className="bi-panel-note bi-panel-note-danger">{deleteHint}</div>
                 </div>
               </section>
 
@@ -160,7 +372,9 @@ export function BiNodeContextPanel({
                     ))}
                   </div>
                 ) : (
-                  <div className="bi-panel-empty bi-panel-empty-tight">当前节点还没有绑定分析源资产。</div>
+                  <div className="bi-panel-empty bi-panel-empty-tight">
+                    当前节点还没有绑定分析源资产。
+                  </div>
                 )}
               </section>
 
@@ -188,13 +402,32 @@ export function BiNodeContextPanel({
                     ))}
                   </div>
                 ) : (
-                  <div className="bi-panel-empty bi-panel-empty-tight">当前节点还没有 BI 档案。</div>
+                  <div className="bi-panel-empty bi-panel-empty-tight">
+                    当前节点还没有 BI 档案。
+                  </div>
                 )}
+              </section>
+
+              <section className="bi-panel-section bi-panel-danger-section">
+                <div className="bi-panel-section-header">
+                  <div className="bi-panel-section-title">危险操作</div>
+                </div>
+                <div className="bi-panel-card bi-panel-card-danger">
+                  <Button
+                    className="bi-button-danger"
+                    disabled={!canDeleteNode}
+                    onClick={onDeleteNode}
+                    tone="ghost"
+                  >
+                    删除节点
+                  </Button>
+                  <div className="bi-panel-note bi-panel-note-danger">{deleteHint}</div>
+                </div>
               </section>
             </>
           ) : (
             <div className="bi-panel-empty">
-              先在目录画布里选择一个节点。选中后，这里会显示节点摘要、已绑定分析源，以及进入 BI 档案设计的快捷入口。
+              先在目录画布中选择一个节点。选中后，这里会按步骤告诉你先绑定分析源、再创建 BI、再生成和发布。
             </div>
           )}
         </div>

@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@lserp/ui';
+import { BarChart, LineChart, PieChart } from 'echarts/charts';
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+import * as echarts from 'echarts/core';
+import { CanvasRenderer } from 'echarts/renderers';
 
 import type { BiRuntimeModule, BiRuntimeScreen } from '../types';
+
+echarts.use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
 type BiRuntimeScreenSurfaceProps = {
   screen: BiRuntimeScreen;
@@ -32,6 +38,10 @@ function getModuleLeadingValue(module: BiRuntimeModule) {
 
 function getModuleSpan(module: BiRuntimeModule) {
   const layoutSpan = toFiniteNumber(module.layout?.colSpan) ?? toFiniteNumber(module.layout?.span);
+  const gridWidth = toFiniteNumber(module.layout?.w);
+  if (gridWidth) {
+    return gridWidth >= 8 ? 2 : 1;
+  }
   const fallbackSpan = module.moduleType === 'table' ? 2 : 1;
   return Math.max(1, Math.min(2, layoutSpan ?? fallbackSpan));
 }
@@ -39,6 +49,11 @@ function getModuleSpan(module: BiRuntimeModule) {
 function getModuleMinHeight(module: BiRuntimeModule) {
   const rawHeight = module.layout?.height ?? module.style?.height;
   const numericHeight = toFiniteNumber(rawHeight);
+  const gridHeight = toFiniteNumber(module.layout?.h);
+
+  if (gridHeight) {
+    return `${Math.max(150, gridHeight * 56)}px`;
+  }
 
   if (numericHeight) {
     return `${Math.max(160, numericHeight)}px`;
@@ -62,6 +77,118 @@ function getModuleMinHeight(module: BiRuntimeModule) {
 function getModuleSummaryText(module: BiRuntimeModule) {
   const content = module.style?.content;
   return typeof content === 'string' && content.trim() ? content : String(getModuleLeadingValue(module));
+}
+
+function getStringStyleValue(module: BiRuntimeModule, key: string) {
+  const value = module.style?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function resolveChartFields(module: BiRuntimeModule) {
+  const firstRow = getModuleRows(module)[0] ?? {};
+  const keys = module.columns.length > 0 ? module.columns : Object.keys(firstRow);
+  const preferredLabelKey = getStringStyleValue(module, 'xField');
+  const preferredValueKey = getStringStyleValue(module, 'yField');
+  const labelKey = keys.find((key) => key === preferredLabelKey)
+    ?? keys.find((key) => key === 'category_value')
+    ?? keys[0]
+    ?? '';
+  const valueKey = keys.find((key) => key === preferredValueKey)
+    ?? keys.find((key) => key === 'total_count')
+    ?? keys.find((key) => key !== labelKey && Number.isFinite(Number(firstRow[key])))
+    ?? keys[1]
+    ?? labelKey;
+
+  return { labelKey, valueKey };
+}
+
+function BiRuntimeEchartsModule({ module }: { module: BiRuntimeModule }) {
+  const chartRef = useRef<HTMLDivElement | null>(null);
+  const rows = useMemo(() => getModuleRows(module).slice(0, 12), [module]);
+
+  useEffect(() => {
+    if (!chartRef.current) {
+      return undefined;
+    }
+
+    const chart = echarts.init(chartRef.current);
+    const { labelKey, valueKey } = resolveChartFields(module);
+    const categories = rows.map((row, index) => String(row[labelKey] ?? `项目 ${index + 1}`));
+    const values = rows.map((row) => {
+      const numericValue = Number(row[valueKey]);
+      return Number.isFinite(numericValue) ? numericValue : 0;
+    });
+    const chartType = module.moduleType === 'line-chart'
+      ? 'line'
+      : module.moduleType === 'pie-chart'
+        ? 'pie'
+        : 'bar';
+    const option = chartType === 'pie'
+      ? {
+          color: ['#2563eb', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+          legend: {
+            bottom: 0,
+            icon: 'circle',
+            textStyle: { color: '#475569' },
+          },
+          series: [
+            {
+              type: 'pie',
+              radius: ['42%', '72%'],
+              center: ['50%', '43%'],
+              data: categories.map((name, index) => ({ name, value: values[index] ?? 0 })),
+              label: { color: '#334155' },
+            },
+          ],
+          tooltip: { trigger: 'item' },
+        }
+      : {
+          color: ['#2563eb'],
+          grid: { bottom: 34, containLabel: true, left: 18, right: 18, top: 24 },
+          series: [
+            {
+              type: chartType,
+              data: values,
+              smooth: chartType === 'line',
+              barMaxWidth: 36,
+              areaStyle: chartType === 'line' ? { opacity: 0.12 } : undefined,
+            },
+          ],
+          tooltip: { trigger: 'axis' },
+          xAxis: {
+            type: 'category',
+            data: categories,
+            axisLabel: { color: '#64748b', interval: 0, overflow: 'truncate', width: 96 },
+            axisLine: { lineStyle: { color: '#cbd5e1' } },
+            axisTick: { show: false },
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#64748b' },
+            splitLine: { lineStyle: { color: '#e2e8f0' } },
+          },
+        };
+
+    chart.setOption(option);
+
+    const resizeObserver = new ResizeObserver(() => chart.resize());
+    resizeObserver.observe(chartRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      chart.dispose();
+    };
+  }, [module, rows]);
+
+  return (
+    <div className="bi-runtime-chart-canvas-wrap">
+      {rows.length === 0 ? (
+        <div className="bi-runtime-empty-inline">暂无模块数据</div>
+      ) : (
+        <div ref={chartRef} className="bi-runtime-chart-canvas" />
+      )}
+    </div>
+  );
 }
 
 function renderMetricModule(module: BiRuntimeModule) {
@@ -91,13 +218,6 @@ function renderTextModule(module: BiRuntimeModule) {
 }
 
 function renderChartModule(module: BiRuntimeModule) {
-  const rows = getModuleRows(module).slice(0, 6);
-  const maxValue = rows.reduce((currentMax, row) => {
-    const numericCandidate = Object.values(row).find((value) => typeof value === 'number');
-    const numericValue = Number(numericCandidate ?? 0);
-    return Number.isFinite(numericValue) ? Math.max(currentMax, numericValue) : currentMax;
-  }, 0);
-
   return (
     <section className="bi-runtime-module">
       <div className="bi-runtime-module-head">
@@ -105,34 +225,7 @@ function renderChartModule(module: BiRuntimeModule) {
         <span className="bi-runtime-module-code">{module.moduleCode}</span>
       </div>
       <div className="bi-runtime-module-title">{module.moduleName}</div>
-      <div className="bi-runtime-chart-list">
-        {rows.length === 0 ? (
-          <div className="bi-runtime-empty-inline">暂无模块数据</div>
-        ) : (
-          rows.map((row, index) => {
-            const values = Object.values(row);
-            const label = String(values[0] ?? `Item ${index + 1}`);
-            const numericValue = Number(
-              values.find((value) => typeof value === 'number') ?? values[1] ?? 0,
-            );
-            const width = maxValue > 0
-              ? Math.max(12, Math.round((numericValue / maxValue) * 100))
-              : 12;
-
-            return (
-              <div key={`${module.moduleId}-${index}`} className="bi-runtime-chart-item">
-                <div className="bi-runtime-chart-meta">
-                  <span>{label}</span>
-                  <span>{Number.isFinite(numericValue) ? numericValue : '--'}</span>
-                </div>
-                <div className="bi-runtime-chart-track">
-                  <div className="bi-runtime-chart-bar" style={{ width: `${width}%` }} />
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+      <BiRuntimeEchartsModule module={module} />
     </section>
   );
 }

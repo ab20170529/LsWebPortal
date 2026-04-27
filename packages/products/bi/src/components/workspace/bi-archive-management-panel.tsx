@@ -63,6 +63,7 @@ type BiArchiveManagementPanelProps = {
   onRegenerateVersion: (screenId: number, payload: RegenerateVersionPayload) => Promise<void>;
   onRevokeShareToken: (tokenId: number) => Promise<void>;
   onSaveScreenVersion: (screenId: number, payload: ScreenVersionSavePayload) => Promise<void>;
+  onClearWorkspaceError: () => void;
   onSelectNode: (nodeId: number | null) => void;
   onSelectScreen: (screenId: number | null) => void;
   onUpdateScreen: (screenId: number, payload: ScreenSavePayload) => Promise<BiScreen | void>;
@@ -132,6 +133,17 @@ function parseJsonText<T>(value: string, fallback: T): T {
   return JSON.parse(value) as T;
 }
 
+function normalizeManualPrompt(value: string | null | undefined) {
+  if (!value?.trim()) {
+    return DEFAULT_PROMPT;
+  }
+  const text = value.trim();
+  if (text.startsWith('SYSTEM:') || text.includes('\n\nUSER:\n')) {
+    return DEFAULT_PROMPT;
+  }
+  return text;
+}
+
 function resolveDesignBriefValue(screen: BiScreen | null, key: string) {
   const value = screen?.designBrief?.[key];
   return typeof value === 'string' ? value : '';
@@ -139,6 +151,7 @@ function resolveDesignBriefValue(screen: BiScreen | null, key: string) {
 
 function buildEmptyBaseForm(node: BiDirectoryNode | null, biType: 'EXTERNAL' | 'INTERNAL'): ArchiveBaseFormState {
   const baseCode = slugifyCode(node?.nodeCode || node?.nodeName || 'bi_archive') || 'bi_archive';
+  const suffix = String(Date.now()).slice(-6);
   return {
     accessMode: 'LOGIN_REQUIRED',
     biType,
@@ -152,7 +165,7 @@ function buildEmptyBaseForm(node: BiDirectoryNode | null, biType: 'EXTERNAL' | '
     externalTargetUrl: '',
     latestDesignPrompt: '',
     name: node ? `${node.nodeName}${biType === 'EXTERNAL' ? '外链' : '内置'}BI` : '',
-    screenCode: `${baseCode}_${biType === 'EXTERNAL' ? 'external' : 'internal'}`,
+    screenCode: `${baseCode}_${biType === 'EXTERNAL' ? 'external' : 'internal'}_${suffix}`,
   };
 }
 
@@ -256,6 +269,20 @@ function buildVersionPayload(form: VersionFormState): ScreenVersionSavePayload {
   };
 }
 
+function tryParseVersionModules(value: string) {
+  try {
+    return {
+      modules: parseJsonText<Array<Record<string, unknown>>>(value, []),
+      parseError: false,
+    };
+  } catch {
+    return {
+      modules: [] as Array<Record<string, unknown>>,
+      parseError: true,
+    };
+  }
+}
+
 export function BiArchiveManagementPanel({
   activeTab,
   allNodes,
@@ -281,6 +308,7 @@ export function BiArchiveManagementPanel({
   onRegenerateVersion,
   onRevokeShareToken,
   onSaveScreenVersion,
+  onClearWorkspaceError,
   onSelectNode,
   onSelectScreen,
   onUpdateScreen,
@@ -313,6 +341,22 @@ export function BiArchiveManagementPanel({
   );
   const allowedTables = useMemo(() => collectAllowedTables(boundDatasources), [boundDatasources]);
   const fieldCoverage = useMemo(() => collectFieldCoverage(boundDatasources), [boundDatasources]);
+  const versionModulesState = useMemo(
+    () => tryParseVersionModules(versionForm.modulesText),
+    [versionForm.modulesText],
+  );
+  const versionSaveBlockedReason = useMemo(() => {
+    if (!selectedScreen || selectedScreen.biType === 'EXTERNAL') {
+      return null;
+    }
+    if (versionModulesState.parseError) {
+      return '模块定义 JSON 格式不正确，请先修正后再保存。';
+    }
+    if (versionModulesState.modules.length === 0) {
+      return '当前内置 BI 版本还没有模块，请先生成草稿，或在“模块定义 JSON”中至少配置一个模块后再保存。';
+    }
+    return null;
+  }, [selectedScreen, versionModulesState]);
 
   useEffect(() => {
     if (!selectedTemplateCode && selectedTemplate?.templateCode) {
@@ -335,7 +379,7 @@ export function BiArchiveManagementPanel({
 
   useEffect(() => {
     if (selectedScreen) {
-      setManualPrompt(selectedScreen.latestDesignPrompt ?? DEFAULT_PROMPT);
+      setManualPrompt(normalizeManualPrompt(selectedScreen.latestDesignPrompt));
       return;
     }
     setManualPrompt(DEFAULT_PROMPT);
@@ -378,6 +422,11 @@ export function BiArchiveManagementPanel({
 
   async function handleSaveVersion(screenId: number) {
     try {
+      onClearWorkspaceError();
+      if (versionSaveBlockedReason) {
+        window.alert(versionSaveBlockedReason);
+        return;
+      }
       await onSaveScreenVersion(screenId, buildVersionPayload(versionForm));
     } catch (error) {
       window.alert(error instanceof Error ? error.message : '版本 JSON 格式不正确，请检查后再保存。');
@@ -841,12 +890,15 @@ export function BiArchiveManagementPanel({
 
                     <div className="bi-panel-inline-actions">
                       <Button
-                        disabled={isMutating}
+                        disabled={isMutating || Boolean(versionSaveBlockedReason)}
                         onClick={() => void handleSaveVersion(selectedScreen.id)}
                       >
                         {versionEditingMode === 'create' ? '保存为新版本' : '保存当前版本'}
                       </Button>
                     </div>
+                    {versionSaveBlockedReason ? (
+                      <div className="bi-panel-note">{versionSaveBlockedReason}</div>
+                    ) : null}
                   </div>
                 </>
               ) : (
@@ -1083,7 +1135,7 @@ export function BiArchiveManagementPanel({
                     />
                     <div className="bi-panel-inline-actions">
                       <Button
-                        disabled={isMutating}
+                        disabled={isMutating || Boolean(versionSaveBlockedReason)}
                         onClick={() => void handleSaveVersion(selectedScreen.id)}
                       >
                         保存当前版本内容
