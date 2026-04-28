@@ -12,6 +12,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@lserp/auth": "workspace:*",
     "@lserp/ui": "workspace:*",
+    "@xmldom/xmldom": "^0.9.8",
     "@onlyoffice/document-editor-react": "^2.1.1",
     "antd": "6.3.5",
     "class-variance-authority": "^0.7.1",

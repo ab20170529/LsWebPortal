@@ -249,7 +249,7 @@ const projectApiClient = createApiClient({
 function FieldBlock({ children, label }: PropsWithChildren<{ label: string }>) {
   return (
     <label className="block space-y-2">
-      <span className="theme-text-soft text-[11px] font-bold uppercase tracking-[0.18em]">
+      <span className="theme-text-soft text-[11px] font-semibold">
         {label}
       </span>
       {children}
@@ -481,13 +481,13 @@ export function ActionConsole({
   }
 
   return (
-    <Card className="rounded-[32px] p-8">
+    <Card className="rounded-[32px] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.24em]">
+          <div className="theme-text-soft text-xs font-semibold">
             Action Console
           </div>
-          <div className="theme-text-strong mt-2 text-2xl font-black tracking-tight">
+          <div className="theme-text-strong mt-2 text-[22px] font-bold">
             First delivery controls stay inside the same portal language
           </div>
         </div>
@@ -497,10 +497,10 @@ export function ActionConsole({
           <Badge tone="success">Execute</Badge>
         </div>
       </div>
-      <div className="mt-6 grid gap-6 xl:grid-cols-3">
-        <div className="space-y-6">
-          <Card className="rounded-[28px] p-6">
-            <div className="theme-text-strong text-lg font-black tracking-tight">
+      <div className="mt-5 grid gap-4 xl:grid-cols-3">
+        <div className="space-y-4">
+          <Card className="rounded-[28px] p-5">
+            <div className="theme-text-strong text-lg font-bold">
               Create Project
             </div>
             <div className="mt-4 grid gap-4">
@@ -661,11 +661,11 @@ export function ActionConsole({
             </div>
           </Card>
 
-          <Card className="rounded-[28px] p-6">
-            <div className="theme-text-strong text-lg font-black tracking-tight">
+          <Card className="rounded-[28px] p-5">
+            <div className="theme-text-strong text-lg font-bold">
               Team And Budget
             </div>
-            <div className="mt-4 grid gap-6">
+            <div className="mt-4 grid gap-4">
               <div className="grid gap-4">
                 <FieldBlock label="Member">
                   <SystemUserPicker
@@ -751,12 +751,12 @@ export function ActionConsole({
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <Card className="rounded-[28px] p-6">
-            <div className="theme-text-strong text-lg font-black tracking-tight">
+        <div className="space-y-4">
+          <Card className="rounded-[28px] p-5">
+            <div className="theme-text-strong text-lg font-bold">
               Plans And Reports
             </div>
-            <div className="mt-4 grid gap-6">
+            <div className="mt-4 grid gap-4">
               <div className="grid gap-4">
                 <FieldBlock label="Plan Type / Manager">
                   <div className="grid gap-3 md:grid-cols-2">
@@ -903,9 +903,9 @@ export function ActionConsole({
 
         </div>
 
-        <div className="space-y-6">
-          <Card className="rounded-[28px] p-6">
-            <div className="theme-text-strong text-lg font-black tracking-tight">
+        <div className="space-y-4">
+          <Card className="rounded-[28px] p-5">
+            <div className="theme-text-strong text-lg font-bold">
               Attachments
             </div>
             <div className="mt-4 grid gap-4">
@@ -991,11 +991,11 @@ export function ActionConsole({
             </div>
           </Card>
 
-          <Card className="rounded-[28px] p-6">
-            <div className="theme-text-strong text-lg font-black tracking-tight">
+          <Card className="rounded-[28px] p-5">
+            <div className="theme-text-strong text-lg font-bold">
               Node And Task Execution
             </div>
-            <div className="mt-4 grid gap-6">
+            <div className="mt-4 grid gap-4">
               <div className="grid gap-4">
                 <FieldBlock label="Node / Status">
                   <div className="grid gap-3 md:grid-cols-2">

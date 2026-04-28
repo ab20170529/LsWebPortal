@@ -151,7 +151,7 @@ export function GanttDetailPanel({
     >
       <div className="flex h-full flex-col bg-white">
         {/* ── 标题栏 ── */}
-        <div className="relative border-b border-slate-100 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-6 py-5">
+        <div className="relative border-b border-slate-100 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-5 py-5">
           {/* 背景纹理 */}
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30" />
           <div className="relative flex items-start justify-between">
@@ -168,7 +168,7 @@ export function GanttDetailPanel({
                 )}
               </div>
               <div>
-                <div className="text-xs font-bold uppercase tracking-widest text-white/80">
+                <div className="text-xs font-semibold text-white/80">
                   {isTask ? '任务详情' : '节点详情'}
                 </div>
                 <h2 className="mt-1 max-w-[240px] truncate text-lg font-bold text-white">{row.title}</h2>
@@ -209,7 +209,7 @@ export function GanttDetailPanel({
         </div>
 
         {/* ── 内容区 ── */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-5">
           {/* 基本信息 */}
           {detailPanel.activeTab === 'info' && detailEditState && (
             <InfoTab
@@ -540,7 +540,7 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
       {/* 依赖信息 */}
       {isTask && taskDependencies.length > 0 && (
         <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50/50 p-4">
-          <div className="mb-3 text-xs font-bold uppercase tracking-wider text-amber-600">依赖关系</div>
+          <div className="mb-3 text-xs font-semibold text-amber-600">依赖关系</div>
           <div className="space-y-2">
             {taskDependencies.slice(0, 3).map((dep) => (
               <div key={dep.id} className="flex items-center gap-2 text-xs">
@@ -663,7 +663,7 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
       {/* 添加成员弹窗 */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-[420px] rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-[420px] rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <div className="text-base font-bold text-slate-800">添加成员</div>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600" type="button">
@@ -812,13 +812,13 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-50 p-4">
           <div className="text-xs text-emerald-600">计划预算</div>
-          <div className="mt-1 text-xl font-bold text-emerald-700">
+          <div className="mt-1 text-[18px] font-bold text-emerald-700">
             ¥{(budgetAmount ?? 0).toLocaleString()}
           </div>
         </div>
         <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 p-4">
           <div className="text-xs text-amber-600">实际费用</div>
-          <div className="mt-1 text-xl font-bold text-amber-700">¥{totalActual.toLocaleString()}</div>
+          <div className="mt-1 text-[18px] font-bold text-amber-700">¥{totalActual.toLocaleString()}</div>
         </div>
       </div>
       <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
@@ -870,7 +870,7 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
       {/* 添加预算弹窗 */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-[480px] rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-[480px] rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <div className="text-base font-bold text-slate-800">添加预算</div>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600" type="button">
@@ -1260,7 +1260,7 @@ const FIELD_ICONS: Record<string, string> = {
 function FormField({ label, icon, children }: { label: string; icon: string; children: React.ReactNode }) {
   return (
     <div className="group">
-      <label className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+      <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-400">
         <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d={FIELD_ICONS[icon] ?? ''} strokeLinecap="round" strokeLinejoin="round" />
         </svg>

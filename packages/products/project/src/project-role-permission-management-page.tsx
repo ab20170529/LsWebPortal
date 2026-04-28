@@ -397,14 +397,14 @@ export function ProjectRolePermissionManagementPage({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 overflow-auto">
-      <Card className="rounded-[32px] p-7">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto">
+      <Card className="rounded-[32px] p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="theme-text-soft text-xs font-black uppercase tracking-[0.24em]">
+            <div className="theme-text-soft text-xs font-bold">
               系统管理
             </div>
-            <div className="theme-text-strong mt-2 text-3xl font-black tracking-tight">
+            <div className="theme-text-strong mt-2 text-3xl font-bold">
               角色权限
             </div>
             <div className="theme-text-muted mt-3 max-w-3xl text-sm leading-6">
@@ -431,10 +431,10 @@ export function ProjectRolePermissionManagementPage({
         ) : null}
       </Card>
 
-      <Card className="rounded-[32px] p-6">
+      <Card className="rounded-[32px] p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <div className="theme-text-strong text-xl font-black tracking-tight">角色权限表</div>
+            <div className="theme-text-strong text-[18px] font-bold">角色权限表</div>
             <div className="theme-text-muted mt-2 text-sm">
               角色在这里新增、编辑、删除，并通过“设置菜单”维护菜单权限。
             </div>
@@ -455,11 +455,11 @@ export function ProjectRolePermissionManagementPage({
           </div>
         </div>
 
-        <div className="mt-6 overflow-hidden rounded-[24px] border border-slate-200">
+        <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 bg-white text-left">
               <thead className="bg-slate-50">
-                <tr className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                <tr className="text-xs font-bold text-slate-500">
                   <th className="px-5 py-4">角色名称</th>
                   <th className="px-5 py-4">角色编码</th>
                   <th className="px-5 py-4">描述</th>
@@ -472,7 +472,7 @@ export function ProjectRolePermissionManagementPage({
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td className="px-5 py-10 text-sm text-slate-500" colSpan={7}>
+                    <td className="px-5 py-8 text-sm text-slate-500" colSpan={7}>
                       正在加载角色列表...
                     </td>
                   </tr>
@@ -530,7 +530,7 @@ export function ProjectRolePermissionManagementPage({
                   ))
                 ) : (
                   <tr>
-                    <td className="px-5 py-10 text-sm text-slate-500" colSpan={7}>
+                    <td className="px-5 py-8 text-sm text-slate-500" colSpan={7}>
                       没有匹配的角色记录。
                     </td>
                   </tr>
@@ -567,13 +567,13 @@ export function ProjectRolePermissionManagementPage({
 
       {roleDialogState.visible ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[28px] bg-white p-6 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
+          <div className="w-full max-w-2xl rounded-[28px] bg-white p-5 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                <div className="text-xs font-bold text-slate-400">
                   角色权限
                 </div>
-                <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">
+                <div className="mt-2 text-[22px] font-bold text-slate-900">
                   {roleDialogState.mode === 'create' ? '新增角色' : '编辑角色'}
                 </div>
               </div>
@@ -589,9 +589,9 @@ export function ProjectRolePermissionManagementPage({
               </button>
             </div>
 
-            <div className="mt-6 grid gap-4">
+            <div className="mt-5 grid gap-4">
               <label className="space-y-2">
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                <div className="text-xs font-bold text-slate-500">
                   角色编码
                 </div>
                 <input
@@ -608,7 +608,7 @@ export function ProjectRolePermissionManagementPage({
               </label>
 
               <label className="space-y-2">
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                <div className="text-xs font-bold text-slate-500">
                   角色名称
                 </div>
                 <input
@@ -625,7 +625,7 @@ export function ProjectRolePermissionManagementPage({
               </label>
 
               <label className="space-y-2">
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                <div className="text-xs font-bold text-slate-500">
                   角色说明
                 </div>
                 <textarea
@@ -642,7 +642,7 @@ export function ProjectRolePermissionManagementPage({
               </label>
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
+            <div className="mt-5 flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
               <Button
                 onClick={() => {
                   setRoleDialogState({ mode: 'create', roleId: null, visible: false });
@@ -668,13 +668,13 @@ export function ProjectRolePermissionManagementPage({
 
       {menuDialogState.visible ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-[28px] bg-white p-6 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-[28px] bg-white p-5 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                <div className="text-xs font-bold text-slate-400">
                   菜单权限
                 </div>
-                <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">
+                <div className="mt-2 text-[22px] font-bold text-slate-900">
                   {menuDialogState.roleName}
                 </div>
                 <div className="mt-2 text-sm text-slate-500">
@@ -731,13 +731,13 @@ export function ProjectRolePermissionManagementPage({
                   ))}
                 </div>
               ) : (
-                <div className="rounded-[22px] border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
+                <div className="rounded-[22px] border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
                   当前账套暂无可授权菜单树。
                 </div>
               )}
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
+            <div className="mt-5 flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
               <Button
                 onClick={() => {
                   setMenuDialogState({ roleId: null, roleName: '', visible: false });

@@ -385,6 +385,9 @@ export function PortalSystemManagerPage() {
   const openCreate = () => { setFormModal({ open: true, data: null }); };
   const openEdit = (s: PortalSystem) => { setFormModal({ open: true, data: s }); };
   const openDelete = (s: PortalSystem) => { setDeleteModal({ open: true, system: s }); };
+  const enabledCount = systems.filter((system) => system.enabled === 1).length;
+  const disabledCount = systems.filter((system) => system.enabled !== 1).length;
+  const internalRouteCount = systems.filter((system) => system.route?.startsWith('/')).length;
 
   const handleSaved = (saved: PortalSystem) => {
     setSystems((prev) => {
@@ -406,32 +409,62 @@ export function PortalSystemManagerPage() {
 
   return (
     <div className="min-h-screen bg-[#f4f6fb] px-6 py-10">
-      <div className="mx-auto max-w-5xl space-y-6">
-
-        {/* 页头 */}
-        <Card className="rounded-[28px] p-8">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <Badge>系统管理</Badge>
-              <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900">
-                门户系统配置
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">
-                管理登录后「选系统」页面展示的所有系统。支持配置系统名称、地址（内部路由或外部链接）、简介等信息，启用的系统将自动展示在选系统页面。
-              </p>
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+              门户配置
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <button
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
-                onClick={() => { navigate('/systems'); }}
-                type="button"
-              >
-                ← 返回选系统
-              </button>
-              <Button onClick={openCreate}>+ 新建系统</Button>
-            </div>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">系统管理</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
+              这里处理的是真实配置动作：新增系统、编辑系统入口、启用或停用系统，以及维护选系统页的展示顺序。
+            </p>
           </div>
-        </Card>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+              onClick={() => { navigate('/systems'); }}
+              type="button"
+            >
+              返回系统选择
+            </button>
+            <button
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+              onClick={loadSystems}
+              type="button"
+            >
+              刷新列表
+            </button>
+            <Button onClick={openCreate}>新建系统</Button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="rounded-[24px] border border-slate-200/80 p-5 shadow-[0_18px_44px_-38px_rgba(15,23,42,0.2)]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">系统总数</div>
+            <div className="mt-2 text-3xl font-black tracking-tight text-slate-900">{systems.length}</div>
+            <div className="mt-1 text-sm text-slate-500">当前系统配置条目</div>
+          </Card>
+          <Card className="rounded-[24px] border border-slate-200/80 p-5 shadow-[0_18px_44px_-38px_rgba(15,23,42,0.2)]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">启用状态</div>
+            <div className="mt-2 flex items-end gap-3">
+              <div className="text-3xl font-black tracking-tight text-emerald-600">{enabledCount}</div>
+              <div className="pb-1 text-sm text-slate-400">启用</div>
+              <div className="text-2xl font-black tracking-tight text-slate-300">/</div>
+              <div className="text-3xl font-black tracking-tight text-slate-500">{disabledCount}</div>
+              <div className="pb-1 text-sm text-slate-400">禁用</div>
+            </div>
+            <div className="mt-1 text-sm text-slate-500">决定选系统页实际可见内容</div>
+          </Card>
+          <Card className="rounded-[24px] border border-slate-200/80 p-5 shadow-[0_18px_44px_-38px_rgba(15,23,42,0.2)]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">入口类型</div>
+            <div className="mt-2 flex items-end gap-3">
+              <div className="text-3xl font-black tracking-tight text-sky-600">{internalRouteCount}</div>
+              <div className="pb-1 text-sm text-slate-400">内部路由</div>
+            </div>
+            <div className="mt-1 text-sm text-slate-500">其余将作为外部系统链接处理</div>
+          </Card>
+        </div>
 
         {/* 错误提示 */}
         {errorMsg && (
@@ -456,10 +489,29 @@ export function PortalSystemManagerPage() {
 
         {/* 系统列表 */}
         {!loading && !errorMsg && (
-          <Card className="rounded-[28px] overflow-hidden p-0">
+          <Card className="overflow-hidden rounded-[28px] p-0">
+            <div className="border-b border-slate-100 px-6 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                    系统列表
+                  </div>
+                  <div className="mt-1 text-lg font-black tracking-tight text-slate-900">
+                    当前系统入口配置
+                  </div>
+                </div>
+                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-600">
+                  按排序号和创建顺序展示
+                </div>
+              </div>
+            </div>
             {systems.length === 0 ? (
-              <div className="p-10 text-center text-sm text-slate-400">
-                暂无系统数据，点击「新建系统」添加第一个系统。
+              <div className="p-10 text-center">
+                <div className="text-base font-semibold text-slate-700">还没有系统配置</div>
+                <div className="mt-2 text-sm text-slate-400">先新增一个系统入口，再回到系统选择页查看效果。</div>
+                <div className="mt-4">
+                  <Button onClick={openCreate}>新建系统</Button>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -583,21 +635,22 @@ export function PortalSystemManagerPage() {
           </Card>
         )}
 
-        {/* 说明区 */}
-        <Card className="rounded-[28px] p-6">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-400">使用说明</div>
-          <div className="mt-3 grid gap-3 text-xs leading-6 text-slate-500 md:grid-cols-3">
-            <div>
-              <strong className="text-slate-600">系统标识</strong>：唯一键，如 designer / erp / project。前端路由匹配和权限判断均依赖此值，创建后不可修改。
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card className="rounded-[24px] border border-slate-200/80 p-5 lg:col-span-3">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">配置规则</div>
+            <div className="mt-3 grid gap-3 text-sm leading-6 text-slate-500 md:grid-cols-3">
+              <div>
+                <strong className="text-slate-700">系统标识</strong> 是唯一键，比如 `designer / erp / project`，创建后不可修改。
+              </div>
+              <div>
+                <strong className="text-slate-700">系统地址</strong> 支持内部路由和外部链接，决定点击系统卡片后的跳转目标。
+              </div>
+              <div>
+                <strong className="text-slate-700">启用状态</strong> 决定系统是否出现在系统选择页，改完刷新页面即可验证。
+              </div>
             </div>
-            <div>
-              <strong className="text-slate-600">系统地址</strong>：内部路由（如 /project）或外部链接（如 https://xxx.com）均可。外部链接会在新窗口打开。
-            </div>
-            <div>
-              <strong className="text-slate-600">生效机制</strong>：启用状态的系统将在下次登录后的 bootstrap 接口中返回，用户重新刷新页面后即可看到变化。
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
 
       {/* 新建/编辑弹窗 */}

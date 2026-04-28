@@ -7,8 +7,9 @@ It is intentionally narrow: Portal mother-project entry points, package boundari
 
 1. `portal-map.md`
 2. `project-domain-map.md`
-3. `../architecture.md`
-4. `../auth-bootstrap-contract.md`
+3. `portal-ui-standards-v1.md`
+4. `../architecture.md`
+5. `../auth-bootstrap-contract.md`
 
 ## What This Handover Covers
 
@@ -16,6 +17,7 @@ It is intentionally narrow: Portal mother-project entry points, package boundari
 - Auth bootstrap, company session, and system gate flow
 - Route entry points for `systems`, `designer`, `erp`, `project`, `bi`, and `bi-display`
 - Project product entry points and workspace boundaries
+- Confirmed Portal UI baseline for typography, spacing, color roles, icons, logo, and control states
 
 ## What This Handover Does Not Cover
 

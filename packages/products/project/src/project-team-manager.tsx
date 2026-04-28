@@ -212,16 +212,16 @@ export function ProjectTeamManager({
 
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">团队人数</div>
-          <div className="mt-2 text-xl font-black tracking-tight text-slate-800">{memberStats.totalCount}</div>
+          <div className="text-[11px] font-semibold text-slate-400">团队人数</div>
+          <div className="mt-2 text-[18px] font-bold text-slate-800">{memberStats.totalCount}</div>
         </div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-500">负责人</div>
-          <div className="mt-2 text-xl font-black tracking-tight text-amber-700">{memberStats.managerCount}</div>
+          <div className="text-[11px] font-semibold text-amber-500">负责人</div>
+          <div className="mt-2 text-[18px] font-bold text-amber-700">{memberStats.managerCount}</div>
         </div>
         <div className="rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-500">角色数</div>
-          <div className="mt-2 text-xl font-black tracking-tight text-violet-700">{memberStats.roleCount}</div>
+          <div className="text-[11px] font-semibold text-violet-500">角色数</div>
+          <div className="mt-2 text-[18px] font-bold text-violet-700">{memberStats.roleCount}</div>
         </div>
       </div>
 
@@ -340,7 +340,7 @@ export function ProjectTeamManager({
 
       {editingMember ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-[420px] rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-[420px] rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <div className="text-base font-bold text-slate-800">编辑项目团队成员</div>
@@ -430,7 +430,7 @@ export function ProjectTeamManager({
 
       {showAddModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-[420px] rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-[420px] rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <div className="text-base font-bold text-slate-800">添加成员</div>
               <button className="text-slate-400 hover:text-slate-600" onClick={() => setShowAddModal(false)} type="button">

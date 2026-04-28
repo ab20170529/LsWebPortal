@@ -468,8 +468,8 @@ function getStatusLabel(value?: string | null) {
 function StatCard({ accent, label, value }: { accent: string; label: string; value: string | number }) {
   return (
     <div className={`rounded-[22px] ${accent} p-5`}>
-      <div className="text-xs font-bold uppercase tracking-[0.14em] text-white/60">{label}</div>
-      <div className="mt-2 text-3xl font-black tracking-tight text-white">{value}</div>
+      <div className="text-xs font-bold text-white/60">{label}</div>
+      <div className="mt-2 text-3xl font-bold text-white">{value}</div>
     </div>
   );
 }
@@ -686,7 +686,7 @@ function DrawerShell({
       <div className="fixed inset-0 z-40 bg-slate-950/20 backdrop-blur-[2px]" onClick={onClose} />
       <div className="animate-slideInRight fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col bg-white shadow-[-12px_0_48px_-16px_rgba(15,23,42,0.18)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5">
           <div>
             <div className="text-base font-bold text-slate-900">{title}</div>
             <div className="mt-1 text-xs text-slate-400">填写信息后保存</div>
@@ -694,10 +694,10 @@ function DrawerShell({
           <DrawerCloseIcon onClick={onClose} />
         </div>
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">{children}</div>
+        <div className="flex-1 overflow-y-auto px-5 py-5">{children}</div>
         {/* Footer */}
         {footer ? (
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">{footer}</div>
+          <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4">{footer}</div>
         ) : null}
       </div>
     </>
@@ -1461,7 +1461,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-6 h-full">
+    <div className="flex flex-col gap-4 h-full">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -1472,7 +1472,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">里程碑模板配置中心</h1>
+            <h1 className="text-[22px] font-bold text-slate-900">里程碑模板配置中心</h1>
             <p className="text-slate-500 text-sm">从管理维度配置标准化流程，从用户维度提供清晰的任务指引。</p>
           </div>
         </div>
@@ -1490,7 +1490,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
       </div>
 
       {/* Main Content - Three Column Layout */}
-      <div className="flex-1 flex gap-6 min-h-0">
+      <div className="flex-1 flex gap-4 min-h-0">
         
         {/* Level 1: Template Cards (Left 1/4) */}
         <div className="w-1/4 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1563,7 +1563,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             </div>
             <div className="flex items-center gap-2">
               <button 
-                className="text-[10px] font-bold text-blue-600 uppercase hover:underline"
+                className="text-[10px] font-bold text-blue-600 hover:underline"
                 onClick={() => {
                   // 展开所有有子节点的节点
                   const allParentIds = new Set<number>();
@@ -1590,7 +1590,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           <div className="flex-1 overflow-y-auto p-3">
             {/* Current Template Badge */}
             <div className="mb-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
-              <p className="text-[10px] text-blue-600 font-bold uppercase mb-1">当前所属模板</p>
+              <p className="text-[10px] text-blue-600 font-bold mb-1">当前所属模板</p>
               <p className="text-sm font-bold text-slate-800">{selectedType?.typeName || '未选择'}</p>
             </div>
             {/* Node Tree */}
@@ -1670,14 +1670,14 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           <div className="p-4 bg-slate-50/50 border-b border-slate-100">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase">当前所属节点</p>
+                <p className="text-[10px] text-slate-400 font-bold">当前所属节点</p>
                 <h4 className="text-sm font-bold text-slate-800">
                   {nodes.find(n => n.id === selectedNodeId)?.nodeName || '未选择节点'}
                 </h4>
               </div>
               <div className="flex gap-2">
                 <div className="flex flex-col items-center">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">任务数</span>
+                  <span className="text-[10px] text-slate-400 font-bold">任务数</span>
                   <span className="text-sm font-bold text-slate-700">{nodeTasks.length}</span>
                 </div>
               </div>
@@ -1687,14 +1687,14 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           {/* Task List */}
           <div className="flex-1 overflow-y-auto">
             {!selectedNode ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-300 p-8">
+              <div className="h-full flex flex-col items-center justify-center text-slate-300 p-5">
                 <svg className="w-12 h-12 mb-4 opacity-20" fill="none" viewBox="0 0 48 48">
                   <path d="M8 12h32M8 24h32M8 36h20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
                 </svg>
                 <p className="text-sm font-medium">请先选择节点模板</p>
               </div>
             ) : nodeTasks.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-300 p-8">
+              <div className="h-full flex flex-col items-center justify-center text-slate-300 p-5">
                 <svg className="w-12 h-12 mb-4 opacity-20" fill="none" viewBox="0 0 48 48">
                   <path d="M8 12h32M8 24h32M8 36h20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
                 </svg>
@@ -1713,9 +1713,9 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/30 border-b border-slate-100">
-                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">任务详情</th>
-                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase">控制规则</th>
-                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase text-right">操作</th>
+                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400">任务详情</th>
+                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400">控制规则</th>
+                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -1765,15 +1765,15 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           {/* Batch Rules Footer */}
           <div className="p-4 bg-slate-50 border-t border-slate-100">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1.5">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 16 16">
                   <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
                 批量规则维护
               </span>
               <div className="flex gap-2">
-                <button className="text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase">重置</button>
-                <button className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase">应用更改</button>
+                <button className="text-[10px] font-bold text-slate-400 hover:text-slate-600">重置</button>
+                <button className="text-[10px] font-bold text-blue-600 hover:text-blue-700">应用更改</button>
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -1806,7 +1806,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           onClose={() => setTypeDialogMode(null)}
           title={typeDialogMode === 'create' ? '新增里程碑模板' : '编辑里程碑模板'}
         >
-          <div className="space-y-8">
+          <div className="space-y-4">
             <FieldSection label="基本信息">
               <FieldRow>
                 <div className="space-y-2">
@@ -1888,7 +1888,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           onClose={() => setNodeDialogMode(null)}
           title={nodeDialogMode === 'create' ? '新增节点模板' : '编辑节点模板'}
         >
-          <div className="space-y-8">
+          <div className="space-y-4">
             <FieldSection label="基本信息">
               <FieldRow>
                 <div className="space-y-2">
@@ -1967,7 +1967,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
               </FieldRow>
             </FieldSection>
             <FieldSection label="流程控制">
-              <div className="flex flex-wrap gap-6">
+              <div className="flex flex-wrap gap-4">
                 <label className="flex items-center gap-2.5 text-sm text-slate-700">
                   <input
                     checked={nodeForm.needCheck}
@@ -2022,7 +2022,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           onClose={() => setTaskDialogMode(null)}
           title={taskDialogMode === 'create' ? '新增任务模板' : '编辑任务模板'}
         >
-          <div className="space-y-8">
+          <div className="space-y-4">
             <FieldSection label="基本信息">
               <FieldRow>
                 <div className="space-y-2">
@@ -2073,7 +2073,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
               </FieldRow>
             </FieldSection>
             <FieldSection label="流程控制">
-              <div className="flex flex-wrap gap-6">
+              <div className="flex flex-wrap gap-4">
                 {[
                   { key: 'needCheck' as const, label: '需要检查' },
                   { key: 'needAudit' as const, label: '需要审核' },

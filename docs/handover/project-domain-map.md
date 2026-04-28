@@ -11,6 +11,8 @@ Treat this package as the project-workspace owner inside Portal, not as a loose 
 4. `src/project-workspace-shell.tsx`
 5. The specific workspace page or feature file involved in the change
 
+For visual optimization, read `docs/handover/portal-ui-standards-v1.md` before editing project pages so typography, color roles, icon sizing, logo/avatar handling, and control states stay aligned with the Portal baseline.
+
 ## Domain Areas
 
 - `src/project-workspace-config.ts` registers workspace ids, groups, and labels.

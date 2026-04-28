@@ -1,4 +1,4 @@
-﻿import {
+import {
   startTransition,
   useEffect,
   useMemo,
@@ -1315,7 +1315,7 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
   const ganttTicks = ganttRange ? buildTimelineTicks(ganttRange.start, ganttRange.end) : [];
 
   const overviewContent = (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <ActionConsole
         memberOptions={memberOptions}
         nodeOptions={nodeOptions}
@@ -1335,14 +1335,14 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         taskOptions={taskOptions}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="rounded-[32px] p-6">
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Card className="rounded-[32px] p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">
+              <div className="theme-text-soft text-xs font-semibold">
                 项目清单
               </div>
-              <div className="theme-text-strong mt-2 text-2xl font-black tracking-tight">
+              <div className="theme-text-strong mt-2 text-[22px] font-bold">
                 当前项目
               </div>
             </div>
@@ -1394,12 +1394,12 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
                     type="button"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="theme-text-strong text-sm font-black tracking-tight">{project.projectName}</div>
+                      <div className="theme-text-strong text-sm font-bold">{project.projectName}</div>
                       <Badge tone={isActive ? 'brand' : getProjectStatusTone(project.status)}>
                         {getProjectStatusLabel(project.status ?? 'DRAFT')}
                       </Badge>
                     </div>
-                    <div className="theme-text-muted mt-2 text-xs font-bold uppercase tracking-[0.16em]">
+                    <div className="theme-text-muted mt-2 text-xs font-semibold">
                       {project.projectCode}
                     </div>
                     <div className="theme-text-muted mt-3 text-sm leading-6">
@@ -1416,14 +1416,14 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
           </div>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="rounded-[32px] p-8">
+        <div className="space-y-4">
+          <Card className="rounded-[32px] p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">
+                <div className="theme-text-soft text-xs font-semibold">
                   项目摘要
                 </div>
-                <div className="theme-text-strong mt-2 text-3xl font-black tracking-tight">
+                <div className="theme-text-strong mt-2 text-3xl font-bold">
                   {selectedProject?.projectName ?? '请选择一个项目'}
                 </div>
                 <div className="theme-text-muted mt-3 max-w-3xl text-sm leading-7">
@@ -1439,30 +1439,30 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             </div>
 
             {detailLoading ? (
-              <div className="theme-surface-subtle mt-6 rounded-[22px] p-4 text-sm">
+              <div className="theme-surface-subtle mt-5 rounded-[22px] p-4 text-sm">
                 正在加载项目详情...
               </div>
             ) : detailError ? (
-              <div className="mt-6 rounded-[22px] border border-rose-100 bg-rose-50/80 p-4 text-sm text-rose-800">
+              <div className="mt-5 rounded-[22px] border border-rose-100 bg-rose-50/80 p-4 text-sm text-rose-800">
                 {detailError}
               </div>
             ) : selectedProject && statistics ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">团队</div>
-                  <div className="theme-text-strong mt-3 text-3xl font-black tracking-tight">{statistics.memberCount}</div>
+                  <div className="theme-text-soft text-xs font-semibold">团队</div>
+                  <div className="theme-text-strong mt-3 text-3xl font-bold">{statistics.memberCount}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">节点</div>
-                  <div className="theme-text-strong mt-3 text-3xl font-black tracking-tight">{statistics.nodeCount}</div>
+                  <div className="theme-text-soft text-xs font-semibold">节点</div>
+                  <div className="theme-text-strong mt-3 text-3xl font-bold">{statistics.nodeCount}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">任务</div>
-                  <div className="theme-text-strong mt-3 text-3xl font-black tracking-tight">{statistics.taskCount}</div>
+                  <div className="theme-text-soft text-xs font-semibold">任务</div>
+                  <div className="theme-text-strong mt-3 text-3xl font-bold">{statistics.taskCount}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">预算</div>
-                  <div className="theme-text-strong mt-3 text-3xl font-black tracking-tight">
+                  <div className="theme-text-soft text-xs font-semibold">预算</div>
+                  <div className="theme-text-strong mt-3 text-3xl font-bold">
                     {formatAmount(statistics.totalPlanAmount)}
                   </div>
                 </div>
@@ -1470,10 +1470,10 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             ) : null}
           </Card>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="rounded-[32px] p-6">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="rounded-[32px] p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">团队与预算</div>
+                <div className="theme-text-soft text-xs font-semibold">团队与预算</div>
                 <Badge tone="neutral">{projectDetail?.members.length ?? 0}</Badge>
               </div>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -1509,32 +1509,32 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
               </div>
             </Card>
 
-            <Card className="rounded-[32px] p-6">
+            <Card className="rounded-[32px] p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">项目上下文</div>
+                <div className="theme-text-soft text-xs font-semibold">项目上下文</div>
                 <Badge tone="brand">当前项目</Badge>
               </div>
               <div className="mt-5 space-y-4">
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">业务单元</div>
+                  <div className="theme-text-soft text-xs font-semibold">业务单元</div>
                   <div className="theme-text-strong mt-2 text-sm font-semibold">{selectedProject?.businessUnit ?? '--'}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">考勤地址</div>
+                  <div className="theme-text-soft text-xs font-semibold">考勤地址</div>
                   <div className="theme-text-strong mt-2 text-sm font-semibold">{selectedProject?.attendanceAddress ?? '--'}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">来源说明</div>
+                  <div className="theme-text-soft text-xs font-semibold">来源说明</div>
                   <div className="theme-text-strong mt-2 text-sm font-semibold">{selectedProject?.sourceContent ?? '--'}</div>
                 </div>
               </div>
             </Card>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <Card className="rounded-[32px] p-6">
+          <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+            <Card className="rounded-[32px] p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">里程碑</div>
+                <div className="theme-text-soft text-xs font-semibold">里程碑</div>
                 <Badge tone="neutral">{projectDetail?.nodes.length ?? 0}</Badge>
               </div>
               <div className="mt-5 space-y-3">
@@ -1556,9 +1556,9 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
               </div>
             </Card>
 
-            <Card className="rounded-[32px] p-6">
+            <Card className="rounded-[32px] p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">任务执行</div>
+                <div className="theme-text-soft text-xs font-semibold">任务执行</div>
                 <Badge tone="neutral">{projectDetail?.tasks.length ?? 0}</Badge>
               </div>
               <div className="mt-5 space-y-3">
@@ -1583,9 +1583,9 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             </Card>
           </div>
 
-          <Card className="rounded-[32px] p-8">
+          <Card className="rounded-[32px] p-5">
             <div className="flex items-center justify-between gap-3">
-              <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">只读甘特</div>
+              <div className="theme-text-soft text-xs font-semibold">只读甘特</div>
               <Badge tone="neutral">{ganttRows.length}</Badge>
             </div>
 
@@ -1594,9 +1594,9 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             ) : (
               <div className="mt-5 space-y-5">
                 <div className="grid gap-3 md:grid-cols-[260px_minmax(0,1fr)]">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">时间轴</div>
+                  <div className="theme-text-soft text-xs font-semibold">时间轴</div>
                   <div
-                    className="grid gap-2 text-[11px] font-bold uppercase tracking-[0.14em]"
+                    className="grid gap-2 text-[11px] font-semibold"
                     style={{
                       gridTemplateColumns: `repeat(${Math.max(ganttTicks.length, 2)}, minmax(0, 1fr))`,
                     }}
@@ -1644,9 +1644,9 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             )}
           </Card>
 
-          <Card className="rounded-[32px] p-8">
+          <Card className="rounded-[32px] p-5">
             <div className="flex items-center justify-between gap-3">
-              <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">
+              <div className="theme-text-soft text-xs font-semibold">
                 计划、汇报与附件
               </div>
               <Badge tone="neutral">协同区</Badge>
@@ -1662,7 +1662,7 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
               </div>
             ) : (
               <div className="mt-5 space-y-3">
-                <div className="theme-text-strong text-sm font-black tracking-tight">附件资料</div>
+                <div className="theme-text-strong text-sm font-bold">附件资料</div>
                 {attachments.length ? (
                   attachments.slice(0, 6).map((attachment) => (
                     <div key={attachment.id} className="theme-surface-subtle rounded-[22px] p-4">
@@ -1785,6 +1785,11 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         onCreateTask={handleCreateTask}
         onDeleteNode={handleDeleteNode}
         onDeleteTask={handleDeleteTask}
+        onExitSystem={onExitSystem ?? (() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/systems';
+          }
+        })}
         onOpenProgressConfig={() => {
           setWorkspaceMode('milestone-template-management');
         }}
@@ -1872,21 +1877,15 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
   return (
     <ProjectToastProvider>
       <ProjectWorkspaceShell
-        keyword={keyword}
+        currentUserName={currentUserName}
         onExitSystem={onExitSystem ?? (() => {
           if (typeof window !== 'undefined') {
-            window.location.href = '/';
+            window.location.href = '/systems';
           }
         })}
-        onKeywordChange={(value) => {
-          startTransition(() => {
-            setKeyword(value);
-          });
-        }}
         onSelectWorkspace={(workspaceId) => {
           setWorkspaceMode(workspaceId as WorkspaceMode);
         }}
-        selectedProjectName={selectedProject?.projectName ?? '未选择项目'}
         workspaceContent={workspaceContent}
         workspaceGroups={visibleWorkspaceGroups}
         workspaceItems={visibleWorkspaceItems}

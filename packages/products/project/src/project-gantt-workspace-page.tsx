@@ -1,6 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -8,8 +7,6 @@ import {
   Hand,
   Plus,
   Search,
-  Sparkles,
-  SunMedium,
   Trash2,
   X,
 } from 'lucide-react';
@@ -128,6 +125,7 @@ type ProjectGanttWorkspacePageProps = {
   onDeleteBudget: (projectId: number, budgetId: number) => Promise<void>;
   onDeleteMember: (projectId: number, memberId: number) => Promise<void>;
   onDeleteAttachment: (projectId: number, attachmentId: number) => Promise<void>;
+  onExitSystem?: () => void;
   onUploadAttachment: (
     projectId: number,
     payload: {
@@ -358,6 +356,7 @@ export function ProjectGanttWorkspacePage({
   onDeleteMember,
   onDeleteNode,
   onDeleteTask,
+  onExitSystem,
   onUploadAttachment,
   onOpenProgressConfig,
   onOpenProjectManagement,
@@ -2064,14 +2063,16 @@ export function ProjectGanttWorkspacePage({
 
   if (!selectedProjectId || !selectedProject) {
     return (
-      <Card className="rounded-[32px] p-8">
+      <Card className="rounded-[14px] border border-slate-200/80 p-5 shadow-[0_20px_60px_-44px_rgba(15,23,42,0.24)]">
         <div className="space-y-4">
-          <Badge tone="neutral">项目甘特工作区</Badge>
-          <div className="theme-text-strong text-3xl font-black tracking-tight">
-            先选择一个项目，再进入图形化甘特界面。
+          <div className="text-xs font-semibold text-slate-400">
+            排期协同
           </div>
-          <div className="theme-text-muted max-w-2xl text-sm leading-8">
-            这一页会按你提供的原型结构展示项目节点、任务树和月日时间轴。当前还没有选中项目，所以暂时无法绘制图形界面。
+          <div className="theme-text-strong text-[22px] font-bold">
+            先选择一个项目，再进入排期协同工作区。
+          </div>
+          <div className="theme-text-muted max-w-2xl text-sm leading-6">
+            这里会展示项目节点、任务树、时间轴和依赖关系。当前还没有选中项目，所以暂时无法进入图形化排期界面。
           </div>
           <div className="flex gap-3">
             <Button onClick={onOpenProjectManagement}>去项目管理页选择项目</Button>
@@ -2088,190 +2089,177 @@ export function ProjectGanttWorkspacePage({
     <div className="relative flex h-full min-h-0 w-full flex-col">
       {/* 主内容区域 */}
       <div className={`relative flex min-h-0 flex-1 transition-all duration-300 ${(detailPanel.visible || teamPanelVisible) ? 'mr-[420px]' : ''}`}>
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 shadow-none">
-        <div className="flex min-h-[104px] border-b border-[#d9e7f7] bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)]">
-          <div
-            className="border-r border-[#d9e7f7] bg-[linear-gradient(180deg,#f7faff_0%,#f1f6fd_100%)] px-5 py-4"
-            style={{ width: SIDEBAR_WIDTH }}
-          >
-            <div className="flex items-center gap-3">
-              <button
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d5e3f4] bg-white/90 text-slate-500 transition-colors hover:text-slate-900"
-                onClick={onOpenProjectManagement}
-                type="button"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-              <div className="theme-text-strong flex items-center gap-2 text-[26px] font-black tracking-tight">
-                项目进度
-                <Sparkles className="h-4 w-4 text-amber-500" />
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-[#d9e7f7] bg-white shadow-[0_16px_36px_-30px_rgba(15,23,42,0.35)]">
+          <div className="flex min-h-[132px] items-start justify-between gap-4 border-b border-[#d9e7f7] px-5 py-5">
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-slate-500">
+                项目 <span className="mx-2 text-slate-300">/</span> 项目控制
               </div>
-            </div>
-            <div className="mt-3 flex items-end gap-2">
-              <div className="theme-text-strong text-5xl font-black leading-none">
-                {completionRate}
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <h1 className="text-[26px] font-bold leading-none text-slate-900">排期协同</h1>
+                <span className="rounded-[6px] border border-sky-100 bg-sky-50 px-2 py-1 text-xs font-semibold text-[var(--portal-color-brand-600)]">
+                  项目控制
+                </span>
               </div>
-              <div className="pb-1 text-2xl text-slate-400">%</div>
-              <div className="theme-text-muted pb-2 text-sm">整体完成率</div>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                承接管理员排期、节点任务搭建、分配与甘特调整。
+              </p>
             </div>
+            <button
+              className="inline-flex h-10 shrink-0 items-center justify-center rounded-[8px] border border-[#d9e7f7] bg-white px-4 text-sm font-semibold text-slate-700 shadow-[0_8px_18px_-14px_rgba(15,23,42,0.38)] transition hover:border-slate-300 hover:text-slate-900"
+              onClick={onExitSystem}
+              type="button"
+            >
+              返回系统选择
+            </button>
           </div>
 
-          <div className="relative flex flex-1 items-center justify-between gap-8 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] px-8 py-4 pr-28">
-            <div className="flex flex-wrap items-start gap-10">
+          <div className="flex min-h-[160px] bg-white">
+            <div className="flex w-[230px] shrink-0 items-center border-r border-[#edf2f8] px-5">
               <div>
-                <div className="theme-text-soft flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em]">
+                <div className="flex items-end gap-1.5">
+                  <div className="text-[30px] font-bold leading-none text-slate-900">
+                    {completionRate}
+                  </div>
+                  <div className="pb-0.5 text-[18px] font-semibold text-slate-400">%</div>
+                </div>
+                <div className="mt-2 text-sm text-slate-500">整体完成率</div>
+              </div>
+            </div>
+
+            <div className="flex min-w-[260px] flex-[1.05] items-center border-r border-[#edf2f8] px-5">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-400">当前项目</div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <div className="truncate text-[18px] font-bold text-slate-900">
+                    {selectedProject.projectName}
+                  </div>
+                  <span className="rounded-[6px] bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">
+                    {selectedProject.projectCode}
+                  </span>
+                  <span
+                    className={`rounded-[6px] border px-2 py-1 text-[11px] font-semibold ${
+                      canManageProjectSchedule
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                    }`}
+                  >
+                    {canManageProjectSchedule ? '可编辑' : '只读'}
+                  </span>
+                </div>
+                <div className="mt-2 text-sm leading-6 text-slate-600">
+                  先确认项目范围和排期状态，再进入节点、任务和依赖维护。
+                </div>
+              </div>
+            </div>
+
+            <div className="flex min-w-[280px] flex-1 items-center border-r border-[#edf2f8] px-5">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                   <CalendarDays className="h-3.5 w-3.5" />
                   任务统计
                 </div>
-                <div className="mt-3 flex gap-10">
+                <div className="mt-4 flex gap-4">
                   <div>
                     <div className="flex items-end gap-1">
-                      <div className="theme-text-strong text-4xl font-black tracking-tight">
+                      <div className="text-[28px] font-bold leading-none text-slate-900">
                         {statistics?.completedTaskCount ?? 0}
                       </div>
-                      <div className="pb-1 text-xs text-slate-400">项</div>
+                      <div className="pb-0.5 text-xs text-slate-500">项</div>
                     </div>
-                    <div className="theme-text-muted mt-1 text-xs">已完成任务</div>
+                    <div className="mt-1 text-xs text-slate-500">已完成任务</div>
                   </div>
                   <div>
                     <div className="flex items-end gap-1">
-                      <div className="theme-text-strong text-4xl font-black tracking-tight">
+                      <div className="text-[28px] font-bold leading-none text-slate-900">
                         {Math.max(0, (statistics?.taskCount ?? tasks.length) - (statistics?.completedTaskCount ?? 0))}
                       </div>
-                      <div className="pb-1 text-xs text-slate-400">项</div>
+                      <div className="pb-0.5 text-xs text-slate-500">项</div>
                     </div>
-                    <div className="theme-text-muted mt-1 text-xs">未完成任务</div>
+                    <div className="mt-1 text-xs text-slate-500">未完成任务</div>
                   </div>
                   <div>
                     <div className="flex items-end gap-1">
-                      <div className="text-4xl font-black tracking-tight text-rose-500">
+                      <div className="text-[28px] font-bold leading-none text-rose-500">
                         {statistics?.inProgressTaskCount ?? 0}
                       </div>
-                      <div className="pb-1 text-xs text-slate-400">项</div>
+                      <div className="pb-0.5 text-xs text-slate-500">项</div>
                     </div>
-                    <div className="theme-text-muted mt-1 text-xs">进行中任务</div>
+                    <div className="mt-1 text-xs text-slate-500">进行中任务</div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="h-14 w-px bg-black/8" />
-
+            <div className="flex min-w-[260px] flex-1 items-center px-5">
               <div>
-                <div className="theme-text-soft flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em]">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                   <Clock3 className="h-3.5 w-3.5" />
                   时间对比
                 </div>
-                <div className="mt-3 flex gap-10">
+                <div className="mt-4 flex gap-4">
                   <div>
-                    <div className="theme-text-strong text-3xl font-black tracking-tight">
+                    <div className="text-[26px] font-bold leading-none text-slate-900">
                       {formatMonthDay(plannedFinish)}
                     </div>
-                    <div className="theme-text-muted mt-1 text-xs">计划完成时间</div>
+                    <div className="mt-1 text-xs text-slate-500">计划完成时间</div>
                   </div>
                   <div>
-                    <div className="text-3xl font-black tracking-tight text-amber-500">
+                    <div className="text-[26px] font-bold leading-none text-amber-500">
                       {formatMonthDay(predictedFinish)}
                     </div>
-                    <div className="theme-text-muted mt-1 text-xs">预计完成时间</div>
+                    <div className="mt-1 text-xs text-slate-500">预计完成时间</div>
                   </div>
                   <div>
                     <div className="flex items-end gap-1">
-                      <div className="text-3xl font-black tracking-tight text-amber-500">
+                      <div className="text-[26px] font-bold leading-none text-amber-500">
                         {deviationDays === null ? '--' : `${deviationDays > 0 ? '+' : ''}${deviationDays}`}
                       </div>
-                      <div className="pb-1 text-xs text-slate-400">天</div>
+                      <div className="pb-0.5 text-xs text-slate-500">天</div>
                     </div>
-                    <div className="theme-text-muted mt-1 text-xs">时间偏差</div>
+                    <div className="mt-1 text-xs text-slate-500">时间偏差</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button
+            <div className="flex w-[124px] shrink-0 flex-col justify-center gap-2 px-4">
+              <button
+                className="flex h-10 items-center justify-between gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
                 disabled={!canManageProjectSchedule}
                 onClick={openTeamPanel}
-                tone="ghost"
+                type="button"
               >
                 项目团队
-                <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-500">
                   {members.length}
                 </span>
-              </Button>
-              <Button onClick={onOpenProgressConfig} tone="ghost">
+              </button>
+              <button
+                className="flex h-10 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                onClick={onOpenProgressConfig}
+                type="button"
+              >
                 里程碑模板
-              </Button>
-            </div>
-
-            <div className="absolute right-8 top-4 flex items-center gap-2">
-              <button
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d6e4f4] bg-white/90 text-slate-400 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.7)] transition-colors hover:text-slate-700"
-                title="界面主题"
-                type="button"
-              >
-                <SunMedium className="h-4 w-4" />
               </button>
-              <button
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d6e4f4] bg-white/90 text-slate-400 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.7)] transition-colors hover:text-slate-700"
-                title="更多操作"
-                type="button"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </button>
-              <button
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d6e4f4] bg-white/90 text-slate-400 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.7)] transition-colors hover:text-slate-700"
-                title="拖拽模式"
-                type="button"
-              >
-                <Hand className="h-4 w-4" />
-              </button>
-              {/* 连锁更新开关 */}
-              {taskDependencies && taskDependencies.length > 0 && (
-                <div className="ml-2 flex items-center gap-2">
-                  <button
-                    className={`group relative flex h-9 w-16 items-center rounded-full border-2 p-1 transition-all duration-300 ${
-                      cascadeUpdateEnabled
-                        ? 'border-emerald-400 bg-gradient-to-r from-emerald-50 to-teal-50 shadow-[0_4px_12px_-2px_rgba(16,185,129,0.3)]'
-                        : 'border-slate-200 bg-white shadow-[0_4px_12px_-2px_rgba(0,0,0,0.08)] hover:border-slate-300 hover:shadow-[0_4px_12px_-2px_rgba(0,0,0,0.12)]'
-                    }`}
-                    title={cascadeUpdateEnabled ? '关闭连锁日期更新' : '开启连锁日期更新'}
-                    type="button"
-                    onClick={() => {
-                      setCascadeUpdateEnabled(!cascadeUpdateEnabled);
-                    }}
-                  >
-                    <div
-                      className={`flex h-6 w-6 items-center justify-center rounded-full transition-all duration-300 ${
-                        cascadeUpdateEnabled
-                          ? 'translate-x-7 bg-gradient-to-br from-emerald-400 to-teal-500 shadow-md'
-                          : 'translate-x-0.5 bg-slate-100 group-hover:bg-slate-200'
-                      }`}
-                    >
-                      {cascadeUpdateEnabled ? (
-                        <svg className="h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      ) : (
-                        <svg className="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
-                    </div>
-                  </button>
-                  <span className={`text-[11px] font-semibold tracking-wide transition-colors duration-200 ${
-                    cascadeUpdateEnabled 
-                      ? 'text-emerald-600' 
-                      : 'text-slate-400'
-                  }`}>
-                    {cascadeUpdateEnabled ? '连锁已开启' : '连锁'}
-                  </span>
-                </div>
-              )}
+              {taskDependencies && taskDependencies.length > 0 ? (
+                <button
+                  className={`flex h-9 items-center justify-center rounded-[8px] border text-xs font-semibold transition ${
+                    cascadeUpdateEnabled
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                  }`}
+                  onClick={() => {
+                    setCascadeUpdateEnabled(!cascadeUpdateEnabled);
+                  }}
+                  type="button"
+                >
+                  {cascadeUpdateEnabled ? '连锁已开启' : '连锁'}
+                </button>
+              ) : null}
             </div>
           </div>
-        </div>
-
-        <div className="flex h-14 border-b border-[#d9e7f7] bg-[linear-gradient(180deg,#f8fbff_0%,#f1f6fd_100%)]">
+        <div className="flex h-14 border-y border-[#d9e7f7] bg-[linear-gradient(180deg,#f8fbff_0%,#f1f6fd_100%)]">
           <div
             className="flex items-center gap-2 border-r border-[#d9e7f7] bg-[linear-gradient(180deg,#f5f9ff_0%,#eef4fc_100%)] px-4"
             style={{ width: SIDEBAR_WIDTH }}
@@ -2824,7 +2812,7 @@ export function ProjectGanttWorkspacePage({
                               <span className={`h-2 w-2 flex-shrink-0 rounded-full ${taskDisplayMeta.assignmentDotClassName}`} />
                             ) : null}
                             {showInlineTitle ? (
-                              <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[11px] font-medium tracking-wide text-slate-700">
+                              <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[11px] font-medium text-slate-700">
                                 {row.title}
                               </span>
                             ) : null}
@@ -3026,17 +3014,17 @@ export function ProjectGanttWorkspacePage({
           }}
         >
           <Card
-            className="w-full max-w-[420px] rounded-[28px] p-6"
+            className="w-full max-w-[420px] rounded-[28px] p-5"
             onClick={(event: React.MouseEvent<HTMLDivElement>) => {
               event.stopPropagation();
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.18em]">
+                <div className="theme-text-soft text-xs font-semibold">
                   {createDraft.mode === 'node' ? '节点新增' : '任务新增'}
                 </div>
-                <div className="theme-text-strong mt-2 text-2xl font-black tracking-tight">
+                <div className="theme-text-strong mt-2 text-[22px] font-bold">
                   {createDraft.mode === 'node'
                     ? createDraft.parentNodeId
                       ? '新增子节点'
@@ -3056,9 +3044,9 @@ export function ProjectGanttWorkspacePage({
               </button>
             </div>
 
-            <div className="mt-6 space-y-4">
+            <div className="mt-5 space-y-4">
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">
+                <div className="theme-text-soft text-xs font-semibold">
                   {createDraft.mode === 'node' ? '名称' : '标题'}
                 </div>
                 <input
@@ -3072,7 +3060,7 @@ export function ProjectGanttWorkspacePage({
               </div>
 
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">编码</div>
+                <div className="theme-text-soft text-xs font-semibold">编码</div>
                 <input
                   className="theme-input mt-2 h-11 w-full rounded-2xl px-4 text-sm"
                   onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
@@ -3085,7 +3073,7 @@ export function ProjectGanttWorkspacePage({
 
               {createDraft.mode === 'task' ? (
                 <div>
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">任务内容</div>
+                  <div className="theme-text-soft text-xs font-semibold">任务内容</div>
                   <textarea
                     className="theme-input mt-2 min-h-[110px] w-full rounded-2xl px-4 py-3 text-sm"
                     onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -3098,7 +3086,7 @@ export function ProjectGanttWorkspacePage({
               ) : null}
 
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">备注</div>
+                <div className="theme-text-soft text-xs font-semibold">备注</div>
                 <textarea
                   className="theme-input mt-2 min-h-[96px] w-full rounded-2xl px-4 py-3 text-sm"
                   onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -3110,7 +3098,7 @@ export function ProjectGanttWorkspacePage({
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-5 flex justify-end gap-3">
               <Button
                 onClick={() => {
                   setCreateDraft(null);
@@ -3147,7 +3135,7 @@ export function ProjectGanttWorkspacePage({
           >
             <div className="overflow-hidden rounded-2xl bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]">
               {/* 标题栏 */}
-              <div className="relative bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-6 py-5">
+              <div className="relative bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-5 py-5">
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30"></div>
                 <div className="relative flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -3155,7 +3143,7 @@ export function ProjectGanttWorkspacePage({
                       <CalendarDays className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-white">计划时间编辑</h2>
+                      <h2 className="text-[18px] font-bold text-white">计划时间编辑</h2>
                       <p className="text-sm text-white/80 truncate max-w-[280px]">{findRow(editorState.rowId)?.title ?? '设置任务计划时间'}</p>
                     </div>
                   </div>
@@ -3172,7 +3160,7 @@ export function ProjectGanttWorkspacePage({
               </div>
 
               {/* 内容区域 */}
-              <div className="px-6 py-5">
+              <div className="px-5 py-5">
                 {/* 日期输入卡片 */}
                 <div className="mb-5 grid grid-cols-2 gap-4">
                   <div className="group">
@@ -3272,7 +3260,7 @@ export function ProjectGanttWorkspacePage({
               </div>
 
               {/* 底部操作栏 */}
-              <div className="border-t border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-4">
+              <div className="border-t border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
                 <div className="flex items-center justify-between gap-4">
                   <button
                     className="group flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-all hover:bg-red-50 hover:text-red-600"
@@ -3340,15 +3328,15 @@ export function ProjectGanttWorkspacePage({
           }}
         >
           <Card
-            className="w-full max-w-[440px] rounded-[28px] p-6"
+            className="w-full max-w-[440px] rounded-[28px] p-5"
             onClick={(event: React.MouseEvent<HTMLDivElement>) => {
               event.stopPropagation();
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.18em]">任务人员分配</div>
-                <div className="theme-text-strong mt-2 text-2xl font-black tracking-tight">{quickAssignState.taskTitle}</div>
+                <div className="theme-text-soft text-xs font-semibold">任务人员分配</div>
+                <div className="theme-text-strong mt-2 text-[22px] font-bold">{quickAssignState.taskTitle}</div>
               </div>
               <button
                 className="flex h-8 w-8 items-center justify-center rounded-full border border-black/8 text-slate-400 transition-colors hover:text-slate-900"
@@ -3361,9 +3349,9 @@ export function ProjectGanttWorkspacePage({
               </button>
             </div>
 
-            <div className="mt-6 space-y-5">
+            <div className="mt-5 space-y-5">
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">负责人</div>
+                <div className="theme-text-soft text-xs font-semibold">负责人</div>
                 <select
                   className="theme-input mt-2 h-11 w-full rounded-2xl px-4 text-sm"
                   disabled={quickAssignState.loading || members.length === 0}
@@ -3389,7 +3377,7 @@ export function ProjectGanttWorkspacePage({
               </div>
 
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">参与人</div>
+                <div className="theme-text-soft text-xs font-semibold">参与人</div>
                 <div className="mt-2 max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   {members.filter((member) => member.userId !== quickAssignState.responsibleUserId).length ? (
                     members
@@ -3426,7 +3414,7 @@ export function ProjectGanttWorkspacePage({
                         );
                       })
                   ) : (
-                    <div className="py-6 text-center text-sm text-slate-400">暂无可选参与人，请先补充项目团队成员。</div>
+                    <div className="py-5 text-center text-sm text-slate-400">暂无可选参与人，请先补充项目团队成员。</div>
                   )}
                 </div>
               </div>
@@ -3444,7 +3432,7 @@ export function ProjectGanttWorkspacePage({
               )}
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-5 flex justify-end gap-3">
               <button
                 className="rounded-xl px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-100"
                 onClick={() => {
@@ -3478,17 +3466,17 @@ export function ProjectGanttWorkspacePage({
           }}
         >
           <Card
-            className="w-full max-w-[520px] rounded-[28px] p-6"
+            className="w-full max-w-[520px] rounded-[28px] p-5"
             onClick={(event: React.MouseEvent<HTMLDivElement>) => {
               event.stopPropagation();
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.18em]">
+                <div className="theme-text-soft text-xs font-semibold">
                   任务依赖管理
                 </div>
-                <div className="theme-text-strong mt-2 text-2xl font-black tracking-tight">
+                <div className="theme-text-strong mt-2 text-[22px] font-bold">
                   {dependencyModalState.taskTitle}
                 </div>
               </div>
@@ -3503,10 +3491,10 @@ export function ProjectGanttWorkspacePage({
               </button>
             </div>
 
-            <div className="mt-6 space-y-5">
+            <div className="mt-5 space-y-5">
               {/* 现有依赖关系 */}
               <div>
-                <div className="theme-text-soft mb-3 text-xs font-bold uppercase tracking-[0.14em]">
+                <div className="theme-text-soft mb-3 text-xs font-semibold">
                   当前依赖关系
                 </div>
                 {(() => {
@@ -3514,7 +3502,7 @@ export function ProjectGanttWorkspacePage({
                   const allDeps = [...deps.predecessors, ...deps.successors];
                   if (allDeps.length === 0) {
                     return (
-                      <div className="rounded-xl bg-slate-50 py-6 text-center text-sm text-slate-400">
+                      <div className="rounded-xl bg-slate-50 py-5 text-center text-sm text-slate-400">
                         暂无依赖关系
                       </div>
                     );
@@ -3578,7 +3566,7 @@ export function ProjectGanttWorkspacePage({
 
               {/* 添加新依赖 */}
               <div>
-                <div className="theme-text-soft mb-3 text-xs font-bold uppercase tracking-[0.14em]">
+                <div className="theme-text-soft mb-3 text-xs font-semibold">
                   添加后继任务依赖
                 </div>
                 <div className="space-y-3">
@@ -3646,7 +3634,7 @@ export function ProjectGanttWorkspacePage({
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-5 flex justify-end gap-3">
               <Button
                 onClick={() => {
                   setDependencyModalState(null);
@@ -3685,7 +3673,7 @@ export function ProjectGanttWorkspacePage({
           >
             <div className="overflow-hidden rounded-2xl bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]">
               {/* 标题栏 */}
-              <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-6 py-5">
+              <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-5 py-5">
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30"></div>
                 <div className="relative flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -3695,7 +3683,7 @@ export function ProjectGanttWorkspacePage({
                       </svg>
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-white">连锁日期更新</h2>
+                      <h2 className="text-[18px] font-bold text-white">连锁日期更新</h2>
                       <p className="text-sm text-white/80">系统将自动调整后续任务的日期</p>
                     </div>
                   </div>
@@ -3713,11 +3701,11 @@ export function ProjectGanttWorkspacePage({
               </div>
 
               {/* 内容区域 */}
-              <div className="px-6 py-5">
+              <div className="px-5 py-5">
                 {/* 统计卡片 */}
                 <div className="mb-5 grid grid-cols-3 gap-3">
                   <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-4 text-center">
-                    <div className="text-2xl font-bold text-slate-700">{cascadePreview.totalAffectedCount}</div>
+                    <div className="text-[22px] font-bold text-slate-700">{cascadePreview.totalAffectedCount}</div>
                     <div className="text-xs text-slate-500">受影响任务</div>
                   </div>
                   <div className="rounded-xl bg-gradient-to-br from-red-50 to-orange-50 p-4 text-center">
@@ -3921,10 +3909,10 @@ export function ProjectGanttWorkspacePage({
       {teamPanelVisible && selectedProjectId ? (
         <div className="fixed right-0 top-0 z-50 h-full w-[420px] shadow-[-20px_0_60px_rgba(0,0,0,0.15)]">
           <div className="flex h-full flex-col bg-white">
-            <div className="relative border-b border-slate-100 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-6 py-5">
+            <div className="relative border-b border-slate-100 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-5 py-5">
               <div className="relative flex items-start justify-between">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-widest text-white/80">项目级管理</div>
+                  <div className="text-xs font-semibold text-white/80">项目级管理</div>
                   <h2 className="mt-1 text-lg font-bold text-white">项目团队</h2>
                   <div className="mt-1 text-xs text-white/75">
                     先维护项目团队，再在每一步任务上分配负责人和参与人。
@@ -3939,7 +3927,7 @@ export function ProjectGanttWorkspacePage({
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-5">
               <ProjectTeamManager
                 members={members}
                 projectId={selectedProjectId}

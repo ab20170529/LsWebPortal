@@ -263,14 +263,14 @@ export function ProjectUserPermissionManagementPage({
   const dialogDirty = !areNumberListsEqual(dialogRoleIds, loadedDialogRoleIds);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 overflow-auto">
-      {false ? <Card className="rounded-[32px] p-7">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto">
+      {false ? <Card className="rounded-[32px] p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="theme-text-soft text-xs font-black uppercase tracking-[0.24em]">
+            <div className="theme-text-soft text-xs font-bold">
               系统管理
             </div>
-            <div className="theme-text-strong mt-2 text-3xl font-black tracking-tight">
+            <div className="theme-text-strong mt-2 text-3xl font-bold">
               用户权限
             </div>
             <div className="theme-text-muted mt-3 max-w-3xl text-sm leading-6">
@@ -298,10 +298,10 @@ export function ProjectUserPermissionManagementPage({
         ) : null}
       </Card> : null}
 
-      <Card className="rounded-[32px] p-6">
+      <Card className="rounded-[32px] p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <div className="theme-text-strong text-xl font-black tracking-tight">员工角色表</div>
+            <div className="theme-text-strong text-[18px] font-bold">员工角色表</div>
             <div className="theme-text-muted mt-2 text-sm">
               默认前端分页，每页 20 条，可直接按行进入角色设置。
             </div>
@@ -335,11 +335,11 @@ export function ProjectUserPermissionManagementPage({
           </div>
         ) : null}
 
-        <div className="mt-6 overflow-hidden rounded-[24px] border border-slate-200">
+        <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 bg-white text-left">
               <thead className="bg-slate-50">
-                <tr className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                <tr className="text-xs font-bold text-slate-500">
                   <th className="px-5 py-4">员工姓名</th>
                   <th className="px-5 py-4">登录账号</th>
                   <th className="px-5 py-4">已分配角色</th>
@@ -350,7 +350,7 @@ export function ProjectUserPermissionManagementPage({
               <tbody className="divide-y divide-slate-100">
                 {userDirectoryLoading || loading ? (
                   <tr>
-                    <td className="px-5 py-10 text-sm text-slate-500" colSpan={5}>
+                    <td className="px-5 py-8 text-sm text-slate-500" colSpan={5}>
                       正在加载员工权限数据...
                     </td>
                   </tr>
@@ -400,7 +400,7 @@ export function ProjectUserPermissionManagementPage({
                   })
                 ) : (
                   <tr>
-                    <td className="px-5 py-10 text-sm text-slate-500" colSpan={5}>
+                    <td className="px-5 py-8 text-sm text-slate-500" colSpan={5}>
                       没有匹配的员工记录。
                     </td>
                   </tr>
@@ -437,13 +437,13 @@ export function ProjectUserPermissionManagementPage({
 
       {dialogUser ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[28px] bg-white p-6 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
+          <div className="w-full max-w-2xl rounded-[28px] bg-white p-5 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                <div className="text-xs font-bold text-slate-400">
                   用户权限
                 </div>
-                <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">
+                <div className="mt-2 text-[22px] font-bold text-slate-900">
                   设置角色
                 </div>
                 <div className="mt-2 text-sm text-slate-500">
@@ -464,7 +464,7 @@ export function ProjectUserPermissionManagementPage({
               </button>
             </div>
 
-            <div className="mt-6 grid max-h-[420px] gap-3 overflow-auto pr-1">
+            <div className="mt-5 grid max-h-[420px] gap-3 overflow-auto pr-1">
               {roles.length ? (
                 roles.map((role) => (
                   <label
@@ -495,13 +495,13 @@ export function ProjectUserPermissionManagementPage({
                   </label>
                 ))
               ) : (
-                <div className="rounded-[22px] border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-500">
+                <div className="rounded-[22px] border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
                   当前还没有可分配的角色，请先到角色权限工作区创建角色。
                 </div>
               )}
             </div>
 
-            <div className="mt-6 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
               <div className="text-sm text-slate-500">
                 {`已选 ${dialogRoleIds.length} 个角色`}
               </div>
