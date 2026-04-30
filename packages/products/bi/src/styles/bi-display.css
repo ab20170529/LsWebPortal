@@ -841,26 +841,46 @@
 .bi-runtime-empty-state,
 .bi-runtime-external-state,
 .bi-runtime-module {
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.92);
-  padding: 16px 18px;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(8, 18, 28, 0.94), rgba(7, 14, 24, 0.92)),
+    linear-gradient(135deg, rgba(0, 240, 255, 0.04), transparent 38%);
+  padding: 18px 20px;
+  box-shadow:
+    inset 0 1px 0 rgba(125, 211, 252, 0.08),
+    0 18px 40px rgba(2, 6, 23, 0.34);
+}
+
+.bi-runtime-summary::before,
+.bi-runtime-empty-state::before,
+.bi-runtime-external-state::before,
+.bi-runtime-module::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(34, 211, 238, 0.14), transparent 16% 84%, rgba(99, 102, 241, 0.14)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 32%);
+  pointer-events: none;
 }
 
 .bi-runtime-summary-label,
 .bi-runtime-module-tag {
-  color: #64748b;
+  color: #7dd3fc;
   font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+  opacity: 0.78;
 }
 
 .bi-runtime-summary-text,
 .bi-runtime-module-text,
 .bi-runtime-external-text,
 .bi-runtime-external-url {
-  color: #475569;
+  color: #cbd5e1;
 }
 
 .bi-runtime-empty-state,
@@ -888,8 +908,8 @@
 
 .bi-runtime-module--metric {
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--bi-display-accent) 16%, transparent), transparent 42%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(239, 246, 255, 0.94) 100%);
+    radial-gradient(circle at 78% 18%, color-mix(in srgb, var(--bi-display-accent) 24%, transparent), transparent 36%),
+    linear-gradient(135deg, rgba(7, 16, 26, 0.98) 0%, rgba(10, 30, 44, 0.96) 100%);
 }
 
 .bi-runtime-module-head,
@@ -900,26 +920,44 @@
   gap: 12px;
 }
 
+.bi-runtime-module-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid rgba(34, 211, 238, 0.16);
+  border-radius: 999px;
+  background: rgba(6, 24, 36, 0.78);
+  padding: 0 10px;
+}
+
 .bi-runtime-module-code {
-  color: #94a3b8;
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  color: rgba(148, 163, 184, 0.68);
+  font-size: 10px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .bi-runtime-module-title {
   margin-top: 16px;
-  color: #0f172a;
-  font-size: 20px;
-  font-weight: 700;
+  color: #f8fafc;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.bi-runtime-module-text {
+  margin-top: 14px;
+  font-size: 15px;
+  line-height: 1.9;
 }
 
 .bi-runtime-module-metric {
   margin-top: 22px;
   color: var(--bi-display-accent);
-  font-size: clamp(44px, 4vw, 64px);
-  font-weight: 800;
+  font-size: clamp(56px, 4.4vw, 78px);
+  font-weight: 900;
   line-height: 1;
+  text-shadow: 0 0 18px rgba(0, 240, 255, 0.22);
 }
 
 .bi-runtime-chart-list {
@@ -932,7 +970,7 @@
 .bi-runtime-chart-canvas-wrap {
   min-height: 240px;
   flex: 1;
-  margin-top: 14px;
+  margin-top: 18px;
 }
 
 .bi-runtime-chart-canvas {
@@ -942,7 +980,7 @@
 }
 
 .bi-runtime-chart-meta {
-  color: #334155;
+  color: #cbd5e1;
   font-size: 13px;
 }
 
@@ -963,9 +1001,9 @@
 .bi-runtime-frame-wrap {
   margin-top: 18px;
   overflow: hidden;
-  border: 1px solid rgba(203, 213, 225, 0.74);
+  border: 1px solid rgba(34, 211, 238, 0.14);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(2, 6, 23, 0.5);
 }
 
 .bi-runtime-table {
@@ -976,18 +1014,22 @@
 .bi-runtime-table th,
 .bi-runtime-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.88);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.56);
   font-size: 13px;
   text-align: left;
 }
 
 .bi-runtime-table th {
-  color: #475569;
-  background: rgba(241, 245, 249, 0.92);
+  color: #7dd3fc;
+  background: rgba(8, 15, 28, 0.92);
 }
 
 .bi-runtime-table td {
-  color: #1f2937;
+  color: #dbeafe;
+}
+
+.bi-runtime-table tbody tr:hover {
+  background: rgba(15, 23, 42, 0.52);
 }
 
 .bi-runtime-frame {

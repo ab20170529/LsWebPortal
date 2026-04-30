@@ -18,6 +18,7 @@ type BiNodeContextPanelProps = {
   node: BiDirectoryNode | null;
   onDeleteNode: () => void;
   onEditNode: () => void;
+  onLocateCurrentNode: () => void;
   onOpenArchiveTab: (tab: BiArchiveTab) => void;
   onOpenPreview: () => void;
   onOpenSection: (section: BiWorkspaceSection) => void;
@@ -71,6 +72,7 @@ export function BiNodeContextPanel({
   node,
   onDeleteNode,
   onEditNode,
+  onLocateCurrentNode,
   onOpenArchiveTab,
   onOpenPreview,
   onOpenSection,
@@ -124,6 +126,8 @@ export function BiNodeContextPanel({
       label: '可预览',
     },
   ];
+  const completedSetupCount = setupStates.filter((item) => item.done).length;
+  const nextSetupState = setupStates.find((item) => !item.done);
 
   const guideSteps: GuideStep[] = [
     {
@@ -212,45 +216,45 @@ export function BiNodeContextPanel({
                   <div className="bi-panel-section-title">节点信息</div>
                   <div className="bi-panel-section-caption">{getStatusLabel(node.status)}</div>
                 </div>
-                <div className="bi-info-grid">
-                  <div className="bi-info-item">
-                    <span className="bi-info-label">节点类型</span>
-                    <span className="bi-info-value">{getNodeTypeLabel(node.nodeType, node.nodeTypeName)}</span>
+                <div className="bi-context-summary-card">
+                  <div className="bi-context-summary-title">
+                    {getNodeTypeLabel(node.nodeType, node.nodeTypeName)}
+                    <span>第 {node.level ?? 1} 层</span>
                   </div>
-                  <div className="bi-info-item">
-                    <span className="bi-info-label">层级</span>
-                    <span className="bi-info-value">{node.level ?? 1}</span>
+                  <div className="bi-context-summary-meta">
+                    <span>{sourceAssetCount} 个分析源</span>
+                    <span>{screens.length} 个 BI 档案</span>
                   </div>
-                  <div className="bi-info-item">
-                    <span className="bi-info-label">分析源资产</span>
-                    <span className="bi-info-value">{sourceAssetCount}</span>
-                  </div>
-                  <div className="bi-info-item">
-                    <span className="bi-info-label">BI 档案</span>
-                    <span className="bi-info-value">{screens.length}</span>
-                  </div>
+                  <Button className="bi-context-locate-action" onClick={onLocateCurrentNode} tone="ghost">
+                    定位到画布节点
+                  </Button>
                 </div>
               </section>
 
               <section className="bi-panel-section">
                 <div className="bi-panel-section-header">
                   <div className="bi-panel-section-title">节点就绪度</div>
-                  <div className="bi-panel-section-caption">先补齐前置条件，再进入下一步</div>
+                  <div className="bi-panel-section-caption">
+                    {completedSetupCount}/{setupStates.length}
+                  </div>
                 </div>
-                <div className="bi-context-state-grid">
+                <div className="bi-context-readiness-rail">
                   {setupStates.map((item) => (
                     <div
                       key={item.label}
-                      className={cx('bi-context-state-card', item.done ? 'is-complete' : 'is-pending')}
+                      className={cx('bi-context-readiness-chip', item.done ? 'is-complete' : 'is-pending')}
                     >
-                      <div className="bi-context-state-head">
-                        <span className="bi-context-state-label">{item.label}</span>
-                        <span className="bi-context-state-badge">{item.done ? '已完成' : '未完成'}</span>
-                      </div>
-                      <div className="bi-context-state-text">{item.description}</div>
+                      <span className="bi-context-state-label">{item.label}</span>
+                      <span className="bi-context-state-badge">{item.done ? '已完成' : '未完成'}</span>
                     </div>
                   ))}
                 </div>
+                {nextSetupState ? (
+                  <div className="bi-context-next-hint">
+                    <span>下一步</span>
+                    {nextSetupState.description}
+                  </div>
+                ) : null}
               </section>
 
               <section className="bi-panel-section">

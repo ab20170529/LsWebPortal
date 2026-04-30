@@ -49,6 +49,7 @@ type BiArchiveManagementPanelProps = {
   onCreateScreen: (payload: ScreenSavePayload) => Promise<BiScreen | void>;
   onCreateShareToken: (payload: ShareCreatePayload) => Promise<void>;
   onGenerateDraft: (payload: GenerateDraftPayload) => Promise<void>;
+  onOpenSources: () => void;
   onPreviewPrompt: (payload: {
     datasourceIds?: number[];
     nodeId: number;
@@ -302,6 +303,7 @@ export function BiArchiveManagementPanel({
   onCreateScreen,
   onCreateShareToken,
   onGenerateDraft,
+  onOpenSources,
   onPreviewPrompt,
   onPublishGeneratedVersion,
   onPublishVersion,
@@ -435,6 +437,78 @@ export function BiArchiveManagementPanel({
 
   const canSaveArchive =
     Boolean(node) && baseForm.name.trim().length > 0 && baseForm.screenCode.trim().length > 0;
+  const hasDesignContext = sourceAssetIds.length > 0;
+  const hasDraftVersion = Boolean(selectedScreen?.versions.length);
+  const hasPublishedVersion = Boolean(selectedScreen ? getPublishedVersionId(selectedScreen) : null);
+  const canRunDesign = Boolean(node) && hasDesignContext;
+  const designPrimaryActionLabel = !node
+    ? '先选择节点'
+    : !hasDesignContext
+      ? '去绑定分析源'
+      : hasDraftVersion
+        ? '重新生成草稿'
+        : '生成草稿';
+  const designPrimaryHint = !node
+    ? '先在目录画布或顶部节点选择器里选中一个节点。'
+    : !hasDesignContext
+      ? '当前节点还没有可用于生成的分析源，先绑定表或 SQL 资产。'
+      : hasDraftVersion
+        ? '已经有草稿版本，可以继续调整提示词后重新生成。'
+        : '上下文已经准备好，可以直接生成第一版 BI 草稿。';
+
+  function buildDesignPayload() {
+    if (!node) {
+      return null;
+    }
+
+    return {
+      datasourceIds,
+      nodeId: node.id,
+      prompt: manualPrompt,
+      providerCode: selectedTemplate?.providerCode ?? 'RULE_BASED',
+      publishMode: 'DRAFT' as const,
+      ...(selectedScreen ? { screenId: selectedScreen.id } : {}),
+      screenCode: baseForm.screenCode.trim(),
+      screenName: baseForm.name.trim(),
+      sourceAssetIds,
+      ...(selectedTemplate ? { templateCode: selectedTemplate.templateCode } : {}),
+    };
+  }
+
+  function handlePreviewDesignPrompt() {
+    const payload = buildDesignPayload();
+    if (!payload) {
+      return Promise.resolve();
+    }
+
+    const { publishMode: _publishMode, screenCode: _screenCode, screenName: _screenName, ...previewPayload } = payload;
+    return onPreviewPrompt(previewPayload);
+  }
+
+  function handleGenerateDesignDraft() {
+    const payload = buildDesignPayload();
+    return payload ? onGenerateDraft(payload) : Promise.resolve();
+  }
+
+  function handleRegenerateDesignDraft() {
+    const payload = buildDesignPayload();
+    if (!selectedScreen || !payload) {
+      return Promise.resolve();
+    }
+
+    const { nodeId: _nodeId, screenCode: _screenCode, screenId: _screenId, screenName: _screenName, ...regeneratePayload } =
+      payload;
+    return onRegenerateVersion(selectedScreen.id, regeneratePayload);
+  }
+
+  function handleDesignPrimaryAction() {
+    if (!node || !hasDesignContext) {
+      onOpenSources();
+      return;
+    }
+
+    void (hasDraftVersion && selectedScreen ? handleRegenerateDesignDraft() : handleGenerateDesignDraft());
+  }
 
   return (
     <section className="bi-management-panel">
@@ -462,34 +536,11 @@ export function BiArchiveManagementPanel({
               ))}
             </select>
           </label>
-          <Button
-            disabled={!node}
-            onClick={() => {
-              onSelectScreen(null);
-              onClearCreatePreset();
-              setBaseForm(buildEmptyBaseForm(node, 'INTERNAL'));
-              onActiveTabChange('base');
-            }}
-            tone="ghost"
-          >
-            新建内置 BI
-          </Button>
-          <Button
-            disabled={!node}
-            onClick={() => {
-              onSelectScreen(null);
-              setBaseForm(buildEmptyBaseForm(node, 'EXTERNAL'));
-              onActiveTabChange('base');
-            }}
-            tone="ghost"
-          >
-            新建外链 BI
-          </Button>
         </div>
       </div>
 
       <div className="bi-management-layout bi-management-layout-wide">
-        <section className="bi-panel-card bi-management-column">
+        <section className="bi-panel-card bi-management-column bi-archive-list-panel">
           <div className="bi-panel-card-header">
             <div>
               <div className="bi-panel-card-title">档案列表</div>
@@ -497,6 +548,31 @@ export function BiArchiveManagementPanel({
                 {node ? `当前节点下共 ${screens.length} 个档案` : '请先选择一个节点'}
               </div>
             </div>
+          </div>
+          <div className="bi-archive-list-actions">
+            <Button
+              disabled={!node}
+              onClick={() => {
+                onSelectScreen(null);
+                onClearCreatePreset();
+                setBaseForm(buildEmptyBaseForm(node, 'INTERNAL'));
+                onActiveTabChange('base');
+              }}
+              tone="ghost"
+            >
+              新建内置 BI
+            </Button>
+            <Button
+              disabled={!node}
+              onClick={() => {
+                onSelectScreen(null);
+                setBaseForm(buildEmptyBaseForm(node, 'EXTERNAL'));
+                onActiveTabChange('base');
+              }}
+              tone="ghost"
+            >
+              新建外链 BI
+            </Button>
           </div>
           <div className="bi-stack-list">
             {screens.map((screen) => (
@@ -525,7 +601,22 @@ export function BiArchiveManagementPanel({
           </div>
         </section>
 
-        <section className="bi-panel-scroll">
+        <section className="bi-panel-scroll bi-archive-editor-panel">
+          <div className="bi-archive-editor-header">
+            <div>
+              <div className="bi-archive-editor-kicker">当前档案</div>
+              <div className="bi-archive-editor-title">{baseForm.name || selectedScreen?.name || '新建 BI 档案'}</div>
+              <div className="bi-archive-editor-meta">
+                {baseForm.biType === 'EXTERNAL' ? '外链 BI' : '内置 BI'} / {selectedScreen ? getScreenDesignStatusLabel(selectedScreen.designStatus) : '待创建'}
+              </div>
+            </div>
+            {activeTab === 'base' ? (
+              <Button disabled={isMutating || !canSaveArchive} onClick={() => void handleSaveArchiveBase()}>
+                {selectedScreen ? '保存基础信息' : '创建档案'}
+              </Button>
+            ) : null}
+          </div>
+
           <div className="bi-context-tabs bi-context-tabs-wide">
             {ARCHIVE_TABS.map((tab) => (
               <button
@@ -555,10 +646,8 @@ export function BiArchiveManagementPanel({
 
               <div className="bi-panel-note bi-panel-guide">
                 <div className="bi-panel-guide-title">这一页怎么用</div>
-                <div className="bi-panel-guide-list">
-                  <div className="bi-panel-guide-item">1. 做系统内页面时，BI 类型选“内置 BI”，保存后再去“设计与生成”。</div>
-                  <div className="bi-panel-guide-item">2. 做外部跳转页面时，BI 类型选“外链 BI”，重点填“外链地址”和“打开方式”。</div>
-                  <div className="bi-panel-guide-item">3. 点击保存后，左侧档案列表会新增或更新当前档案。</div>
+                <div className="bi-panel-guide-item">
+                  先维护档案名称、类型和说明；保存后再进入“设计与生成”或“发布分享”。
                 </div>
               </div>
 
@@ -947,13 +1036,74 @@ export function BiArchiveManagementPanel({
                   <div className="bi-panel-empty">请先选择一个节点，再开始设计内置 BI。</div>
                 )}
 
-                <div className="bi-panel-note bi-panel-guide">
-                  <div className="bi-panel-guide-title">设计内置 BI 的推荐步骤</div>
-                  <div className="bi-panel-guide-list">
-                    <div className="bi-panel-guide-item">1. 先确认当前节点已经绑定分析源，否则 AI 生成出来的内容会比较空。</div>
-                    <div className="bi-panel-guide-item">2. 选择提示词模板后，先点“预览提示词”，确认生成方向没问题。</div>
-                    <div className="bi-panel-guide-item">3. 再点“生成草稿”，系统会生成一个可继续修改的版本草稿。</div>
-                    <div className="bi-panel-guide-item">4. 最后到下方版本内容继续调整、保存，再去“发布分享”。</div>
+                <div className="bi-design-action-panel">
+                  <div>
+                    <div className="bi-design-action-kicker">当前应该做</div>
+                    <div className="bi-design-action-title">{designPrimaryActionLabel}</div>
+                    <div className="bi-design-action-text">{designPrimaryHint}</div>
+                  </div>
+                  <Button disabled={!node || isMutating} onClick={handleDesignPrimaryAction}>
+                    {designPrimaryActionLabel}
+                  </Button>
+                </div>
+
+                <div className="bi-design-steps" aria-label="设计生成步骤">
+                  <div
+                    className={cx(
+                      'bi-design-step',
+                      hasDesignContext ? 'is-complete' : node ? 'is-current' : 'is-blocked',
+                    )}
+                  >
+                    <span className="bi-design-step-no">1</span>
+                    <div>
+                      <div className="bi-design-step-title">准备分析源</div>
+                      <div className="bi-design-step-text">
+                        {hasDesignContext ? '已绑定可用于生成的表或 SQL 资产。' : '先绑定分析源，AI 才知道要分析哪些数据。'}
+                      </div>
+                    </div>
+                    <Button disabled={!node || hasDesignContext} onClick={onOpenSources} tone="ghost">
+                      去绑定
+                    </Button>
+                  </div>
+                  <div
+                    className={cx(
+                      'bi-design-step',
+                      promptPreview || hasDraftVersion ? 'is-complete' : canRunDesign ? 'is-current' : 'is-blocked',
+                    )}
+                  >
+                    <span className="bi-design-step-no">2</span>
+                    <div>
+                      <div className="bi-design-step-title">确认生成方向</div>
+                      <div className="bi-design-step-text">选模板、改提示词，然后先预览一遍系统会发给 AI 的内容。</div>
+                    </div>
+                    <Button disabled={isMutating || !canRunDesign} onClick={() => void handlePreviewDesignPrompt()} tone="ghost">
+                      预览提示词
+                    </Button>
+                  </div>
+                  <div className={cx('bi-design-step', hasDraftVersion ? 'is-complete' : canRunDesign ? 'is-current' : 'is-blocked')}>
+                    <span className="bi-design-step-no">3</span>
+                    <div>
+                      <div className="bi-design-step-title">生成草稿</div>
+                      <div className="bi-design-step-text">生成后会得到一个可继续编辑和保存的 BI 版本。</div>
+                    </div>
+                    <Button disabled={isMutating || !canRunDesign} onClick={() => void handleGenerateDesignDraft()}>
+                      生成草稿
+                    </Button>
+                  </div>
+                  <div
+                    className={cx(
+                      'bi-design-step',
+                      hasPublishedVersion ? 'is-complete' : hasDraftVersion ? 'is-current' : 'is-blocked',
+                    )}
+                  >
+                    <span className="bi-design-step-no">4</span>
+                    <div>
+                      <div className="bi-design-step-title">发布展示</div>
+                      <div className="bi-design-step-text">确认草稿没问题后，发布版本，展示端才能稳定读取。</div>
+                    </div>
+                    <Button disabled={!hasDraftVersion} onClick={() => onActiveTabChange('sharing')} tone="ghost">
+                      去发布
+                    </Button>
                   </div>
                 </div>
 

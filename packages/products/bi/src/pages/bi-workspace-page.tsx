@@ -272,6 +272,12 @@ export function BiWorkspacePage() {
     }
   }
 
+  function locateCurrentNodeOnCanvas() {
+    setActiveSection('canvas');
+    setCreatePresetType(null);
+    setCanvasFocusRequest((request) => request + 1);
+  }
+
   function openArchiveTab(tab: BiArchiveTab) {
     setActiveSection('archives');
     setActiveArchiveTab(tab);
@@ -536,6 +542,7 @@ export function BiWorkspacePage() {
               onCreateScreen={workspace.createScreen}
               onCreateShareToken={workspace.createShareToken}
               onGenerateDraft={workspace.generateDraft}
+              onOpenSources={() => openSection('sources')}
               onPreviewPrompt={workspace.previewPrompt}
               onPublishGeneratedVersion={workspace.publishGeneratedVersion}
               onPublishVersion={workspace.publishScreenVersion}
@@ -574,6 +581,7 @@ export function BiWorkspacePage() {
             node={workspace.selectedNode}
             onDeleteNode={() => handleDeleteNode()}
             onEditNode={() => handleEditNode()}
+            onLocateCurrentNode={locateCurrentNodeOnCanvas}
             onOpenArchiveTab={openArchiveTab}
             onOpenPreview={handleOpenPreview}
             onOpenSection={openSection}

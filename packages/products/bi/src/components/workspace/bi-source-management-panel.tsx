@@ -225,6 +225,29 @@ export function BiSourceManagementPanel({
     [selectedAssetId, selectedDatasource],
   );
   const boundAssetCount = node?.sourceAssetIds.length ?? 0;
+  const totalAssetCount = datasources.reduce((total, datasource) => total + datasource.assets.length, 0);
+  const hasBindingChanged = node
+    ? bindingIds.length !== node.sourceAssetIds.length ||
+      bindingIds.some((assetId) => !node.sourceAssetIds.includes(assetId))
+    : false;
+  const sourceActionTitle = !node
+    ? '先选择节点'
+    : bindingIds.length === 0
+      ? '先勾选分析源'
+      : hasBindingChanged
+        ? '保存节点绑定'
+        : selectedAsset
+          ? '维护当前资产'
+          : '选择要维护的资产';
+  const sourceActionHint = !node
+    ? '当前没有选中节点，可以先维护全局数据源目录。'
+    : bindingIds.length === 0
+      ? '从上方列表勾选这个节点允许使用的表或 SQL 资产。'
+      : hasBindingChanged
+        ? '已经选择了新的分析源，需要保存后 AI 生成和预览才会使用。'
+        : selectedAsset
+          ? `正在编辑“${selectedAsset.assetName}”，可以补充字段和业务说明。`
+          : '先在左侧选择数据源和资产，再维护详情。';
 
   useEffect(() => {
     setBindingIds(node?.sourceAssetIds ?? []);
@@ -304,7 +327,7 @@ export function BiSourceManagementPanel({
   }
 
   return (
-    <section className="bi-management-panel">
+    <section className="bi-management-panel bi-source-management-panel">
       <div className="bi-management-header">
         <div>
           <div className="bi-management-title">分析源管理</div>
@@ -321,23 +344,48 @@ export function BiSourceManagementPanel({
         )}
       </div>
 
+      <section className="bi-source-action-panel">
+        <div>
+          <div className="bi-source-action-kicker">当前应该做</div>
+          <div className="bi-source-action-title">{sourceActionTitle}</div>
+          <div className="bi-source-action-text">{sourceActionHint}</div>
+        </div>
+        <div className="bi-source-action-buttons">
+          {node ? (
+            <Button
+              disabled={isMutating || !hasBindingChanged}
+              onClick={() => onBindSourceAssets(node.id, bindingIds)}
+            >
+              保存节点绑定
+            </Button>
+          ) : null}
+          <Button disabled={!selectedDatasource} onClick={() => setAssetEditorMode('create')} tone="ghost">
+            新建分析资产
+          </Button>
+        </div>
+      </section>
+
       {node ? (
-        <section className="bi-panel-card">
+        <section className="bi-panel-card bi-source-binding-panel">
           <div className="bi-panel-card-header">
             <div>
               <div className="bi-panel-card-title">节点分析源绑定</div>
               <div className="bi-panel-card-subtitle">
-                当前节点只会看到这里勾选的资产，AI 生成和运行时白名单也以这些资产为准。
+                AI 生成和运行只使用已勾选资产。
               </div>
             </div>
-            <Button disabled={isMutating} onClick={() => onBindSourceAssets(node.id, bindingIds)} tone="ghost">
+            <div className="bi-source-binding-summary">
+              <span>已选择 {bindingIds.length} 个</span>
+              <span>可用 {totalAssetCount} 个</span>
+            </div>
+            <Button disabled={isMutating || !hasBindingChanged} onClick={() => onBindSourceAssets(node.id, bindingIds)}>
               保存节点绑定
             </Button>
           </div>
 
           <div className="bi-binding-grid">
             {datasources.map((datasource) => (
-              <div key={datasource.id} className="bi-binding-card">
+              <div key={datasource.id} className={cx('bi-binding-card', datasource.assets.length === 0 ? 'is-empty' : '')}>
                 <div className="bi-side-card-header">
                   <div>
                     <div className="bi-side-card-title">{datasource.name}</div>
@@ -370,6 +418,9 @@ export function BiSourceManagementPanel({
                       </label>
                     );
                   })}
+                  {datasource.assets.length === 0 ? (
+                    <div className="bi-binding-empty">暂无可绑定资产</div>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -377,104 +428,137 @@ export function BiSourceManagementPanel({
         </section>
       ) : null}
 
-      <div className="bi-management-layout">
-        <section className="bi-panel-card bi-management-column">
-          <div className="bi-panel-card-header">
+      <div className="bi-management-layout bi-source-management-layout">
+        <div className="bi-source-catalog-panel">
+          <div className="bi-source-workflow-heading">
+            <span className="bi-source-workflow-step">1</span>
             <div>
-              <div className="bi-panel-card-title">数据源列表</div>
-              <div className="bi-panel-card-subtitle">维护分析源目录、业务范围与状态。</div>
+              <div className="bi-source-workflow-title">选择对象</div>
+              <div className="bi-source-workflow-subtitle">先选数据源，再选择要维护的分析资产。</div>
             </div>
-            <button
-              className="bi-inline-link"
-              onClick={() => setDatasourceEditorMode('create')}
-              type="button"
-            >
-              新建数据源
-            </button>
           </div>
-          <div className="bi-stack-list">
-            {datasources.map((datasource) => {
-              const summary = getDatasourceAssetSummary(datasource);
-              return (
-                <button
-                  key={datasource.id}
-                  className={cx('bi-side-card', datasource.id === selectedDatasourceId ? 'is-selected' : '')}
-                  onClick={() => {
-                    setSelectedDatasourceId(datasource.id);
-                    setDatasourceEditorMode('edit');
-                  }}
-                  type="button"
-                >
-                  <div className="bi-side-card-header">
-                    <div>
-                      <div className="bi-side-card-title">{datasource.name}</div>
-                      <div className="bi-side-card-subtitle">{datasource.sourceCode}</div>
+          <div className="bi-source-selection-summary">
+            <span>{datasources.length} 个数据源</span>
+            <span>{totalAssetCount} 个资产</span>
+            <span>{bindingIds.length} 个已勾选</span>
+          </div>
+          <section className="bi-panel-card bi-management-column bi-management-column-list bi-source-nav-panel">
+            <div className="bi-panel-card-header">
+              <div>
+                <div className="bi-panel-card-title">
+                  <span className="bi-source-step-dot">1.1</span>
+                  数据源
+                </div>
+                <div className="bi-panel-card-subtitle">选择数据源</div>
+              </div>
+              <button
+                className="bi-inline-link"
+                onClick={() => setDatasourceEditorMode('create')}
+                type="button"
+              >
+                新建
+              </button>
+            </div>
+            <div className="bi-stack-list">
+              {datasources.map((datasource) => {
+                const summary = getDatasourceAssetSummary(datasource);
+                return (
+                  <button
+                    key={datasource.id}
+                    className={cx('bi-side-card', datasource.id === selectedDatasourceId ? 'is-selected' : '')}
+                    onClick={() => {
+                      setSelectedDatasourceId(datasource.id);
+                      setDatasourceEditorMode('edit');
+                    }}
+                    type="button"
+                  >
+                    <div className="bi-side-card-header">
+                      <div>
+                        <div className="bi-side-card-title">{datasource.name}</div>
+                        <div className="bi-side-card-subtitle">{datasource.sourceCode}</div>
+                      </div>
+                      <span className="bi-node-card-status">{getStatusLabel(datasource.status)}</span>
                     </div>
-                    <span className="bi-node-card-status">{getStatusLabel(datasource.status)}</span>
-                  </div>
-                  <div className="bi-side-card-meta">
-                    TABLE {summary.tableCount} / SQL {summary.sqlCount}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+                    <div className="bi-side-card-meta">
+                      TABLE {summary.tableCount} / SQL {summary.sqlCount}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
-        <section className="bi-panel-card bi-management-column">
-          <div className="bi-panel-card-header">
+          <section className="bi-panel-card bi-management-column bi-management-column-list bi-source-nav-panel">
+            <div className="bi-panel-card-header">
+              <div>
+                <div className="bi-panel-card-title">
+                  <span className="bi-source-step-dot">1.2</span>
+                  资产
+                </div>
+                <div className="bi-panel-card-subtitle">
+                  {selectedDatasource ? selectedDatasource.name : '请先选择数据源'}
+                </div>
+              </div>
+              <button
+                className="bi-inline-link"
+                disabled={!selectedDatasource}
+                onClick={() => setAssetEditorMode('create')}
+                type="button"
+              >
+                新建
+              </button>
+            </div>
+            {selectedDatasource ? (
+              <div className="bi-stack-list">
+                {selectedDatasource.assets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    className={cx('bi-asset-card', asset.id === selectedAssetId ? 'is-selected' : '')}
+                    onClick={() => {
+                      setSelectedAssetId(asset.id);
+                      setAssetEditorMode('edit');
+                    }}
+                    type="button"
+                  >
+                    <div className="bi-side-card-header">
+                      <div>
+                        <div className="bi-side-card-title">{asset.assetName}</div>
+                        <div className="bi-side-card-subtitle">{asset.assetCode}</div>
+                      </div>
+                      <Badge tone="brand">{getAssetTypeLabel(asset.assetType)}</Badge>
+                    </div>
+                    <div className="bi-side-card-meta">
+                      {asset.assetType === 'TABLE'
+                        ? `${asset.tableSchema ?? 'dbo'}.${asset.tableName ?? ''}`
+                        : asset.sourceTables.join(', ') || '未声明来源表'}
+                    </div>
+                  </button>
+                ))}
+                {selectedDatasource.assets.length === 0 ? (
+                  <div className="bi-panel-empty bi-panel-empty-tight">这个数据源下还没有分析资产。</div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="bi-panel-empty">请先在左侧选择一个数据源。</div>
+            )}
+          </section>
+        </div>
+
+        <section className="bi-panel-scroll bi-management-editor bi-source-editor-panel">
+          <div className="bi-source-workflow-heading bi-source-workflow-heading-editor">
+            <span className="bi-source-workflow-step">2</span>
             <div>
-              <div className="bi-panel-card-title">资产列表</div>
-              <div className="bi-panel-card-subtitle">
-                {selectedDatasource ? `当前数据源：${selectedDatasource.name}` : '请先选择一个数据源'}
+              <div className="bi-source-workflow-title">编辑详情</div>
+              <div className="bi-source-workflow-subtitle">
+                {selectedAsset
+                  ? `当前资产：${selectedAsset.assetName}`
+                  : selectedDatasource
+                    ? `当前数据源：${selectedDatasource.name}`
+                    : '选择左侧对象后维护详细信息'}
               </div>
             </div>
-            <button
-              className="bi-inline-link"
-              disabled={!selectedDatasource}
-              onClick={() => setAssetEditorMode('create')}
-              type="button"
-            >
-              新建资产
-            </button>
           </div>
-          {selectedDatasource ? (
-            <div className="bi-stack-list">
-              {selectedDatasource.assets.map((asset) => (
-                <button
-                  key={asset.id}
-                  className={cx('bi-asset-card', asset.id === selectedAssetId ? 'is-selected' : '')}
-                  onClick={() => {
-                    setSelectedAssetId(asset.id);
-                    setAssetEditorMode('edit');
-                  }}
-                  type="button"
-                >
-                  <div className="bi-side-card-header">
-                    <div>
-                      <div className="bi-side-card-title">{asset.assetName}</div>
-                      <div className="bi-side-card-subtitle">{asset.assetCode}</div>
-                    </div>
-                    <Badge tone="brand">{getAssetTypeLabel(asset.assetType)}</Badge>
-                  </div>
-                  <div className="bi-side-card-meta">
-                    {asset.assetType === 'TABLE'
-                      ? `${asset.tableSchema ?? 'dbo'}.${asset.tableName ?? ''}`
-                      : asset.sourceTables.join(', ') || '未声明来源表'}
-                  </div>
-                </button>
-              ))}
-              {selectedDatasource.assets.length === 0 ? (
-                <div className="bi-panel-empty bi-panel-empty-tight">这个数据源下还没有分析资产。</div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="bi-panel-empty">请先在左侧选择一个数据源。</div>
-          )}
-        </section>
-
-        <section className="bi-panel-scroll">
-          <div className="bi-panel-card">
+          <div className="bi-panel-card bi-source-editor-card">
             <div className="bi-panel-card-header">
               <div>
                 <div className="bi-panel-card-title">
@@ -573,7 +657,7 @@ export function BiSourceManagementPanel({
             </div>
           </div>
 
-          <div className="bi-panel-card">
+          <div className="bi-panel-card bi-source-editor-card">
             <div className="bi-panel-card-header">
               <div>
                 <div className="bi-panel-card-title">

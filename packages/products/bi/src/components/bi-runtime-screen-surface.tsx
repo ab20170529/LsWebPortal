@@ -79,6 +79,25 @@ function getModuleSummaryText(module: BiRuntimeModule) {
   return typeof content === 'string' && content.trim() ? content : String(getModuleLeadingValue(module));
 }
 
+function getModuleTagLabel(moduleType: BiRuntimeModule['moduleType']) {
+  switch (moduleType) {
+    case 'stat-card':
+      return '指标卡';
+    case 'text':
+      return '说明';
+    case 'table':
+      return '数据表';
+    case 'line-chart':
+      return '趋势图';
+    case 'bar-chart':
+      return '柱状图';
+    case 'pie-chart':
+      return '占比图';
+    default:
+      return '模块';
+  }
+}
+
 function getStringStyleValue(module: BiRuntimeModule, key: string) {
   const value = module.style?.[key];
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -125,11 +144,11 @@ function BiRuntimeEchartsModule({ module }: { module: BiRuntimeModule }) {
         : 'bar';
     const option = chartType === 'pie'
       ? {
-          color: ['#2563eb', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+          color: ['#00f0ff', '#38bdf8', '#22d3ee', '#60a5fa', '#818cf8', '#2dd4bf'],
           legend: {
             bottom: 0,
             icon: 'circle',
-            textStyle: { color: '#475569' },
+            textStyle: { color: '#94a3b8' },
           },
           series: [
             {
@@ -137,35 +156,66 @@ function BiRuntimeEchartsModule({ module }: { module: BiRuntimeModule }) {
               radius: ['42%', '72%'],
               center: ['50%', '43%'],
               data: categories.map((name, index) => ({ name, value: values[index] ?? 0 })),
-              label: { color: '#334155' },
+              label: { color: '#cbd5e1' },
+              itemStyle: {
+                borderColor: 'rgba(3, 7, 18, 0.92)',
+                borderWidth: 2,
+              },
             },
           ],
           tooltip: { trigger: 'item' },
         }
       : {
-          color: ['#2563eb'],
-          grid: { bottom: 34, containLabel: true, left: 18, right: 18, top: 24 },
+          color: ['#00f0ff'],
+          grid: { bottom: 46, containLabel: true, left: 18, right: 18, top: 24 },
           series: [
             {
               type: chartType,
               data: values,
               smooth: chartType === 'line',
               barMaxWidth: 36,
-              areaStyle: chartType === 'line' ? { opacity: 0.12 } : undefined,
+              areaStyle: chartType === 'line'
+                ? {
+                    opacity: 0.18,
+                    color: 'rgba(0, 240, 255, 0.12)',
+                  }
+                : undefined,
+              lineStyle: chartType === 'line'
+                ? {
+                    width: 3,
+                    color: '#00f0ff',
+                  }
+                : undefined,
+              itemStyle: chartType === 'bar'
+                ? {
+                    borderRadius: [6, 6, 0, 0],
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                      { offset: 0, color: '#36f3ff' },
+                      { offset: 1, color: '#1d4ed8' },
+                    ]),
+                  }
+                : undefined,
             },
           ],
           tooltip: { trigger: 'axis' },
           xAxis: {
             type: 'category',
             data: categories,
-            axisLabel: { color: '#64748b', interval: 0, overflow: 'truncate', width: 96 },
-            axisLine: { lineStyle: { color: '#cbd5e1' } },
+            axisLabel: {
+              color: '#7dd3fc',
+              interval: 0,
+              overflow: 'truncate',
+              width: 88,
+              rotate: categories.length > 6 ? 20 : 0,
+              margin: 14,
+            },
+            axisLine: { lineStyle: { color: 'rgba(34, 211, 238, 0.24)' } },
             axisTick: { show: false },
           },
           yAxis: {
             type: 'value',
-            axisLabel: { color: '#64748b' },
-            splitLine: { lineStyle: { color: '#e2e8f0' } },
+            axisLabel: { color: '#94a3b8' },
+            splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.14)' } },
           },
         };
 
@@ -195,7 +245,7 @@ function renderMetricModule(module: BiRuntimeModule) {
   return (
     <section className="bi-runtime-module bi-runtime-module--metric">
       <div className="bi-runtime-module-head">
-        <span className="bi-runtime-module-tag">{module.moduleType}</span>
+        <span className="bi-runtime-module-tag">{getModuleTagLabel(module.moduleType)}</span>
         <span className="bi-runtime-module-code">{module.moduleCode}</span>
       </div>
       <div className="bi-runtime-module-title">{module.moduleName}</div>
@@ -208,7 +258,7 @@ function renderTextModule(module: BiRuntimeModule) {
   return (
     <section className="bi-runtime-module">
       <div className="bi-runtime-module-head">
-        <span className="bi-runtime-module-tag">{module.moduleType}</span>
+        <span className="bi-runtime-module-tag">{getModuleTagLabel(module.moduleType)}</span>
         <span className="bi-runtime-module-code">{module.moduleCode}</span>
       </div>
       <div className="bi-runtime-module-title">{module.moduleName}</div>
@@ -221,7 +271,7 @@ function renderChartModule(module: BiRuntimeModule) {
   return (
     <section className="bi-runtime-module">
       <div className="bi-runtime-module-head">
-        <span className="bi-runtime-module-tag">{module.moduleType}</span>
+        <span className="bi-runtime-module-tag">{getModuleTagLabel(module.moduleType)}</span>
         <span className="bi-runtime-module-code">{module.moduleCode}</span>
       </div>
       <div className="bi-runtime-module-title">{module.moduleName}</div>
@@ -236,7 +286,7 @@ function renderTableModule(module: BiRuntimeModule) {
   return (
     <section className="bi-runtime-module">
       <div className="bi-runtime-module-head">
-        <span className="bi-runtime-module-tag">{module.moduleType}</span>
+        <span className="bi-runtime-module-tag">{getModuleTagLabel(module.moduleType)}</span>
         <span className="bi-runtime-module-code">{module.moduleCode}</span>
       </div>
       <div className="bi-runtime-module-title">{module.moduleName}</div>
@@ -277,7 +327,7 @@ function renderModule(module: BiRuntimeModule) {
     return (
       <section className="bi-runtime-module">
         <div className="bi-runtime-module-head">
-          <span className="bi-runtime-module-tag">{module.moduleType}</span>
+          <span className="bi-runtime-module-tag">{getModuleTagLabel(module.moduleType)}</span>
           <span className="bi-runtime-module-code">{module.moduleCode}</span>
         </div>
         <div className="bi-runtime-module-title">{module.moduleName}</div>
@@ -367,7 +417,7 @@ export function BiRuntimeScreenSurface({ screen }: BiRuntimeScreenSurfaceProps) 
     <div className="bi-runtime-surface">
       {summaryText ? (
         <div className="bi-runtime-summary">
-          <div className="bi-runtime-summary-label">Screen Summary</div>
+          <div className="bi-runtime-summary-label">数据摘要</div>
           <div className="bi-runtime-summary-text">{summaryText}</div>
         </div>
       ) : null}
