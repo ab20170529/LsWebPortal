@@ -1,622 +1,906 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card } from '@lserp/ui';
 
 import { navigate } from '../router';
 import {
-  portalSystemApi,
-  type PortalSystem,
-  type PortalSystemSaveRequest,
-} from '../features/portal-system/portal-system-api';
+  platformTenantApi,
+  type PlatformTenant,
+  type PlatformTenantCreateRequest,
+  type PlatformTenantDefaultDb,
+  type PlatformTenantUpdateRequest,
+  type SaveTenantDefaultDbRequest,
+} from '../features/platform-tenant/platform-tenant-api';
 
-// ─────────────────────── 工具函数 ───────────────────────
+const TENANT_TYPE_OPTIONS = [
+  { label: '客户租户', value: 'CUSTOMER' },
+  { label: '平台租户', value: 'PLATFORM' },
+];
 
-function toneLabel(tone: string | null) {
-  const map: Record<string, string> = {
-    brand: '品牌蓝',
-    success: '成功绿',
-    neutral: '中性灰',
-    warning: '警告橙',
-    danger: '危险红',
+const STATUS_OPTIONS = [
+  { label: '启用', value: 'ACTIVE' },
+  { label: '停用', value: 'DISABLED' },
+];
+
+type SubmitEventLike = {
+  preventDefault: () => void;
+};
+
+type ValueEventLike = {
+  target: {
+    value: string;
   };
-  return tone ? (map[tone] ?? tone) : '中性灰';
+};
+
+function text(value: string | null | undefined, fallback = '-') {
+  return value?.trim() || fallback;
 }
 
-function resolveBadgeTone(tone: string | null): 'brand' | 'danger' | 'neutral' | 'success' {
-  switch (tone) {
-    case 'brand':
-    case 'danger':
-    case 'neutral':
-    case 'success':
-      return tone;
-    case 'warning':
-    default:
-      return 'neutral';
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return '-';
   }
-}
 
-function toneOptions() {
-  return [
-    { value: 'brand', label: '品牌蓝 (brand)' },
-    { value: 'success', label: '成功绿 (success)' },
-    { value: 'neutral', label: '中性灰 (neutral)' },
-    { value: 'warning', label: '警告橙 (warning)' },
-    { value: 'danger', label: '危险红 (danger)' },
-  ];
-}
-
-function formatDateTime(val: string | null) {
-  if (!val) return '-';
   try {
-    return new Date(val).toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
+    return new Date(value).toLocaleString('zh-CN', {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
     });
   } catch {
-    return val;
+    return value;
   }
 }
 
-// ─────────────────────── 弹窗表单 ───────────────────────
-
-type FormErrors = Partial<Record<keyof PortalSystemSaveRequest, string>>;
-
-interface SystemFormModalProps {
-  initialData: Partial<PortalSystem> | null;
-  onClose: () => void;
-  onSaved: (system: PortalSystem) => void;
+function normalizeEnableFlag(value: number | null | undefined) {
+  return value === 0 ? 0 : 1;
 }
 
-function SystemFormModal({ initialData, onClose, onSaved }: SystemFormModalProps) {
-  const isEdit = Boolean(initialData?.id);
-  const [form, setForm] = useState<PortalSystemSaveRequest>({
-    systemId: initialData?.systemId ?? '',
-    title: initialData?.title ?? '',
-    description: initialData?.description ?? '',
-    shortLabel: initialData?.shortLabel ?? '',
-    route: initialData?.route ?? '',
-    tone: initialData?.tone ?? 'neutral',
-    enabled: initialData?.enabled ?? 1,
-    sortOrder: initialData?.sortOrder ?? 0,
-    remark: initialData?.remark ?? '',
-  });
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+function isTenantActive(tenant: PlatformTenant) {
+  return tenant.status !== 'DISABLED' && normalizeEnableFlag(tenant.enableFlag) === 1;
+}
 
-  const update = (field: keyof PortalSystemSaveRequest, value: string | number) => {
+function defaultDbStatus(defaultDb: PlatformTenantDefaultDb | null | undefined) {
+  if (!defaultDb) {
+    return { label: '未配置', tone: 'neutral' as const };
+  }
+
+  if (normalizeEnableFlag(defaultDb.enableFlag) !== 1) {
+    return { label: '已停用', tone: 'neutral' as const };
+  }
+
+  if (defaultDb.serverip && defaultDb.basename) {
+    return { label: '已配置', tone: 'success' as const };
+  }
+
+  return { label: '待补全', tone: 'danger' as const };
+}
+
+function toDefaultDbForm(defaultDb?: PlatformTenantDefaultDb | null): SaveTenantDefaultDbRequest {
+  return {
+    title: defaultDb?.title ?? '',
+    serverip: defaultDb?.serverip ?? '',
+    serverport: defaultDb?.serverport ?? 1433,
+    basename: defaultDb?.basename ?? '',
+    dbType: defaultDb?.dbType ?? 'SQLSERVER',
+    enableFlag: normalizeEnableFlag(defaultDb?.enableFlag),
+    sortOrder: defaultDb?.sortOrder ?? 0,
+    remark: defaultDb?.remark ?? '',
+  };
+}
+
+function buildTenantForm(initialData: PlatformTenant | null): PlatformTenantCreateRequest {
+  return {
+    tenantCode: initialData?.tenantCode ?? '',
+    tenantName: initialData?.tenantName ?? '',
+    tenantType: initialData?.tenantType ?? 'CUSTOMER',
+    status: initialData?.status ?? 'ACTIVE',
+    ownerLoginAccount: initialData?.ownerLoginAccount ?? '',
+    ownerEmployeeName: initialData?.ownerEmployeeName ?? '',
+    contactName: initialData?.contactName ?? '',
+    contactPhone: initialData?.contactPhone ?? '',
+    remark: initialData?.remark ?? '',
+    defaultDb: initialData ? undefined : toDefaultDbForm(null),
+  };
+}
+
+type TenantFormErrors = Partial<Record<keyof PlatformTenantCreateRequest | 'defaultDb', string>>;
+
+interface TenantFormModalProps {
+  initialData: PlatformTenant | null;
+  onClose: () => void;
+  onSaved: (tenant: PlatformTenant) => void;
+}
+
+function TenantFormModal({ initialData, onClose, onSaved }: TenantFormModalProps) {
+  const isEdit = Boolean(initialData);
+  const [form, setForm] = useState<PlatformTenantCreateRequest>(() => buildTenantForm(initialData));
+  const [errors, setErrors] = useState<TenantFormErrors>({});
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const update = (
+    field: keyof PlatformTenantCreateRequest,
+    value: string | SaveTenantDefaultDbRequest | undefined,
+  ) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: undefined }));
   };
 
-  const validate = (): boolean => {
-    const errs: FormErrors = {};
-    if (!form.systemId.trim()) errs.systemId = '系统标识不能为空';
-    else if (form.systemId.length > 64) errs.systemId = '不超过64个字符';
-    if (!form.title.trim()) errs.title = '系统名称不能为空';
-    else if (form.title.length > 128) errs.title = '不超过128个字符';
-    if (!form.route.trim()) errs.route = '系统地址不能为空';
-    else if (form.route.length > 512) errs.route = '不超过512个字符';
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
+  const updateDefaultDb = (field: keyof SaveTenantDefaultDbRequest, value: string | number) => {
+    setForm((prev) => ({
+      ...prev,
+      defaultDb: {
+        ...prev.defaultDb,
+        [field]: value,
+      },
+    }));
+    setErrors((prev) => ({ ...prev, defaultDb: undefined }));
+  };
+
+  const validate = () => {
+    const nextErrors: TenantFormErrors = {};
+    if (!isEdit && !form.tenantCode.trim()) {
+      nextErrors.tenantCode = '租户编号不能为空';
+    }
+    if (!form.tenantName.trim()) {
+      nextErrors.tenantName = '租户名称不能为空';
+    }
+
+    const defaultDb = form.defaultDb;
+    const hasDefaultDbInput = Boolean(
+      defaultDb?.title?.trim()
+      || defaultDb?.serverip?.trim()
+      || defaultDb?.basename?.trim(),
+    );
+    if (!isEdit && hasDefaultDbInput) {
+      if (!defaultDb?.serverip?.trim() || !defaultDb?.basename?.trim()) {
+        nextErrors.defaultDb = '填写默认库时，服务器地址和数据库名都不能为空';
+      }
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
   const handleSubmit = async () => {
-    if (!validate()) return;
+    if (!validate()) {
+      return;
+    }
+
     setSaving(true);
     setErrorMsg(null);
     try {
       const result = isEdit
-        ? await portalSystemApi.update(initialData!.id!, form)
-        : await portalSystemApi.create(form);
+        ? await platformTenantApi.updateTenant(initialData!.tenantCode, {
+          tenantName: form.tenantName,
+          tenantType: form.tenantType,
+          status: form.status,
+          ownerLoginAccount: form.ownerLoginAccount,
+          ownerEmployeeName: form.ownerEmployeeName,
+          contactName: form.contactName,
+          contactPhone: form.contactPhone,
+          enableFlag: form.status === 'DISABLED' ? 0 : 1,
+          remark: form.remark,
+        } satisfies PlatformTenantUpdateRequest)
+        : await platformTenantApi.createTenant({
+          ...form,
+          defaultDb: form.defaultDb?.serverip || form.defaultDb?.basename || form.defaultDb?.title
+            ? form.defaultDb
+            : undefined,
+        });
       onSaved(result);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '保存失败，请重试';
-      setErrorMsg(msg);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : '保存租户失败');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-2xl rounded-[28px] bg-white p-8 shadow-2xl">
-        {/* 标题 */}
-        <div className="flex items-center justify-between">
-          <div className="text-xl font-black tracking-tight text-slate-900">
-            {isEdit ? '编辑系统' : '新建系统'}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[24px] bg-white p-7 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-xl font-black tracking-tight text-slate-950">
+              {isEdit ? '编辑租户' : '新建租户'}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              {isEdit ? '租户编号创建后不可修改。' : '可在创建租户时一并配置租户默认库连接。'}
+            </p>
           </div>
           <button
-            className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-full px-3 py-2 text-lg font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             onClick={onClose}
             type="button"
           >
-            ✕
+            ×
           </button>
         </div>
 
-        {/* 错误提示 */}
-        {errorMsg && (
-          <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+        {errorMsg ? (
+          <div className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
             {errorMsg}
           </div>
-        )}
+        ) : null}
 
-        {/* 表单 */}
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {/* 系统标识 */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              系统标识 <span className="text-red-500">*</span>
-            </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">租户编号</span>
             <input
-              className={`h-11 w-full rounded-2xl border px-4 text-sm outline-none transition-colors focus:ring-2 focus:ring-sky-300 ${errors.systemId ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-slate-50 focus:border-sky-400'}`}
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
               disabled={isEdit}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => { update('systemId', e.target.value); }}
-              placeholder="如 designer / erp / project"
-              value={form.systemId}
+              onChange={(event: ValueEventLike) => { update('tenantCode', event.target.value); }}
+              placeholder="如 LSERP-CUSTOMER-001"
+              value={form.tenantCode}
             />
-            {errors.systemId && <p className="text-xs text-red-500">{errors.systemId}</p>}
-            {isEdit && <p className="text-xs text-slate-400">系统标识创建后不可修改</p>}
-          </div>
+            {errors.tenantCode ? <span className="text-xs text-red-500">{errors.tenantCode}</span> : null}
+          </label>
 
-          {/* 系统名称 */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              系统名称 <span className="text-red-500">*</span>
-            </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">租户名称</span>
             <input
-              className={`h-11 w-full rounded-2xl border px-4 text-sm outline-none transition-colors focus:ring-2 focus:ring-sky-300 ${errors.title ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-slate-50 focus:border-sky-400'}`}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => { update('title', e.target.value); }}
-              placeholder="如 设计平台"
-              value={form.title}
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('tenantName', event.target.value); }}
+              placeholder="客户或平台名称"
+              value={form.tenantName}
             />
-            {errors.title && <p className="text-xs text-red-500">{errors.title}</p>}
-          </div>
+            {errors.tenantName ? <span className="text-xs text-red-500">{errors.tenantName}</span> : null}
+          </label>
 
-          {/* 短标签 */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              短标签
-            </label>
-            <input
-              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-300"
-              onChange={(e: ChangeEvent<HTMLInputElement>) => { update('shortLabel', e.target.value); }}
-              placeholder="如 Studio / PM"
-              value={form.shortLabel ?? ''}
-            />
-          </div>
-
-          {/* 主题色调 */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              主题色调
-            </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">租户类型</span>
             <select
-              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-300"
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => { update('tone', e.target.value); }}
-              value={form.tone ?? 'neutral'}
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('tenantType', event.target.value); }}
+              value={form.tenantType}
             >
-              {toneOptions().map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
+              {TENANT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-          </div>
+          </label>
 
-          {/* 系统地址 */}
-          <div className="space-y-1.5 md:col-span-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              系统地址 <span className="text-red-500">*</span>
-            </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">状态</span>
+            <select
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('status', event.target.value); }}
+              value={form.status}
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">负责人账号</span>
             <input
-              className={`h-11 w-full rounded-2xl border px-4 text-sm outline-none transition-colors focus:ring-2 focus:ring-sky-300 ${errors.route ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-slate-50 focus:border-sky-400'}`}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => { update('route', e.target.value); }}
-              placeholder="内部路由如 /project，或外部链接如 https://example.com"
-              value={form.route}
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('ownerLoginAccount', event.target.value); }}
+              placeholder="登录账号"
+              value={form.ownerLoginAccount}
             />
-            {errors.route && <p className="text-xs text-red-500">{errors.route}</p>}
-          </div>
+          </label>
 
-          {/* 系统简介 */}
-          <div className="space-y-1.5 md:col-span-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              系统简介
-            </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">负责人姓名</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('ownerEmployeeName', event.target.value); }}
+              placeholder="姓名"
+              value={form.ownerEmployeeName}
+            />
+          </label>
+
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">联系人</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('contactName', event.target.value); }}
+              placeholder="联系人姓名"
+              value={form.contactName}
+            />
+          </label>
+
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">联系电话</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('contactPhone', event.target.value); }}
+              placeholder="手机号或座机"
+              value={form.contactPhone}
+            />
+          </label>
+
+          <label className="space-y-1.5 md:col-span-2">
+            <span className="text-xs font-bold text-slate-500">备注</span>
             <textarea
-              className="min-h-[80px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-300"
-              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => { update('description', e.target.value); }}
-              placeholder="简短描述该系统的用途"
-              value={form.description ?? ''}
+              className="min-h-[76px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('remark', event.target.value); }}
+              placeholder="可选备注"
+              value={form.remark}
             />
-          </div>
+          </label>
+        </div>
 
-          {/* 排序号 & 状态 */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              排序号
-            </label>
+        {!isEdit ? (
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <div className="text-sm font-black text-slate-900">默认库连接</div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="space-y-1.5">
+                <span className="text-xs font-bold text-slate-500">默认库名称</span>
+                <input
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-sky-400"
+                  onChange={(event: ValueEventLike) => { updateDefaultDb('title', event.target.value); }}
+                  placeholder="如 集团默认库"
+                  value={form.defaultDb?.title ?? ''}
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-bold text-slate-500">服务器地址</span>
+                <input
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-sky-400"
+                  onChange={(event: ValueEventLike) => { updateDefaultDb('serverip', event.target.value); }}
+                  placeholder="IP 或域名"
+                  value={form.defaultDb?.serverip ?? ''}
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-bold text-slate-500">端口</span>
+                <input
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-sky-400"
+                  onChange={(event: ValueEventLike) => { updateDefaultDb('serverport', Number(event.target.value) || 1433); }}
+                  type="number"
+                  value={form.defaultDb?.serverport ?? 1433}
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-bold text-slate-500">数据库名</span>
+                <input
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-sky-400"
+                  onChange={(event: ValueEventLike) => { updateDefaultDb('basename', event.target.value); }}
+                  placeholder="basename"
+                  value={form.defaultDb?.basename ?? ''}
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-bold text-slate-500">数据库类型</span>
+                <input
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-sky-400"
+                  onChange={(event: ValueEventLike) => { updateDefaultDb('dbType', event.target.value); }}
+                  value={form.defaultDb?.dbType ?? 'SQLSERVER'}
+                />
+              </label>
+            </div>
+            {errors.defaultDb ? <div className="mt-3 text-xs text-red-500">{errors.defaultDb}</div> : null}
+          </div>
+        ) : null}
+
+        <div className="mt-7 flex justify-end gap-3">
+          <Button onClick={onClose} tone="ghost">取消</Button>
+          <Button disabled={saving} onClick={handleSubmit}>
+            {saving ? '保存中...' : isEdit ? '保存修改' : '创建租户'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface DefaultDbModalProps {
+  tenant: PlatformTenant;
+  onClose: () => void;
+  onSaved: (tenant: PlatformTenant) => void;
+}
+
+function DefaultDbModal({ tenant, onClose, onSaved }: DefaultDbModalProps) {
+  const [form, setForm] = useState<SaveTenantDefaultDbRequest>(() => toDefaultDbForm(tenant.defaultDb));
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [message, setMessage] = useState<{ text: string; tone: 'danger' | 'success' } | null>(null);
+
+  const update = (field: keyof SaveTenantDefaultDbRequest, value: string | number) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const validate = () => {
+    if (!form.serverip?.trim() || !form.basename?.trim()) {
+      setMessage({ text: '服务器地址和数据库名不能为空', tone: 'danger' });
+      return false;
+    }
+    return true;
+  };
+
+  const handleTest = async () => {
+    if (!validate()) {
+      return;
+    }
+
+    setTesting(true);
+    setMessage(null);
+    try {
+      const result = await platformTenantApi.testDefaultDb(tenant.tenantCode, form);
+      setMessage({ text: result.message, tone: result.success ? 'success' : 'danger' });
+    } catch (error) {
+      setMessage({ text: error instanceof Error ? error.message : '连接测试失败', tone: 'danger' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!validate()) {
+      return;
+    }
+
+    setSaving(true);
+    setMessage(null);
+    try {
+      await platformTenantApi.saveDefaultDb(tenant.tenantCode, form);
+      const refreshed = await platformTenantApi.getTenant(tenant.tenantCode);
+      onSaved(refreshed);
+    } catch (error) {
+      setMessage({ text: error instanceof Error ? error.message : '保存默认库失败', tone: 'danger' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+      <div className="w-full max-w-3xl rounded-[24px] bg-white p-7 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-xl font-black tracking-tight text-slate-950">默认库配置</div>
+            <p className="mt-2 text-sm text-slate-500">{tenant.tenantName} / {tenant.tenantCode}</p>
+          </div>
+          <button
+            className="rounded-full px-3 py-2 text-lg font-semibold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+
+        {message ? (
+          <div className={`mt-5 rounded-2xl px-4 py-3 text-sm font-semibold ${
+            message.tone === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
+          }`}
+          >
+            {message.text}
+          </div>
+        ) : null}
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">默认库名称</span>
             <input
-              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-300"
-              min={0}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => { update('sortOrder', Number(e.target.value) || 0); }}
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('title', event.target.value); }}
+              value={form.title ?? ''}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">服务器地址</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('serverip', event.target.value); }}
+              value={form.serverip ?? ''}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">端口</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('serverport', Number(event.target.value) || 1433); }}
+              type="number"
+              value={form.serverport ?? 1433}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">数据库名</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('basename', event.target.value); }}
+              value={form.basename ?? ''}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">数据库类型</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('dbType', event.target.value); }}
+              value={form.dbType ?? 'SQLSERVER'}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">启用状态</span>
+            <select
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('enableFlag', Number(event.target.value)); }}
+              value={form.enableFlag ?? 1}
+            >
+              <option value={1}>启用</option>
+              <option value={0}>停用</option>
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500">排序</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('sortOrder', Number(event.target.value) || 0); }}
               type="number"
               value={form.sortOrder ?? 0}
             />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              状态
-            </label>
-            <select
-              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-300"
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => { update('enabled', Number(e.target.value)); }}
-              value={form.enabled}
-            >
-              <option value={1}>启用</option>
-              <option value={0}>禁用</option>
-            </select>
-          </div>
-
-          {/* 备注 */}
-          <div className="space-y-1.5 md:col-span-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              备注
-            </label>
-            <input
-              className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-300"
-              onChange={(e: ChangeEvent<HTMLInputElement>) => { update('remark', e.target.value); }}
-              placeholder="可选备注信息"
+          </label>
+          <label className="space-y-1.5 md:col-span-2">
+            <span className="text-xs font-bold text-slate-500">备注</span>
+            <textarea
+              className="min-h-[76px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-sky-400"
+              onChange={(event: ValueEventLike) => { update('remark', event.target.value); }}
               value={form.remark ?? ''}
             />
-          </div>
+          </label>
         </div>
 
-        {/* 操作按钮 */}
-        <div className="mt-8 flex justify-end gap-3">
-          <Button onClick={onClose} tone="ghost">
-            取消
+        <div className="mt-7 flex justify-end gap-3">
+          <Button onClick={onClose} tone="ghost">取消</Button>
+          <Button disabled={testing || saving} onClick={handleTest} tone="ghost">
+            {testing ? '测试中...' : '测试连接'}
           </Button>
-          <Button disabled={saving} onClick={handleSubmit}>
-            {saving ? '保存中...' : isEdit ? '保存修改' : '创建系统'}
+          <Button disabled={saving} onClick={handleSave}>
+            {saving ? '保存中...' : '保存配置'}
           </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────── 删除确认弹窗 ───────────────────────
-
-interface DeleteConfirmModalProps {
-  system: PortalSystem;
-  onClose: () => void;
-  onDeleted: (id: number) => void;
-}
-
-function DeleteConfirmModal({ system, onClose, onDeleted }: DeleteConfirmModalProps) {
-  const [deleting, setDeleting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    setErrorMsg(null);
-    try {
-      await portalSystemApi.remove(system.id);
-      onDeleted(system.id);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '删除失败，请重试';
-      setErrorMsg(msg);
-      setDeleting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-[28px] bg-white p-8 shadow-2xl">
-        <div className="text-xl font-black tracking-tight text-slate-900">确认删除</div>
-        <p className="mt-4 text-sm leading-7 text-slate-600">
-          确定要删除系统 <strong>"{system.title}"</strong>（标识：{system.systemId}）吗？
-          <br />
-          <span className="text-red-500">此操作不可撤销，删除后选系统页面将不再显示该系统。</span>
-        </p>
-        {errorMsg && (
-          <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-            {errorMsg}
-          </div>
-        )}
-        <div className="mt-8 flex justify-end gap-3">
-          <Button onClick={onClose} tone="ghost">
-            取消
-          </Button>
-          <button
-            className="rounded-2xl bg-red-500 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
-            disabled={deleting}
-            onClick={handleDelete}
-            type="button"
-          >
-            {deleting ? '删除中...' : '确认删除'}
-          </button>
         </div>
       </div>
     </div>
   );
 }
-
-// ─────────────────────── 主页面 ───────────────────────
 
 export function PortalSystemManagerPage() {
-  const [systems, setSystems] = useState<PortalSystem[]>([]);
+  const [keyword, setKeyword] = useState('');
+  const [query, setQuery] = useState('');
+  const [tenants, setTenants] = useState<PlatformTenant[]>([]);
+  const [selectedTenant, setSelectedTenant] = useState<PlatformTenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // 弹窗状态
-  const [formModal, setFormModal] = useState<{ open: boolean; data: Partial<PortalSystem> | null }>({
-    open: false,
+  const [tenantModal, setTenantModal] = useState<{ data: PlatformTenant | null; open: boolean }>({
     data: null,
-  });
-  const [deleteModal, setDeleteModal] = useState<{ open: boolean; system: PortalSystem | null }>({
     open: false,
-    system: null,
   });
+  const [defaultDbModal, setDefaultDbModal] = useState(false);
 
-  const loadSystems = useCallback(async () => {
+  const loadTenants = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const data = await portalSystemApi.listAll();
-      setSystems(data);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '加载失败';
-      setErrorMsg(msg);
+      const data = await platformTenantApi.listTenants(query);
+      setTenants(data);
+      setSelectedTenant((current) => {
+        if (!data.length) {
+          return null;
+        }
+        if (!current) {
+          return data[0]!;
+        }
+        return data.find((tenant) => tenant.tenantCode === current.tenantCode) ?? data[0]!;
+      });
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : '加载租户列表失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [query]);
 
   useEffect(() => {
-    void loadSystems();
-  }, [loadSystems]);
+    void loadTenants();
+  }, [loadTenants]);
 
-  const openCreate = () => { setFormModal({ open: true, data: null }); };
-  const openEdit = (s: PortalSystem) => { setFormModal({ open: true, data: s }); };
-  const openDelete = (s: PortalSystem) => { setDeleteModal({ open: true, system: s }); };
+  const activeCount = useMemo(() => tenants.filter(isTenantActive).length, [tenants]);
+  const configuredDefaultDbCount = useMemo(
+    () => tenants.filter((tenant) => defaultDbStatus(tenant.defaultDb).label === '已配置').length,
+    [tenants],
+  );
 
-  const handleSaved = (saved: PortalSystem) => {
-    setSystems((prev) => {
-      const idx = prev.findIndex((s) => s.id === saved.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = saved;
-        return next;
-      }
-      return [...prev, saved];
-    });
-    setFormModal({ open: false, data: null });
+  const handleSearch = (event: SubmitEventLike) => {
+    event.preventDefault();
+    setQuery(keyword.trim());
   };
 
-  const handleDeleted = (id: number) => {
-    setSystems((prev) => prev.filter((s) => s.id !== id));
-    setDeleteModal({ open: false, system: null });
+  const handleSaved = (tenant: PlatformTenant) => {
+    setTenantModal({ data: null, open: false });
+    setDefaultDbModal(false);
+    setTenants((prev) => {
+      const index = prev.findIndex((item) => item.tenantCode === tenant.tenantCode);
+      if (index < 0) {
+        return [tenant, ...prev];
+      }
+
+      const next = [...prev];
+      next[index] = tenant;
+      return next;
+    });
+    setSelectedTenant(tenant);
+  };
+
+  const handleDisable = async (tenant: PlatformTenant) => {
+    const confirmed = window.confirm(`确定停用租户「${tenant.tenantName}」吗？停用后该租户不能再作为有效租户登录。`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await platformTenantApi.disableTenant(tenant.tenantCode);
+      await loadTenants();
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : '停用租户失败');
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f6fb] px-6 py-10">
-      <div className="mx-auto max-w-5xl space-y-6">
-
-        {/* 页头 */}
-        <Card className="rounded-[28px] p-8">
-          <div className="flex items-start justify-between gap-4">
+    <div className="min-h-screen bg-[#f4f6fb] px-6 py-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <Card className="rounded-[28px] p-7">
+          <div className="flex flex-wrap items-start justify-between gap-5">
             <div>
-              <Badge>系统管理</Badge>
-              <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-900">
-                门户系统配置
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">
-                管理登录后「选系统」页面展示的所有系统。支持配置系统名称、地址（内部路由或外部链接）、简介等信息，启用的系统将自动展示在选系统页面。
+              <Badge>平台总管理系统</Badge>
+              <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950">租户管理</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-500">
+                维护平台库中的租户主档和租户默认库连接。业务库/账套仍在租户默认库内部读取，不在这里管理。
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-3">
               <button
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
                 onClick={() => { navigate('/systems'); }}
                 type="button"
               >
-                ← 返回选系统
+                ← 返回系统选择
               </button>
-              <Button onClick={openCreate}>+ 新建系统</Button>
+              <Button onClick={() => { setTenantModal({ data: null, open: true }); }}>+ 新建租户</Button>
             </div>
           </div>
         </Card>
 
-        {/* 错误提示 */}
-        {errorMsg && (
-          <div className="rounded-[20px] bg-red-50 px-6 py-4 text-sm font-medium text-red-600">
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="rounded-[24px] p-5">
+            <div className="text-xs font-bold text-slate-400">租户总数</div>
+            <div className="mt-2 text-3xl font-black text-slate-950">{tenants.length}</div>
+          </Card>
+          <Card className="rounded-[24px] p-5">
+            <div className="text-xs font-bold text-slate-400">启用租户</div>
+            <div className="mt-2 text-3xl font-black text-emerald-600">{activeCount}</div>
+          </Card>
+          <Card className="rounded-[24px] p-5">
+            <div className="text-xs font-bold text-slate-400">默认库已配置</div>
+            <div className="mt-2 text-3xl font-black text-sky-600">{configuredDefaultDbCount}</div>
+          </Card>
+        </div>
+
+        {errorMsg ? (
+          <div className="rounded-[20px] bg-red-50 px-5 py-4 text-sm font-semibold text-red-600">
             {errorMsg}
-            <button
-              className="ml-4 underline hover:no-underline"
-              onClick={loadSystems}
-              type="button"
-            >
-              重试
-            </button>
+            <button className="ml-4 underline" onClick={loadTenants} type="button">重试</button>
           </div>
-        )}
+        ) : null}
 
-        {/* 加载中 */}
-        {loading && (
-          <div className="rounded-[28px] bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
-            加载中...
-          </div>
-        )}
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+          <Card className="overflow-hidden rounded-[28px] p-0">
+            <div className="border-b border-slate-100 p-5">
+              <form className="flex flex-wrap items-center gap-3" onSubmit={handleSearch}>
+                <input
+                  className="h-11 min-w-[260px] flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-sky-400"
+                  onChange={(event: ValueEventLike) => { setKeyword(event.target.value); }}
+                  placeholder="搜索租户编号、名称、负责人或联系人"
+                  value={keyword}
+                />
+                <Button type="submit">搜索</Button>
+                {query ? (
+                  <Button
+                    onClick={() => {
+                      setKeyword('');
+                      setQuery('');
+                    }}
+                    tone="ghost"
+                    type="button"
+                  >
+                    清空
+                  </Button>
+                ) : null}
+              </form>
+            </div>
 
-        {/* 系统列表 */}
-        {!loading && !errorMsg && (
-          <Card className="rounded-[28px] overflow-hidden p-0">
-            {systems.length === 0 ? (
-              <div className="p-10 text-center text-sm text-slate-400">
-                暂无系统数据，点击「新建系统」添加第一个系统。
-              </div>
+            {loading ? (
+              <div className="p-10 text-center text-sm text-slate-400">正在加载租户...</div>
+            ) : tenants.length === 0 ? (
+              <div className="p-10 text-center text-sm text-slate-400">暂无租户数据</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50">
-                      <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        标识 / 名称
-                      </th>
-                      <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        地址
-                      </th>
-                      <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        色调
-                      </th>
-                      <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        排序
-                      </th>
-                      <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        状态
-                      </th>
-                      <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        更新时间
-                      </th>
-                      <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        操作
-                      </th>
+                      <th className="px-5 py-4 text-xs font-bold text-slate-500">租户</th>
+                      <th className="px-5 py-4 text-xs font-bold text-slate-500">状态</th>
+                      <th className="px-5 py-4 text-xs font-bold text-slate-500">负责人</th>
+                      <th className="px-5 py-4 text-xs font-bold text-slate-500">联系人</th>
+                      <th className="px-5 py-4 text-xs font-bold text-slate-500">默认库</th>
+                      <th className="px-5 py-4 text-xs font-bold text-slate-500">更新时间</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {systems
-                      .slice()
-                      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id - b.id)
-                      .map((system) => (
+                    {tenants.map((tenant) => {
+                      const selected = selectedTenant?.tenantCode === tenant.tenantCode;
+                      const dbStatus = defaultDbStatus(tenant.defaultDb);
+                      return (
                         <tr
-                          key={system.id}
-                          className="border-b border-slate-50 transition-colors hover:bg-slate-50/60"
+                          key={tenant.tenantCode}
+                          className={`cursor-pointer border-b border-slate-50 hover:bg-slate-50 ${
+                            selected ? 'bg-sky-50/70' : ''
+                          }`}
+                          onClick={() => { setSelectedTenant(tenant); }}
                         >
-                          {/* 标识 / 名称 */}
-                          <td className="px-6 py-4">
-                            <div className="font-black text-slate-900">{system.title}</div>
-                            <div className="mt-0.5 font-mono text-xs text-slate-400">
-                              {system.systemId}
-                            </div>
-                            {system.shortLabel && (
-                              <div className="mt-1">
-                                <Badge tone={resolveBadgeTone(system.tone)}>
-                                  {system.shortLabel}
-                                </Badge>
-                              </div>
-                            )}
+                          <td className="px-5 py-4">
+                            <div className="font-black text-slate-900">{tenant.tenantName}</div>
+                            <div className="mt-0.5 font-mono text-xs text-slate-400">{tenant.tenantCode}</div>
                           </td>
-
-                          {/* 地址 */}
-                          <td className="max-w-[200px] px-6 py-4">
-                            <div className="truncate font-mono text-xs text-slate-600">
-                              {system.route}
-                            </div>
-                            {system.description && (
-                              <div className="mt-1 line-clamp-2 text-xs text-slate-400">
-                                {system.description}
-                              </div>
-                            )}
+                          <td className="px-5 py-4">
+                            <Badge tone={isTenantActive(tenant) ? 'success' : 'neutral'}>
+                              {isTenantActive(tenant) ? '启用' : '停用'}
+                            </Badge>
                           </td>
-
-                          {/* 色调 */}
-                          <td className="px-6 py-4 text-xs text-slate-500">
-                            {toneLabel(system.tone)}
+                          <td className="px-5 py-4 text-xs text-slate-600">
+                            <div>{text(tenant.ownerEmployeeName)}</div>
+                            <div className="mt-1 font-mono text-slate-400">{text(tenant.ownerLoginAccount)}</div>
                           </td>
-
-                          {/* 排序 */}
-                          <td className="px-6 py-4 text-xs text-slate-500">
-                            {system.sortOrder ?? 0}
+                          <td className="px-5 py-4 text-xs text-slate-600">
+                            <div>{text(tenant.contactName)}</div>
+                            <div className="mt-1 text-slate-400">{text(tenant.contactPhone)}</div>
                           </td>
-
-                          {/* 状态 */}
-                          <td className="px-6 py-4">
-                            {system.enabled === 1 ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                启用
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
-                                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                                禁用
-                              </span>
-                            )}
+                          <td className="px-5 py-4">
+                            <Badge tone={dbStatus.tone}>{dbStatus.label}</Badge>
                           </td>
-
-                          {/* 更新时间 */}
-                          <td className="px-6 py-4 text-xs text-slate-400">
-                            {formatDateTime(system.updateTime ?? system.createTime)}
-                          </td>
-
-                          {/* 操作 */}
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <button
-                                className="rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-600 transition-colors hover:bg-sky-100"
-                                onClick={() => { openEdit(system); }}
-                                type="button"
-                              >
-                                编辑
-                              </button>
-                              <button
-                                className="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-bold text-red-500 transition-colors hover:bg-red-100"
-                                onClick={() => { openDelete(system); }}
-                                type="button"
-                              >
-                                删除
-                              </button>
-                            </div>
+                          <td className="px-5 py-4 text-xs text-slate-400">
+                            {formatDateTime(tenant.updatedAt ?? tenant.createdAt)}
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
           </Card>
-        )}
 
-        {/* 说明区 */}
-        <Card className="rounded-[28px] p-6">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-400">使用说明</div>
-          <div className="mt-3 grid gap-3 text-xs leading-6 text-slate-500 md:grid-cols-3">
-            <div>
-              <strong className="text-slate-600">系统标识</strong>：唯一键，如 designer / erp / project。前端路由匹配和权限判断均依赖此值，创建后不可修改。
-            </div>
-            <div>
-              <strong className="text-slate-600">系统地址</strong>：内部路由（如 /project）或外部链接（如 https://xxx.com）均可。外部链接会在新窗口打开。
-            </div>
-            <div>
-              <strong className="text-slate-600">生效机制</strong>：启用状态的系统将在下次登录后的 bootstrap 接口中返回，用户重新刷新页面后即可看到变化。
-            </div>
-          </div>
-        </Card>
+          <Card className="rounded-[28px] p-6">
+            {selectedTenant ? (
+              <div className="space-y-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Badge tone={isTenantActive(selectedTenant) ? 'success' : 'neutral'}>
+                      {isTenantActive(selectedTenant) ? '启用' : '停用'}
+                    </Badge>
+                    <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+                      {selectedTenant.tenantName}
+                    </h2>
+                    <div className="mt-1 font-mono text-xs text-slate-400">{selectedTenant.tenantCode}</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 text-sm">
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <div className="text-xs font-bold text-slate-400">租户基础信息</div>
+                    <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <dt className="text-slate-400">类型</dt>
+                        <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.tenantType)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-slate-400">状态</dt>
+                        <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.status)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-slate-400">负责人</dt>
+                        <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.ownerEmployeeName)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-slate-400">负责人账号</dt>
+                        <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.ownerLoginAccount)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-slate-400">联系人</dt>
+                        <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.contactName)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-slate-400">联系电话</dt>
+                        <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.contactPhone)}</dd>
+                      </div>
+                    </dl>
+                    <div className="mt-3 text-xs leading-6 text-slate-500">{text(selectedTenant.remark, '暂无备注')}</div>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs font-bold text-slate-400">默认库连接</div>
+                      <Badge tone={defaultDbStatus(selectedTenant.defaultDb).tone}>
+                        {defaultDbStatus(selectedTenant.defaultDb).label}
+                      </Badge>
+                    </div>
+                    {selectedTenant.defaultDb ? (
+                      <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <dt className="text-slate-400">名称</dt>
+                          <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.defaultDb.title)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-slate-400">数据库类型</dt>
+                          <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.defaultDb.dbType)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-slate-400">服务器</dt>
+                          <dd className="mt-1 font-semibold text-slate-700">{text(selectedTenant.defaultDb.serverip)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-slate-400">端口</dt>
+                          <dd className="mt-1 font-semibold text-slate-700">{selectedTenant.defaultDb.serverport ?? '-'}</dd>
+                        </div>
+                        <div className="col-span-2">
+                          <dt className="text-slate-400">数据库名</dt>
+                          <dd className="mt-1 font-mono font-semibold text-slate-700">{text(selectedTenant.defaultDb.basename)}</dd>
+                        </div>
+                        <div className="col-span-2">
+                          <dt className="text-slate-400">更新时间</dt>
+                          <dd className="mt-1 font-semibold text-slate-700">{formatDateTime(selectedTenant.defaultDb.updatedAt)}</dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <div className="mt-3 text-xs leading-6 text-slate-500">尚未配置默认库连接。</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  <Button onClick={() => { setTenantModal({ data: selectedTenant, open: true }); }}>
+                    编辑租户
+                  </Button>
+                  <Button onClick={() => { setDefaultDbModal(true); }} tone="ghost">
+                    配置默认库
+                  </Button>
+                  <button
+                    className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                    disabled={!isTenantActive(selectedTenant)}
+                    onClick={() => { void handleDisable(selectedTenant); }}
+                    type="button"
+                  >
+                    停用租户
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="py-16 text-center text-sm text-slate-400">请选择一个租户查看详情</div>
+            )}
+          </Card>
+        </div>
       </div>
 
-      {/* 新建/编辑弹窗 */}
-      {formModal.open && (
-        <SystemFormModal
-          initialData={formModal.data}
-          onClose={() => { setFormModal({ open: false, data: null }); }}
+      {tenantModal.open ? (
+        <TenantFormModal
+          initialData={tenantModal.data}
+          onClose={() => { setTenantModal({ data: null, open: false }); }}
           onSaved={handleSaved}
         />
-      )}
+      ) : null}
 
-      {/* 删除确认弹窗 */}
-      {deleteModal.open && deleteModal.system && (
-        <DeleteConfirmModal
-          system={deleteModal.system}
-          onClose={() => { setDeleteModal({ open: false, system: null }); }}
-          onDeleted={handleDeleted}
+      {defaultDbModal && selectedTenant ? (
+        <DefaultDbModal
+          tenant={selectedTenant}
+          onClose={() => { setDefaultDbModal(false); }}
+          onSaved={handleSaved}
         />
-      )}
+      ) : null}
     </div>
   );
 }

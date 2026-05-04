@@ -17,9 +17,17 @@ describe('bi routes', () => {
       kind: 'screen',
       value: 'sales-board',
     });
+    expect(resolveBiRoute('/bi/public/screen/sales-board')).toEqual({
+      kind: 'public-screen',
+      value: 'sales-board',
+    });
     expect(resolveBiRoute('/bi/share/token123')).toEqual({
       kind: 'share',
       value: 'token123',
     });
+  });
+
+  it('does not treat BI menu codes as runtime links', () => {
+    expect(resolveBiRoute('/bi/menu/sales-board')).toEqual({ kind: 'not-found' });
   });
 });

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { BiArchiveManagementPanel } from '../components/workspace/bi-archive-management-panel';
 import { BiDirectoryCanvas } from '../components/workspace/bi-directory-canvas';
+import { BiMenuManagementPanel } from '../components/workspace/bi-menu-management-panel';
 import { BiNodeContextPanel } from '../components/workspace/bi-node-context-panel';
 import { BiSidebarNav } from '../components/workspace/bi-sidebar-nav';
 import { BiSourceManagementPanel } from '../components/workspace/bi-source-management-panel';
@@ -164,6 +165,9 @@ export function BiWorkspacePage() {
   const archiveCountByNodeId = useMemo(() => {
     const map: Record<number, number> = {};
     workspace.allScreens.forEach((screen) => {
+      if (screen.nodeId == null) {
+        return;
+      }
       map[screen.nodeId] = (map[screen.nodeId] ?? 0) + 1;
     });
     return map;
@@ -191,7 +195,7 @@ export function BiWorkspacePage() {
     }
 
     const subtreeNodeIds = new Set(flattenDirectoryNodes([targetNode]).map((node) => node.id));
-    const blockingCount = workspace.allScreens.filter((screen) => subtreeNodeIds.has(screen.nodeId)).length;
+    const blockingCount = workspace.allScreens.filter((screen) => screen.nodeId != null && subtreeNodeIds.has(screen.nodeId)).length;
     if (blockingCount > 0) {
       return {
         canDelete: false,
@@ -303,8 +307,8 @@ export function BiWorkspacePage() {
       screenCode: `${baseCode}_internal_${Date.now()}`,
     });
     if (created && typeof created === 'object' && 'id' in created) {
-      const createdScreen = created as { id: number; nodeId: number };
-      workspace.setSelectedNodeId(createdScreen.nodeId);
+      const createdScreen = created as { id: number; nodeId?: number | null };
+      workspace.setSelectedNodeId(createdScreen.nodeId ?? null);
       workspace.setSelectedScreenId(createdScreen.id);
     }
     setCreatePresetType(null);
@@ -394,7 +398,7 @@ export function BiWorkspacePage() {
     }
 
     const subtreeNodeIds = new Set(flattenDirectoryNodes([targetNode]).map((node) => node.id));
-    const blockingScreens = workspace.allScreens.filter((screen) => subtreeNodeIds.has(screen.nodeId));
+    const blockingScreens = workspace.allScreens.filter((screen) => screen.nodeId != null && subtreeNodeIds.has(screen.nodeId));
     if (blockingScreens.length > 0) {
       const shouldOpenArchives = window.confirm(
         `节点“${targetNode.nodeName}”分支下还有 ${blockingScreens.length} 个 BI 档案，不能直接删除。\n\n请先到“管理 BI 档案”处理相关档案。是否现在前往处理？`,
@@ -513,7 +517,7 @@ export function BiWorkspacePage() {
             <BiSourceManagementPanel
               datasources={workspace.datasources}
               isMutating={workspace.isMutating}
-              node={workspace.selectedNode}
+              node={null}
               onBindSourceAssets={workspace.bindNodeSourceAssets}
               onCreateDatasource={workspace.createDatasource}
               onGenerateBizComments={workspace.generateAssetBizComments}
@@ -527,11 +531,13 @@ export function BiWorkspacePage() {
               allNodes={workspace.flatNodes}
               boundDatasources={workspace.boundDatasources}
               createPresetType={createPresetType}
+              datasources={workspace.datasources}
               designRecords={workspace.designRecords}
               generationTask={workspace.generationTask}
               isMutating={workspace.isMutating}
               node={workspace.selectedNode}
               onActiveTabChange={setActiveArchiveTab}
+              onBindArchiveSourceAssets={workspace.bindArchiveSourceAssets}
               onClearCreatePreset={() => setCreatePresetType(null)}
               onCreateScreen={workspace.createScreen}
               onCreateShareToken={workspace.createShareToken}
@@ -548,10 +554,12 @@ export function BiWorkspacePage() {
               onUpdateScreen={workspace.updateScreen}
               promptPreview={workspace.promptPreview}
               promptTemplates={workspace.promptTemplates}
-              screens={workspace.screens}
+              screens={workspace.allScreens}
               selectedScreenId={workspace.selectedScreenId}
               shareTokens={workspace.shareTokens}
             />
+          ) : activeSection === 'menus' ? (
+            <BiMenuManagementPanel archives={workspace.allScreens} isMutating={workspace.isMutating} />
           ) : (
             <div className="bi-settings-stage">
               <BiWorkspaceSettingsPanel

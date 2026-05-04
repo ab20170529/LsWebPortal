@@ -11,6 +11,7 @@ export type {
 // 导出组件
 export { OrganizationSelector } from './components/organization-selector';
 export { EmployeeSelector } from './components/employee-selector';
+export { TenantSelector } from './components/tenant-selector';
 export { PasswordInput } from './components/password-input';
 export { RememberCredentials } from './components/remember-credentials';
 

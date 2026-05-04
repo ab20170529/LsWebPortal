@@ -24,6 +24,10 @@ export function resolveBiRoute(pathname: string): BiRoute {
     return { kind: 'screen', value: decodeURIComponent(normalized.slice('/bi/screen/'.length)) };
   }
 
+  if (normalized.startsWith('/bi/public/screen/')) {
+    return { kind: 'public-screen', value: decodeURIComponent(normalized.slice('/bi/public/screen/'.length)) };
+  }
+
   if (normalized.startsWith('/bi/share/')) {
     return { kind: 'share', value: decodeURIComponent(normalized.slice('/bi/share/'.length)) };
   }

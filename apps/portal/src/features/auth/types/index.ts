@@ -1,4 +1,4 @@
-export type AuthLoginStage = 'identity' | 'company';
+export type AuthLoginStage = 'identity' | 'tenant' | 'company';
 
 export interface AuthActiveCompany {
   companyKey: string;
@@ -8,10 +8,26 @@ export interface AuthActiveCompany {
 
 export interface ServerOption {
   companyKey: string;
+  dbGroupId?: string;
   title: string;
   basename: string;
   serverip: string;
   serverport: number;
+  dbType?: string;
+  runtimeRole?: string;
+  schemaVersion?: string | null;
+  upgradeStatus?: string | null;
+  enableFlag?: number;
+  sortOrder?: number;
+}
+
+export interface TenantOption {
+  tenantCode: string;
+  tenantName: string;
+  tenantType?: string;
+  status?: string;
+  enableFlag?: number;
+  remark?: string;
 }
 
 export interface EmployeeOption {
@@ -23,11 +39,10 @@ export interface EmployeeOption {
 }
 
 export interface IdentityLoginPayload {
-  basename: string;
-  employeeId: number;
+  employeeId?: number | null;
+  loginAccount?: string;
   password: string;
-  serverip: string;
-  serverport: number;
+  tenantCode?: string;
 }
 
 export interface CompanySessionPayload {
@@ -45,16 +60,21 @@ export interface AuthSession {
   employeeId: number;
   employeeName: string;
   expiresAt?: string;
+  businessDbRequired?: boolean;
   isAdmin?: boolean;
   loginStage: AuthLoginStage;
+  tenantCode?: string;
+  tenantName?: string;
   tokenType?: string;
   tokenVersion?: number;
   username: string;
 }
 
 export interface RememberedLoginState {
-  employeeId: number;
-  employeeName: string;
+  employeeId?: number;
+  employeeName?: string;
+  loginAccount?: string;
   organizationKey?: string;
   password: string;
+  tenantCode?: string;
 }

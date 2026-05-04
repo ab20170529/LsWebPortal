@@ -1,8 +1,8 @@
 import { navigate } from '../../router';
-import { EmployeeSelector } from './components/employee-selector';
-import { OrganizationSelector } from './components/organization-selector';
+import type { ChangeEvent } from 'react';
 import { PasswordInput } from './components/password-input';
 import { RememberCredentials } from './components/remember-credentials';
+import { TenantSelector } from './components/tenant-selector';
 import { useLoginFormController } from './hooks/use-login-form-controller';
 
 type PortalLoginPageProps = {
@@ -102,9 +102,48 @@ function LoginArrowIcon() {
   );
 }
 
+function LoginAccountInput({
+  disabled,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="ml-1 text-[11px] font-semibold text-slate-400">
+        姓名 / 工号
+      </label>
+
+      <div className="relative">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+          <span className="material-symbols-outlined text-[20px]">person</span>
+        </div>
+        <input
+          autoComplete="username"
+          className="h-[50px] w-full rounded-2xl border border-slate-200/85 bg-white/80 pl-12 pr-4 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-slate-100/80"
+          disabled={disabled}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+            onChange(event.target.value);
+          }}
+          placeholder="请输入姓名或工号"
+          value={value}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function PortalLoginPage({ targetLabel }: PortalLoginPageProps) {
   const controller = useLoginFormController({
-    onSuccess: () => {
+    onSuccess: (_session, target) => {
+      if (target === '/business-dbs') {
+        navigate('/business-dbs');
+        return;
+      }
+
       navigate(resolvePostLoginTarget());
     },
   });
@@ -189,29 +228,19 @@ export function PortalLoginPage({ targetLabel }: PortalLoginPageProps) {
             ) : null}
 
             <form className="space-y-5" onSubmit={handleSubmit}>
-              <OrganizationSelector
-                disabled={controller.isLoadingCompanies || controller.isSubmitting}
-                helperText={controller.companyHelperText}
-                isLoading={controller.isLoadingCompanies}
-                onChange={controller.actions.selectCompany}
-                organizations={controller.companies}
-                selectedKey={controller.form.companyKey}
+              <TenantSelector
+                disabled={controller.isLoadingTenants || controller.isSubmitting}
+                helperText={controller.tenantHelperText}
+                isLoading={controller.isLoadingTenants}
+                onChange={controller.actions.selectTenant}
+                selectedCode={controller.form.tenantCode}
+                tenants={controller.tenants}
               />
 
-              <EmployeeSelector
-                disabled={
-                  !controller.selectedCompany
-                  || controller.isLoadingCompanies
-                  || controller.isLoadingEmployees
-                  || controller.isSubmitting
-                }
-                employees={controller.employees}
-                helperText={controller.employeeHelperText}
-                isLoading={controller.isLoadingEmployees}
-                keyword={controller.form.employeeKeyword}
-                onKeywordChange={controller.actions.setEmployeeKeyword}
-                onSelect={controller.actions.selectEmployee}
-                selectedId={controller.form.employeeId}
+              <LoginAccountInput
+                disabled={(!controller.selectedTenant && !controller.isSingleDatabaseMode) || controller.isSubmitting}
+                onChange={controller.actions.setLoginAccount}
+                value={controller.form.loginAccount}
               />
 
               <PasswordInput
@@ -232,7 +261,7 @@ export function PortalLoginPage({ targetLabel }: PortalLoginPageProps) {
               <div className="portal-login-submit__wrap">
                 <button
                   className="portal-login-submit"
-                  disabled={controller.isSubmitting || controller.isLoadingEmployees}
+                  disabled={controller.isSubmitting || controller.isLoadingTenants}
                   type="submit"
                 >
                   <span className="portal-login-submit__label">

@@ -1,7 +1,7 @@
 import type { BiDirectoryNode } from '../types';
 
-const EXCLUDED_NODE_TYPES = new Set(['ANALYSIS_DIM', 'SUB_DIM']);
-const ORGANIZATION_NODE_TYPES = new Set([
+const DISPLAY_NODE_TYPES = new Set([
+  'ANALYSIS_DIM',
   'COMPANY',
   'DEPARTMENT',
   'FACTORY',
@@ -9,6 +9,7 @@ const ORGANIZATION_NODE_TYPES = new Set([
   'LINE',
   'ORG',
   'ORGANIZATION',
+  'SUB_DIM',
   'TEAM',
   'WORKSHOP',
 ]);
@@ -19,15 +20,11 @@ function normalizeNodeType(nodeType?: string | null) {
 
 function pruneNode(node: BiDirectoryNode): BiDirectoryNode | null {
   const normalizedType = normalizeNodeType(node.nodeType);
-  if (EXCLUDED_NODE_TYPES.has(normalizedType)) {
-    return null;
-  }
-
   const children = node.children
     .map((child) => pruneNode(child))
     .filter((child): child is BiDirectoryNode => child !== null);
 
-  if (ORGANIZATION_NODE_TYPES.has(normalizedType) || children.length > 0 || node.parentId == null) {
+  if (DISPLAY_NODE_TYPES.has(normalizedType) || children.length > 0 || node.parentId == null) {
     return {
       ...node,
       children,

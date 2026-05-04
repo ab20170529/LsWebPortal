@@ -17,7 +17,19 @@ const treeFixture: BiDirectoryNode[] = [
         children: [
           {
             boundAssets: [],
-            children: [],
+            children: [
+              {
+                boundAssets: [],
+                children: [],
+                datasourceIds: [],
+                id: 4,
+                nodeCode: 'analysis-west-child',
+                nodeName: 'Analysis West Child',
+                nodeType: 'SUB_DIM',
+                parentId: 3,
+                sourceAssetIds: [],
+              },
+            ],
             datasourceIds: [],
             id: 3,
             nodeCode: 'analysis-west',
@@ -47,10 +59,11 @@ const treeFixture: BiDirectoryNode[] = [
 ];
 
 describe('bi display tree utils', () => {
-  it('removes analysis dimension nodes from the display tree', () => {
+  it('keeps analysis dimension nodes in the display tree', () => {
     const pruned = pruneOrganizationForest(treeFixture);
 
-    expect(pruned[0]?.children[0]?.children).toEqual([]);
+    expect(pruned[0]?.children[0]?.children[0]?.nodeCode).toBe('analysis-west');
+    expect(pruned[0]?.children[0]?.children[0]?.children[0]?.nodeCode).toBe('analysis-west-child');
   });
 
   it('finds the preferred root by configured code', () => {

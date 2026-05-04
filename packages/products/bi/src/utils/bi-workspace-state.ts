@@ -19,7 +19,7 @@ export function resolveSelectedScreenIdForNode(
   nodeId: number | null,
   currentScreenId: number | null,
 ) {
-  const nodeScreens = allScreens.filter((screen) => screen.nodeId === nodeId);
+  const nodeScreens = allScreens.filter((screen) => (screen.nodeId ?? null) === nodeId);
   if (nodeScreens.length === 0) {
     return null;
   }

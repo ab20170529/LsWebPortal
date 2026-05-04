@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { BiDirectoryNode, BiScreen } from '../types';
 import {
+  buildDisplayDetailNavItems,
   buildDisplayScreenMap,
   formatDisplayRate,
   getDisplayAccent,
@@ -123,5 +124,50 @@ describe('bi display view model', () => {
       { key: 'external', label: '外链', percentage: 0, value: 0 },
       { key: 'unbound', label: '未绑定', percentage: 50, value: 1 },
     ]);
+  });
+
+  it('builds fourth-level detail navigation without the selected third-level node', () => {
+    const detailNode: BiDirectoryNode = {
+      boundAssets: [],
+      children: [
+        {
+          boundAssets: [],
+          children: [
+            {
+              boundAssets: [],
+              children: [],
+              datasourceIds: [],
+              id: 13,
+              nodeCode: 'sub-dim',
+              nodeName: 'Sub Dimension',
+              nodeType: 'SUB_DIM',
+              parentId: 12,
+              sourceAssetIds: [],
+            },
+          ],
+          datasourceIds: [],
+          id: 12,
+          nodeCode: 'analysis-dim',
+          nodeName: 'Analysis Dimension',
+          nodeType: 'ANALYSIS_DIM',
+          parentId: 11,
+          sourceAssetIds: [],
+        },
+      ],
+      datasourceIds: [],
+      id: 11,
+      nodeCode: 'dept',
+      nodeName: 'Department',
+      nodeType: 'DEPARTMENT',
+      parentId: 1,
+      sourceAssetIds: [],
+    };
+
+    const thirdLevelNode = detailNode.children[0];
+    expect(thirdLevelNode).toBeDefined();
+
+    const items = buildDisplayDetailNavItems(thirdLevelNode!, buildDisplayScreenMap([]));
+
+    expect(items.map((item) => item.summary.node.nodeCode)).toEqual(['sub-dim']);
   });
 });

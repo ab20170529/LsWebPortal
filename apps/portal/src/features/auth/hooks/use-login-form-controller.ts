@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortalAuth } from '@lserp/auth';
 
-import { fetchEmployeeOptions, fetchServerOptions, loginWithIdentity } from '../services/auth-service';
+import {
+  fetchAccessibleCompanies,
+  fetchTenantOptions,
+  loginWithIdentity,
+} from '../services/auth-service';
 import { resolvePortalBootstrapPayload } from '../services/portal-bootstrap-service';
 import {
   clearRememberedLoginState,
@@ -10,19 +14,29 @@ import {
   persistLegacyDesignerLoginContext,
   persistRememberedLoginState,
 } from '../services/storage-service';
-import type { AuthSession, EmployeeOption, ServerOption } from '../types';
+import type { AuthSession, TenantOption } from '../types';
+
+type LoginSuccessTarget = '/business-dbs' | '/systems';
 
 type UseLoginFormControllerOptions = {
-  onSuccess: (session: AuthSession) => void;
+  onSuccess: (session: AuthSession, target: LoginSuccessTarget) => void;
 };
 
 type LoginFormState = {
-  companyKey: string;
-  employeeId: number | null;
-  employeeKeyword: string;
+  loginAccount: string;
   password: string;
   rememberCredentials: boolean;
   showPassword: boolean;
+  tenantCode: string;
+};
+
+const PLATFORM_DEFAULT_TENANT: TenantOption = {
+  tenantCode: '',
+  tenantName: '平台默认库',
+  tenantType: 'PLATFORM',
+  status: 'ACTIVE',
+  enableFlag: 1,
+  remark: '不进入租户库，使用平台默认库登录',
 };
 
 function normalizeErrorMessage(error: unknown): string {
@@ -51,156 +65,85 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
     const remembered = getRememberedLoginState();
 
     return {
-      companyKey: remembered?.organizationKey ?? '',
-      employeeId: remembered?.employeeId ?? null,
-      employeeKeyword: remembered?.employeeName ?? '',
+      loginAccount: remembered?.loginAccount ?? remembered?.employeeName ?? '',
       password: remembered?.password ?? '',
       rememberCredentials: Boolean(remembered),
       showPassword: false,
+      tenantCode: remembered?.tenantCode ?? '',
     };
   });
-  const [companies, setCompanies] = useState<ServerOption[]>([]);
-  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [tenants, setTenants] = useState<TenantOption[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
-  const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
+  const [isLoadingTenants, setIsLoadingTenants] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedCompany = useMemo(
-    () => companies.find((company) => company.companyKey === form.companyKey) ?? null,
-    [companies, form.companyKey],
+  const selectedTenant = useMemo(
+    () => tenants.find((tenant) => tenant.tenantCode === form.tenantCode) ?? null,
+    [form.tenantCode, tenants],
   );
-
-  const selectedEmployee = useMemo(() => {
-    if (form.employeeId == null) {
-      return null;
-    }
-
-    return employees.find((employee) => employee.employeeId === form.employeeId) ?? null;
-  }, [employees, form.employeeId]);
+  const isSingleDatabaseMode = !isLoadingTenants && tenants.length === 0;
 
   useEffect(() => {
     let active = true;
 
-    const loadCompanies = async () => {
-      setIsLoadingCompanies(true);
+    const loadTenants = async () => {
+      setIsLoadingTenants(true);
       setErrorMessage(null);
 
       try {
-        const nextCompanies = await fetchServerOptions();
+        const nextTenants = await fetchTenantOptions();
         if (!active) {
           return;
         }
 
-        const normalizedCompanies = Array.isArray(nextCompanies) ? nextCompanies : [];
+        const normalizedTenants = Array.isArray(nextTenants) ? nextTenants : [];
+        const tenantOptions = [PLATFORM_DEFAULT_TENANT, ...normalizedTenants];
         const remembered = getRememberedLoginState();
-        const rememberedCompany = remembered?.organizationKey
-          ? normalizedCompanies.find((company) => company.companyKey === remembered.organizationKey)
+        const rememberedTenant = remembered?.tenantCode
+          ? tenantOptions.find((tenant) => tenant.tenantCode === remembered.tenantCode)
           : null;
-        const defaultCompany = rememberedCompany ?? normalizedCompanies[0] ?? null;
+        const defaultTenant = rememberedTenant ?? PLATFORM_DEFAULT_TENANT;
 
-        setCompanies(normalizedCompanies);
+        setTenants(tenantOptions);
         setForm((current) => ({
           ...current,
-          companyKey: current.companyKey || defaultCompany?.companyKey || '',
+          tenantCode: current.tenantCode || defaultTenant?.tenantCode || '',
         }));
       } catch (error) {
         if (active) {
-          setCompanies([]);
+          setTenants([]);
           setErrorMessage(normalizeErrorMessage(error));
         }
       } finally {
         if (active) {
-          setIsLoadingCompanies(false);
+          setIsLoadingTenants(false);
         }
       }
     };
 
-    void loadCompanies();
+    void loadTenants();
 
     return () => {
       active = false;
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-
-    const loadEmployees = async () => {
-      if (!selectedCompany) {
-        setEmployees([]);
-        setIsLoadingEmployees(false);
-        return;
-      }
-
-      setIsLoadingEmployees(true);
-      setErrorMessage(null);
-
-      try {
-        const nextEmployees = await fetchEmployeeOptions(selectedCompany);
-        if (!active) {
-          return;
-        }
-
-        const normalizedEmployees = Array.isArray(nextEmployees) ? nextEmployees : [];
-        const remembered = getRememberedLoginState();
-        const rememberedMatchesCompany = remembered?.organizationKey === selectedCompany.companyKey;
-
-        setEmployees(normalizedEmployees);
-        setForm((current) => {
-          const rememberedEmployee = rememberedMatchesCompany
-            ? normalizedEmployees.find((employee) => employee.employeeId === remembered.employeeId)
-            : null;
-          const currentEmployee = normalizedEmployees.find(
-            (employee) => employee.employeeId === current.employeeId,
-          );
-          const nextEmployee = rememberedEmployee ?? currentEmployee ?? null;
-
-          return {
-            ...current,
-            employeeId: nextEmployee?.employeeId ?? null,
-            employeeKeyword: nextEmployee?.employeeName ?? '',
-          };
-        });
-      } catch (error) {
-        if (active) {
-          setEmployees([]);
-          setErrorMessage(normalizeErrorMessage(error));
-        }
-      } finally {
-        if (active) {
-          setIsLoadingEmployees(false);
-        }
-      }
-    };
-
-    void loadEmployees();
-
-    return () => {
-      active = false;
-    };
-  }, [selectedCompany]);
-
-  const companyHelperText = isLoadingCompanies
-    ? '正在加载业务库...'
-    : companies.length
-      ? `当前可选 ${companies.length} 个业务库。`
-      : '暂未获取到可用业务库。';
-
-  const employeeHelperText = isLoadingEmployees
-    ? '正在加载可登录人员...'
-    : employees.length
-      ? `当前可选 ${employees.length} 位人员，支持按姓名、账号或拼音搜索。`
-      : '暂未获取到可登录人员。';
+  const tenantHelperText = isLoadingTenants
+    ? '正在加载平台租户...'
+    : tenants.length
+      ? `当前可选 ${Math.max(tenants.length - 1, 0)} 个租户，也可进入平台默认库。`
+      : '未配置租户，当前使用平台默认库单库模式。';
 
   const submit = useCallback(async () => {
-    if (!selectedCompany) {
-      setErrorMessage('请选择业务库。');
+    const loginAccount = form.loginAccount.trim();
+
+    if (tenants.length > 0 && !selectedTenant) {
+      setErrorMessage('请选择租户。');
       return;
     }
 
-    if (!selectedEmployee) {
-      setErrorMessage('请选择登录人员。');
+    if (!loginAccount) {
+      setErrorMessage('请输入姓名或工号。');
       return;
     }
 
@@ -213,51 +156,56 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
     setErrorMessage(null);
 
     try {
+      const activeTenantCode = selectedTenant?.tenantCode || undefined;
+      const isTenantDatabaseLogin = Boolean(activeTenantCode);
       const session = await loginWithIdentity({
-        basename: selectedCompany.basename,
-        employeeId: selectedEmployee.employeeId,
+        loginAccount,
         password: form.password,
-        serverip: selectedCompany.serverip,
-        serverport: selectedCompany.serverport,
+        tenantCode: activeTenantCode,
       });
 
       const normalizedSession: AuthSession = {
         ...session,
-        activeCompany: session.activeCompany ?? {
-          companyKey: session.companyKey ?? selectedCompany.companyKey,
-          datasourceCode: session.datasourceCode,
-          title: session.companyTitle ?? selectedCompany.title,
-        },
-        companyKey: session.companyKey ?? selectedCompany.companyKey,
-        companyTitle: session.companyTitle ?? selectedCompany.title,
-        departmentId: selectedEmployee.departmentId || session.departmentId,
-        employeeId: selectedEmployee.employeeId,
-        employeeName: selectedEmployee.employeeName || session.employeeName,
-        username: selectedEmployee.loginAccount || session.username,
+        activeCompany: session.loginStage === 'company' ? session.activeCompany : null,
+        businessDbRequired: session.businessDbRequired,
+        loginStage: session.loginStage ?? (isTenantDatabaseLogin ? 'tenant' : 'company'),
+        tenantCode: session.tenantCode ?? activeTenantCode,
+        tenantName: session.tenantName ?? (isTenantDatabaseLogin ? selectedTenant?.tenantName : undefined),
+        username: session.username || loginAccount,
       };
 
       persistAuthSession(normalizedSession, form.rememberCredentials);
       persistLegacyDesignerLoginContext({
-        employeeId: selectedEmployee.employeeId,
-        employeeName: selectedEmployee.employeeName,
+        employeeId: normalizedSession.employeeId,
+        employeeName: normalizedSession.employeeName,
         password: form.password,
         remember: form.rememberCredentials,
       });
 
       if (form.rememberCredentials) {
         persistRememberedLoginState({
-          employeeId: selectedEmployee.employeeId,
-          employeeName: selectedEmployee.employeeName,
-          organizationKey: selectedCompany.companyKey,
+          employeeId: normalizedSession.employeeId,
+          employeeName: normalizedSession.employeeName,
+          loginAccount,
           password: form.password,
+          tenantCode: activeTenantCode,
         });
       } else {
         clearRememberedLoginState();
       }
 
-      const bootstrapPayload = await resolvePortalBootstrapPayload(normalizedSession);
+      const businessDbs = isTenantDatabaseLogin && normalizedSession.accessToken
+        ? await fetchAccessibleCompanies(normalizedSession.accessToken)
+        : [];
+      const nextSession = {
+        ...normalizedSession,
+        businessDbRequired: isTenantDatabaseLogin ? businessDbs.length > 0 : false,
+      };
+
+      persistAuthSession(nextSession, form.rememberCredentials);
+      const bootstrapPayload = await resolvePortalBootstrapPayload(nextSession);
       applyAuthBootstrap(bootstrapPayload);
-      onSuccess(normalizedSession);
+      onSuccess(nextSession, businessDbs.length > 0 ? '/business-dbs' : '/systems');
     } catch (error) {
       setErrorMessage(normalizeErrorMessage(error));
     } finally {
@@ -265,36 +213,26 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
     }
   }, [
     applyAuthBootstrap,
+    form.loginAccount,
     form.password,
     form.rememberCredentials,
     onSuccess,
-    selectedCompany,
-    selectedEmployee,
+    selectedTenant,
+    tenants.length,
   ]);
 
-  const selectCompany = useCallback((companyKey: string) => {
+  const selectTenant = useCallback((tenantCode: string) => {
     setForm((current) => ({
       ...current,
-      companyKey,
-      employeeId: null,
-      employeeKeyword: '',
+      tenantCode,
     }));
     setErrorMessage(null);
   }, []);
 
-  const selectEmployee = useCallback((employeeId: number, employeeName: string) => {
+  const setLoginAccount = useCallback((loginAccount: string) => {
     setForm((current) => ({
       ...current,
-      employeeId,
-      employeeKeyword: employeeName,
-    }));
-    setErrorMessage(null);
-  }, []);
-
-  const setEmployeeKeyword = useCallback((employeeKeyword: string) => {
-    setForm((current) => ({
-      ...current,
-      employeeKeyword,
+      loginAccount,
     }));
   }, []);
 
@@ -321,24 +259,20 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
 
   return {
     actions: {
-      selectCompany,
-      selectEmployee,
-      setEmployeeKeyword,
+      selectTenant,
+      setLoginAccount,
       setPassword,
       submit,
       toggleRememberCredentials,
       toggleShowPassword,
     },
-    companies,
-    companyHelperText,
-    employeeHelperText,
-    employees,
     errorMessage,
     form,
-    isLoadingCompanies,
-    isLoadingEmployees,
+    isLoadingTenants,
+    isSingleDatabaseMode,
     isSubmitting,
-    selectedCompany,
-    selectedEmployee,
+    selectedTenant,
+    tenantHelperText,
+    tenants,
   };
 }

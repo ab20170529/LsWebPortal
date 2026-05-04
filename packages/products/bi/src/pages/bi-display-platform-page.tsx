@@ -7,6 +7,7 @@ import { getBiDisplayPlatform } from '../display/display-platform-registry';
 import type { BiDirectoryNode, BiRuntimeScreen, BiScreen } from '../types';
 import { buildNodePath } from '../utils/bi-directory';
 import {
+  buildDisplayDetailNavItems,
   buildDisplayNodeSummaries,
   buildDisplayScreenMap,
   formatDisplayRate,
@@ -393,27 +394,31 @@ export function BiDisplayPlatformPage({
     return selectedPath[1] ?? selectedNode ?? rootNode;
   }, [rootNode, selectedNode, selectedPath]);
 
-  const detailTopSummaries = useMemo(() => {
-    if (!rootNode) {
-      return [] as BiDisplayNodeSummary[];
+  const detailActiveThirdNode = useMemo(() => {
+    if (!detailTopNode) {
+      return null;
     }
 
-    const nodesForTabs = rootNode.children.length > 0 ? rootNode.children : [rootNode];
-    return buildDisplayNodeSummaries(nodesForTabs, screenMap);
-  }, [rootNode, screenMap]);
+    return selectedPath[2] ?? null;
+  }, [detailTopNode, selectedPath]);
 
-  const detailLeftSummaries = useMemo(() => {
+  const detailTopSummaries = useMemo(() => {
     if (!detailTopNode) {
       return [] as BiDisplayNodeSummary[];
     }
 
-    const leftNodes =
-      detailTopNode.children.length > 0 ? [detailTopNode, ...detailTopNode.children] : [detailTopNode];
+    return buildDisplayNodeSummaries(detailTopNode.children, screenMap);
+  }, [detailTopNode, screenMap]);
 
-    return buildDisplayNodeSummaries(leftNodes, screenMap).filter((summary) =>
-      matchesSearch(summary, searchKeyword),
+  const detailNavItems = useMemo(() => {
+    if (!detailActiveThirdNode) {
+      return [];
+    }
+
+    return buildDisplayDetailNavItems(detailActiveThirdNode, screenMap).filter((item) =>
+      matchesSearch(item.summary, searchKeyword),
     );
-  }, [detailTopNode, screenMap, searchKeyword]);
+  }, [detailActiveThirdNode, screenMap, searchKeyword]);
 
   useEffect(() => {
     let cancelled = false;
@@ -484,11 +489,13 @@ export function BiDisplayPlatformPage({
           </button>
 
           <nav className="bi-display-topbar-nav">
-            {isDetailRoute && detailTopSummaries.length > 0
+            {isDetailRoute
               ? detailTopSummaries.map((summary) => (
                   <button
                     key={summary.node.id}
-                    className={`bi-display-topbar-tab ${detailTopNode?.id === summary.node.id ? 'is-active' : ''}`}
+                    className={`bi-display-topbar-tab ${
+                      detailActiveThirdNode?.id === summary.node.id ? 'is-active' : ''
+                    }`}
                     onClick={() => {
                       navigateBiDisplay(getBiDisplayPlatformNodePath(platformCode, summary.node.nodeCode));
                     }}
@@ -574,21 +581,22 @@ export function BiDisplayPlatformPage({
         ) : isDetailRoute && focusSummary && focusNode && detailTopNode ? (
           <section className="bi-display-detail-shell">
             <aside className="bi-display-detail-aside">
-              <div className="bi-display-detail-aside-title">节点导航</div>
-              <div className="bi-display-detail-aside-subtitle">{detailTopNode.nodeName}</div>
-
               <div className="bi-display-detail-nav">
-                {detailLeftSummaries.map((summary, index) => (
+                {detailNavItems.map((item) => (
                   <button
-                    key={summary.node.id}
-                    className={`bi-display-detail-nav-item ${summary.node.id === focusNode.id ? 'is-active' : ''}`}
+                    key={item.summary.node.id}
+                    className={`bi-display-detail-nav-item ${
+                      item.summary.node.id === focusNode.id ? 'is-active' : ''
+                    }`}
                     onClick={() => {
-                      navigateBiDisplay(getBiDisplayPlatformNodePath(platformCode, summary.node.nodeCode));
+                      navigateBiDisplay(getBiDisplayPlatformNodePath(platformCode, item.summary.node.nodeCode));
                     }}
                     type="button"
                   >
-                    <span>{index === 0 ? `${detailTopNode.nodeName}总览` : summary.node.nodeName}</span>
-                    <span>{summary.childCount || summary.boundScreens}</span>
+                    <span className="bi-display-detail-nav-label">
+                      {item.summary.node.nodeName}
+                    </span>
+                    <span>{item.summary.childCount || item.summary.boundScreens}</span>
                   </button>
                 ))}
               </div>

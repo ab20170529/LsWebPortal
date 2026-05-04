@@ -4,8 +4,11 @@ import type {
   BiDataAsset,
   BiDataAssetField,
   BiDatasource,
+  BiDesignMessageSendResult,
+  BiDesignSession,
   BiDirectoryNode,
   BiGenerationTask,
+  BiMenu,
   BiNodeType,
   BiPromptPreview,
   BiPromptTemplate,
@@ -87,7 +90,7 @@ export type ScreenSavePayload = {
   designMeta?: Record<string, unknown>;
   latestDesignPrompt?: string;
   name: string;
-  nodeId: number;
+  nodeId?: number | null;
   screenCode: string;
   versionDraft?: {
     externalConfig?: Record<string, unknown>;
@@ -112,7 +115,7 @@ export type ScreenVersionSavePayload = {
 
 export type AiGeneratePayload = {
   datasourceIds?: number[];
-  nodeId: number;
+  nodeId?: number | null;
   prompt: string;
   screenCode?: string;
   screenName?: string;
@@ -121,7 +124,7 @@ export type AiGeneratePayload = {
 
 export type GenerateDraftPayload = {
   datasourceIds?: number[];
-  nodeId: number;
+  nodeId?: number | null;
   prompt: string;
   providerCode?: string;
   publishMode?: string;
@@ -153,7 +156,7 @@ export type RegenerateVersionPayload = {
 
 export type PromptPreviewPayload = {
   datasourceIds?: number[];
-  nodeId: number;
+  nodeId?: number | null;
   prompt: string;
   providerCode?: string;
   screenId?: number;
@@ -180,7 +183,53 @@ export type ShareCreatePayload = {
   screenId: number;
 };
 
+export type DesignSessionCreatePayload = {
+  baseVersionId?: number | null;
+  title?: string;
+};
+
+export type DesignMessageSendPayload = {
+  datasourceIds?: number[];
+  prompt: string;
+  providerCode?: string;
+  referenceImages?: DesignReferenceImagePayload[];
+  sourceAssetIds?: number[];
+  templateCode?: string;
+};
+
+export type DesignReferenceImagePayload = {
+  dataUrl: string;
+  mimeType: string;
+  name: string;
+  size: number;
+};
+
+export type MenuSavePayload = {
+  archiveId?: number | null;
+  linkUrl?: string;
+  menuCode: string;
+  menuName: string;
+  openMode?: string;
+  orderNo?: number;
+  parentId?: number | null;
+  status?: string;
+  targetType: 'ARCHIVE' | 'URL';
+};
+
+export type PublicRuntimePayload = {
+  datasourceCode?: string | null;
+  versionId?: number | null;
+};
+
 export const biApi = {
+  bindArchiveSourceAssets(archiveId: number, sourceAssetIds: number[]) {
+    return unwrap<BiScreen>(
+      biApiClient.request(`/api/bi/archives/${archiveId}/source-assets`, {
+        body: { sourceAssetIds },
+        method: 'POST',
+      }),
+    );
+  },
   bindNodeSourceAssets(nodeId: number, sourceAssetIds: number[]) {
     return unwrap<BiDirectoryNode>(
       biApiClient.request(`/api/bi/directories/${nodeId}/source-assets`, {
@@ -236,9 +285,32 @@ export const biApi = {
       }),
     );
   },
+  deleteMenu(menuId: number) {
+    return unwrap<boolean>(
+      biApiClient.request(`/api/bi/menus/${menuId}`, {
+        method: 'DELETE',
+      }),
+    );
+  },
   createScreen(payload: ScreenSavePayload) {
     return unwrap<BiScreen>(
       biApiClient.request('/api/bi/screens', {
+        body: payload,
+        method: 'POST',
+      }),
+    );
+  },
+  createArchive(payload: ScreenSavePayload) {
+    return unwrap<BiScreen>(
+      biApiClient.request('/api/bi/archives', {
+        body: payload,
+        method: 'POST',
+      }),
+    );
+  },
+  createMenu(payload: MenuSavePayload) {
+    return unwrap<BiMenu>(
+      biApiClient.request('/api/bi/menus', {
         body: payload,
         method: 'POST',
       }),
@@ -252,10 +324,26 @@ export const biApi = {
       }),
     );
   },
+  updateArchive(archiveId: number, payload: ScreenSavePayload) {
+    return unwrap<BiScreen>(
+      biApiClient.request(`/api/bi/archives/${archiveId}`, {
+        body: payload,
+        method: 'PUT',
+      }),
+    );
+  },
   createShareToken(payload: ShareCreatePayload) {
     return unwrap<BiShareToken>(
       biApiClient.request('/api/bi/shares', {
         body: payload,
+        method: 'POST',
+      }),
+    );
+  },
+  createDesignSession(screenId: number, payload?: DesignSessionCreatePayload) {
+    return unwrap<BiDesignSession>(
+      biApiClient.request(`/api/bi/screens/${screenId}/design-sessions`, {
+        body: payload ?? {},
         method: 'POST',
       }),
     );
@@ -286,6 +374,9 @@ export const biApi = {
   getGenerationTask(taskId: number) {
     return unwrap<BiGenerationTask>(biApiClient.request(`/api/bi/generation-tasks/${taskId}`));
   },
+  getDesignSession(sessionId: number) {
+    return unwrap<BiDesignSession>(biApiClient.request(`/api/bi/design-sessions/${sessionId}`));
+  },
   getRuntimeByNode(nodeCode: string) {
     return unwrap<BiRuntimeScreen>(biApiClient.request(`/api/bi/runtime/node/${nodeCode}`));
   },
@@ -296,6 +387,16 @@ export const biApi = {
     return unwrap<BiRuntimeScreen>(
       biApiClient.request(`/api/bi/runtime/screen/${screenCode}/preview`, {
         query: { versionId: versionId ?? undefined },
+      }),
+    );
+  },
+  getPublicRuntimeByScreen(screenCode: string, payload?: PublicRuntimePayload) {
+    return unwrap<BiRuntimeScreen>(
+      biApiClient.request(`/api/bi/share/public-screen/${screenCode}`, {
+        query: {
+          datasourceCode: payload?.datasourceCode ?? undefined,
+          versionId: payload?.versionId ?? undefined,
+        },
       }),
     );
   },
@@ -319,6 +420,13 @@ export const biApi = {
       biApiClient.request(`/api/bi/screens/${screenId}/design-records`),
     );
   },
+  listDesignSessions(screenId: number, versionId?: number | null) {
+    return unwrap<BiDesignSession[]>(
+      biApiClient.request(`/api/bi/screens/${screenId}/design-sessions`, {
+        query: { versionId: versionId ?? undefined },
+      }),
+    );
+  },
   listDirectoryTree() {
     return unwrap<BiDirectoryNode[]>(biApiClient.request('/api/bi/directories/tree'));
   },
@@ -338,6 +446,16 @@ export const biApi = {
         query: { nodeId: nodeId ?? undefined },
       }),
     );
+  },
+  listArchives(nodeId?: number | null) {
+    return unwrap<BiScreen[]>(
+      biApiClient.request('/api/bi/archives', {
+        query: { nodeId: nodeId ?? undefined },
+      }),
+    );
+  },
+  listMenus() {
+    return unwrap<BiMenu[]>(biApiClient.request('/api/bi/menus'));
   },
   listShareTokens(screenId?: number | null) {
     return unwrap<BiShareToken[]>(
@@ -383,6 +501,22 @@ export const biApi = {
         body: { params: params ?? {} },
         method: 'POST',
         query: { versionId: versionId ?? undefined },
+      }),
+    );
+  },
+  queryPublicRuntimeByScreen(
+    screenCode: string,
+    payload?: PublicRuntimePayload,
+    params?: Record<string, unknown>,
+    ) {
+    return unwrap<BiRuntimeScreen>(
+      biApiClient.request(`/api/bi/share/public-screen/${screenCode}/query`, {
+        body: { params: params ?? {} },
+        method: 'POST',
+        query: {
+          datasourceCode: payload?.datasourceCode ?? undefined,
+          versionId: payload?.versionId ?? undefined,
+        },
       }),
     );
   },
@@ -433,6 +567,14 @@ export const biApi = {
       }),
     );
   },
+  sendDesignMessage(sessionId: number, payload: DesignMessageSendPayload) {
+    return unwrap<BiDesignMessageSendResult>(
+      biApiClient.request(`/api/bi/design-sessions/${sessionId}/messages`, {
+        body: payload,
+        method: 'POST',
+      }),
+    );
+  },
   createNodeType(payload: NodeTypeSavePayload) {
     return unwrap<BiNodeType>(
       biApiClient.request('/api/bi/node-types', {
@@ -460,6 +602,14 @@ export const biApi = {
   updateDatasourceAsset(datasourceId: number, assetId: number, payload: DataAssetSavePayload) {
     return unwrap<BiDataAsset>(
       biApiClient.request(`/api/bi/datasources/${datasourceId}/assets/${assetId}`, {
+        body: payload,
+        method: 'PUT',
+      }),
+    );
+  },
+  updateMenu(menuId: number, payload: MenuSavePayload) {
+    return unwrap<BiMenu>(
+      biApiClient.request(`/api/bi/menus/${menuId}`, {
         body: payload,
         method: 'PUT',
       }),

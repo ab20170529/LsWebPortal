@@ -135,13 +135,37 @@ export type BiScreen = {
   designBrief?: Record<string, unknown> | null;
   designMeta?: Record<string, unknown> | null;
   designStatus?: string | null;
+  datasourceIds?: number[];
   id: number;
   latestDesignPrompt?: string | null;
   name: string;
   nodeId: number;
   publishStatus?: string | null;
   screenCode: string;
+  sourceAssetIds?: number[];
   versions: BiScreenVersion[];
+};
+
+export type BiArchiveSourceBinding = {
+  archiveId: number;
+  datasourceIds: number[];
+  sourceAssetIds: number[];
+};
+
+export type BiMenu = {
+  archiveCode?: string | null;
+  archiveId?: number | null;
+  archiveName?: string | null;
+  children: BiMenu[];
+  id: number;
+  linkUrl?: string | null;
+  menuCode: string;
+  menuName: string;
+  openMode?: string | null;
+  orderNo?: number | null;
+  parentId?: number | null;
+  status?: string | null;
+  targetType: 'ARCHIVE' | 'URL' | string;
 };
 
 export type BiRuntimeModule = {
@@ -161,6 +185,7 @@ export type BiRuntimeScreen = {
   biType: string;
   externalConfig?: Record<string, unknown>;
   filters: Array<Record<string, unknown>>;
+  moduleLayout?: Record<string, unknown>;
   modules: BiRuntimeModule[];
   nodeCode?: string | null;
   nodeId?: number | null;
@@ -168,7 +193,7 @@ export type BiRuntimeScreen = {
   pageSchema?: Record<string, unknown>;
   publishStatus?: string | null;
   screenCode: string;
-  screenId: number;
+  screenId?: number | null;
   screenName: string;
   theme?: string | null;
 };
@@ -239,10 +264,41 @@ export type BiScreenDesignRecord = {
   templateCode?: string | null;
 };
 
+export type BiDesignMessage = {
+  content?: string | null;
+  createTime?: string | null;
+  generatedVersionId?: number | null;
+  generationTaskId?: number | null;
+  messageId: number;
+  meta?: Record<string, unknown> | null;
+  role: string;
+  sessionId: number;
+  status?: string | null;
+};
+
+export type BiDesignSession = {
+  baseVersionId?: number | null;
+  contextSummary?: string | null;
+  createTime?: string | null;
+  messages: BiDesignMessage[];
+  screenId: number;
+  sessionId: number;
+  status?: string | null;
+  title?: string | null;
+};
+
+export type BiDesignMessageSendResult = {
+  assistantMessage?: BiDesignMessage | null;
+  generationTask?: BiGenerationTask | null;
+  session: BiDesignSession;
+  userMessage?: BiDesignMessage | null;
+};
+
 export type BiRoute =
   | { kind: 'workspace' }
   | { kind: 'node'; value: string }
   | { kind: 'screen'; value: string }
+  | { kind: 'public-screen'; value: string }
   | { kind: 'share'; value: string }
   | { kind: 'not-found' };
 

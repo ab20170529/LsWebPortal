@@ -21,9 +21,9 @@ import type { ServerOption } from '../features/auth/types';
 import { navigate } from '../router';
 
 function canManageSystems(session: AuthSession): boolean {
-  if (session.admin === true) return true;
-  const name = (session.employeeName ?? session.displayName ?? '').trim();
-  return name === '张又文';
+  const allowlist = new Set(['管理员', '张又文', '王一帆']);
+  return [session.username, session.employeeName, session.displayName]
+    .some((value) => allowlist.has((value ?? '').trim()));
 }
 
 type AccessDeniedPageProps = {
@@ -164,6 +164,9 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
   const redirectTarget = getRedirectTarget();
   const showManageButton = canManageSystems(session);
   const hasActiveCompany = Boolean(currentCompanyKey && session.loginStage === 'company');
+  const hasBusinessContext = hasActiveCompany || (
+    session.loginStage === 'tenant' && session.businessDbRequired === false
+  );
 
   const [companies, setCompanies] = useState<ServerOption[]>([]);
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
@@ -175,7 +178,7 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
     let active = true;
 
     const loadCompanies = async () => {
-      if (hasActiveCompany) {
+      if (hasBusinessContext) {
         setCompanies([]);
         setCompanyError(null);
         setIsLoadingCompanies(false);
@@ -218,7 +221,7 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
     return () => {
       active = false;
     };
-  }, [hasActiveCompany, session.accessToken]);
+  }, [hasBusinessContext, session.accessToken]);
 
   const activateCompany = async (company: ServerOption) => {
     if (!session.accessToken) {
@@ -311,11 +314,11 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
                 <div className="theme-text-strong mt-3 text-2xl font-black tracking-tight">
                   {hasActiveCompany
                     ? session.activeCompany?.title ?? session.companyTitle ?? '已选业务库'
-                    : '尚未选择业务库'}
+                    : hasBusinessContext ? '当前租户默认库' : '尚未选择业务库'}
                 </div>
               </div>
-              <Badge tone={hasActiveCompany ? 'success' : 'neutral'}>
-                {hasActiveCompany ? 'Ready' : 'Required'}
+              <Badge tone={hasBusinessContext ? 'success' : 'neutral'}>
+                {hasBusinessContext ? 'Ready' : 'Required'}
               </Badge>
             </div>
 
@@ -335,16 +338,16 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
               </div>
             ) : null}
 
-            {!hasActiveCompany ? (
+            {!hasBusinessContext ? (
               <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
                 {COMPANY_REQUIRED_MESSAGE}
               </div>
             ) : null}
 
             <div className="portal-system-gate__side-list mt-6 space-y-3">
-              {hasActiveCompany ? (
+              {hasBusinessContext ? (
                 <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
-                  当前会话已绑定业务库，可以直接进入系统。
+                  {hasActiveCompany ? '当前会话已绑定业务库，可以直接进入系统。' : '当前租户未配置业务库，可以直接进入系统。'}
                 </div>
               ) : isLoadingCompanies ? (
                 <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
@@ -403,7 +406,7 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
             }
           >
             {accessibleEntries.map((entry) => {
-              const disabled = !hasActiveCompany;
+              const disabled = !hasBusinessContext;
 
               return (
                 <button

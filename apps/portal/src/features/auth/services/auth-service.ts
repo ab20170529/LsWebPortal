@@ -7,6 +7,7 @@ import type {
   EmployeeOption,
   IdentityLoginPayload,
   ServerOption,
+  TenantOption,
 } from '../types';
 import { apiRequest } from './http-client';
 
@@ -26,6 +27,10 @@ type AuthSessionResponse = Omit<AuthSession, 'activeCompany' | 'admin' | 'loginS
 };
 
 function normalizeActiveCompany(session: AuthSessionResponse): AuthActiveCompany | null {
+  if (session.loginStage === 'tenant') {
+    return null;
+  }
+
   if (session.activeCompany?.companyKey) {
     return session.activeCompany;
   }
@@ -72,8 +77,14 @@ export async function fetchServerOptions(employeeId?: number): Promise<ServerOpt
   });
 }
 
+export async function fetchTenantOptions(): Promise<TenantOption[]> {
+  return apiRequest<TenantOption[]>(apiConfig.auth.tenants, {
+    method: 'GET',
+  });
+}
+
 export async function fetchAccessibleCompanies(accessToken: string): Promise<ServerOption[]> {
-  return apiRequest<ServerOption[]>(apiConfig.auth.companies, {
+  return apiRequest<ServerOption[]>(apiConfig.auth.businessDbs, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -89,7 +100,7 @@ export async function activateCompanySession(
   accessToken: string,
   payload: CompanySessionPayload,
 ): Promise<AuthSession> {
-  const response = await apiRequest<AuthSessionResponse>(apiConfig.auth.companySession, {
+  const response = await apiRequest<AuthSessionResponse>(apiConfig.auth.businessDbSession, {
     body: payload,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -101,11 +112,13 @@ export async function activateCompanySession(
 }
 
 export async function loginWithPassword(payload: {
-  basename: string;
-  employeeId: number;
+  basename?: string;
+  employeeId?: number | null;
+  loginAccount?: string;
   password: string;
-  serverip: string;
-  serverport: number;
+  serverip?: string;
+  serverport?: number;
+  tenantCode?: string;
 }): Promise<AuthSession> {
   const response = await apiRequest<AuthSessionResponse>(apiConfig.auth.login, {
     body: payload,

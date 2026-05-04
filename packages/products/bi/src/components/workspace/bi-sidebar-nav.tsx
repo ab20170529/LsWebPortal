@@ -13,9 +13,9 @@ const ITEMS: Array<{
   id: BiWorkspaceSection;
   label: string;
 }> = [
-  { icon: FolderIcon, id: 'canvas', label: '目录画布' },
+  { icon: FolderIcon, id: 'archives', label: 'BI档案管理' },
   { icon: BoxIcon, id: 'sources', label: '分析源管理' },
-  { icon: ShareIcon, id: 'archives', label: 'BI档案管理' },
+  { icon: ShareIcon, id: 'menus', label: '菜单管理' },
 ];
 
 export function BiSidebarNav({ activeSection, onChange }: BiSidebarNavProps) {
@@ -39,6 +39,16 @@ export function BiSidebarNav({ activeSection, onChange }: BiSidebarNavProps) {
           );
         })}
       </div>
+
+      <button
+        className={cx('bi-sidebar-nav-item', activeSection === 'canvas' ? 'is-active' : '')}
+        onClick={() => onChange('canvas')}
+        title="兼容目录"
+        type="button"
+      >
+        <FolderIcon className="bi-sidebar-nav-icon" />
+        <span className="bi-sidebar-nav-tooltip">兼容目录</span>
+      </button>
 
       <button
         className={cx('bi-sidebar-nav-item', activeSection === 'settings' ? 'is-active' : '')}

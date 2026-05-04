@@ -18,7 +18,7 @@ describe('bi workspace view state helpers', () => {
     expect(readBiWorkspaceViewState('?section=oops&nodeId=-1&screenId=abc&tab=nope')).toEqual({
       nodeId: null,
       screenId: null,
-      section: 'canvas',
+      section: 'archives',
       tab: 'base',
     });
   });
@@ -31,7 +31,7 @@ describe('bi workspace view state helpers', () => {
         section: 'archives',
         tab: 'sharing',
       }),
-    ).toBe('?section=archives&nodeId=12&screenId=99&tab=sharing');
-    expect(buildBiWorkspaceViewSearch({ section: 'canvas' })).toBe('');
+    ).toBe('?nodeId=12&screenId=99&tab=sharing');
+    expect(buildBiWorkspaceViewSearch({ section: 'canvas' })).toBe('?section=canvas');
   });
 });

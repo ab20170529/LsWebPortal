@@ -18,6 +18,7 @@ import {
 } from './app/presentation/portal-presentation-provider';
 import { PortalLoginPage } from './features/auth/portal-login-page';
 import { clearAuthSession } from './features/auth/services/storage-service';
+import { BusinessDbSelectionPage } from './pages/business-db-selection-page';
 import { AccessDeniedPage, SystemAccessPage } from './pages/system-access-page';
 import { PortalSystemManagerPage } from './pages/portal-system-manager-page';
 
@@ -30,6 +31,7 @@ const DesignerHomePage = React.lazy(() =>
 type RouteKey =
   | 'bi'
   | 'bi-display'
+  | 'business-dbs'
   | 'designer'
   | 'erp'
   | 'login'
@@ -93,6 +95,9 @@ function resolveRoute(pathname: string): RouteKey {
       return 'login';
     case '/systems':
       return 'systems';
+    case '/business-dbs':
+    case '/companies':
+      return 'business-dbs';
     case '/settings':
       return 'settings';
     case '/system-manager':
@@ -118,6 +123,18 @@ function getPlatformSystemEntry(route: RouteKey) {
   return isPlatformSystemRoute(route) ? getPlatformSystemEntryById(route) : undefined;
 }
 
+const PLATFORM_MANAGER_ALLOWLIST = new Set(['管理员', '张又文', '王一帆']);
+
+function isPlatformManagerSession(session: Parameters<typeof hasActiveCompanySession>[0]) {
+  const candidates = [
+    session?.username,
+    session?.employeeName,
+    session?.displayName,
+  ];
+
+  return candidates.some((candidate) => PLATFORM_MANAGER_ALLOWLIST.has((candidate ?? '').trim()));
+}
+
 function getCurrentRouteRedirectTarget() {
   if (typeof window === 'undefined') {
     return '/systems';
@@ -130,6 +147,10 @@ function getCurrentRouteRedirectTarget() {
 function isSystemRedirectTarget(target: string) {
   return (
     target === '/systems'
+    || target === '/business-dbs'
+    || target.startsWith('/business-dbs/')
+    || target === '/companies'
+    || target.startsWith('/companies/')
     || target === '/bi-display'
     || target.startsWith('/bi-display/')
     || target === '/designer'
@@ -151,10 +172,18 @@ function resolveAuthenticatedLoginRedirectTarget(session: Parameters<typeof hasA
   const searchParams = new URLSearchParams(window.location.search);
   const requestedTarget = searchParams.get('redirect');
   if (!requestedTarget?.startsWith('/')) {
+    if (session?.loginStage === 'tenant' && session.businessDbRequired !== false) {
+      return '/business-dbs';
+    }
+
     return '/systems';
   }
 
   const normalizedTarget = requestedTarget.replace(/^\/design\b/, '/designer');
+  if (normalizedTarget === '/business-dbs' || normalizedTarget === '/companies') {
+    return normalizedTarget;
+  }
+
   if (!isSystemRedirectTarget(normalizedTarget)) {
     return normalizedTarget;
   }
@@ -377,7 +406,11 @@ export function PortalRouter() {
   const { isAuthenticated, session, signOut } = usePortalAuth();
   const pathname = usePathname();
   const route = resolveRoute(pathname);
-  const isPublicBiShareRoute = pathname === '/bi/share' || pathname.startsWith('/bi/share/');
+  const isPublicBiRoute =
+    pathname === '/bi/share'
+    || pathname.startsWith('/bi/share/')
+    || pathname === '/bi/public'
+    || pathname.startsWith('/bi/public/');
   const isLegacyDesignerRoute = pathname === '/design' || pathname.startsWith('/design/');
 
   useEffect(() => {
@@ -389,13 +422,13 @@ export function PortalRouter() {
   }, [isLegacyDesignerRoute]);
 
   useEffect(() => {
-    if (isAuthenticated && session && route === 'login') {
+  if (isAuthenticated && session && route === 'login') {
       navigate(resolveAuthenticatedLoginRedirectTarget(session));
     }
   }, [isAuthenticated, route, session]);
 
   useEffect(() => {
-    if (!isAuthenticated || !session || !isPlatformSystemRoute(route) || route === 'bi' && isPublicBiShareRoute) {
+    if (!isAuthenticated || !session || !isPlatformSystemRoute(route) || route === 'bi' && isPublicBiRoute) {
       return;
     }
 
@@ -403,13 +436,13 @@ export function PortalRouter() {
       const redirectTarget = getCurrentRouteRedirectTarget();
       replaceLocation(`/systems?redirect=${encodeURIComponent(redirectTarget)}`);
     }
-  }, [isAuthenticated, isPublicBiShareRoute, route, session]);
+  }, [isAuthenticated, isPublicBiRoute, route, session]);
 
   if (route === 'login') {
     return <PortalLoginPage />;
   }
 
-  if (route === 'bi' && isPublicBiShareRoute) {
+  if (route === 'bi' && isPublicBiRoute) {
     return <BiHomePage />;
   }
 
@@ -432,17 +465,19 @@ export function PortalRouter() {
     return <SystemAccessPage session={session} />;
   }
 
+  if (route === 'business-dbs') {
+    return <BusinessDbSelectionPage />;
+  }
+
   if (isPlatformSystemRoute(route) && !hasActiveCompanySession(session)) {
     return <SystemAccessPage session={session} />;
   }
 
   if (route === 'system-manager') {
-    const isAdmin = session.admin === true;
-    const isZhangYouwen = (session.employeeName ?? session.displayName ?? '').trim() === '张又文';
-    if (!isAdmin && !isZhangYouwen) {
+    if (!isPlatformManagerSession(session)) {
       return (
         <AppShell pathname={pathname}>
-          <AccessDeniedPage session={session} targetLabel="系统管理" />
+          <AccessDeniedPage session={session} targetLabel="平台总管理系统" />
         </AppShell>
       );
     }

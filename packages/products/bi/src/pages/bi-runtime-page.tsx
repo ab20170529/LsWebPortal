@@ -4,9 +4,10 @@ import { Badge, Card } from '@lserp/ui';
 import { biApi } from '../api/bi-api';
 import { BiRuntimeScreenSurface } from '../components/bi-runtime-screen-surface';
 import type { BiRoute, BiRuntimeScreen } from '../types';
+import { readBiPublicRuntimeOptions } from '../utils/bi-public-runtime';
 
 type BiRuntimePageProps = {
-  route: Extract<BiRoute, { kind: 'node' | 'screen' | 'share' }>;
+  route: Extract<BiRoute, { kind: 'node' | 'screen' | 'public-screen' | 'share' }>;
 };
 
 export function BiRuntimePage({ route }: BiRuntimePageProps) {
@@ -27,6 +28,19 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
           route.kind === 'screen' && previewVersionIdRaw && Number.isFinite(Number(previewVersionIdRaw))
             ? Number(previewVersionIdRaw)
             : null;
+
+        if (route.kind === 'public-screen') {
+          const publicOptions = readBiPublicRuntimeOptions(window.location.search);
+          const publicScreen = await biApi.queryPublicRuntimeByScreen(route.value, publicOptions);
+          if (cancelled) {
+            return;
+          }
+
+          startTransition(() => {
+            setScreen(publicScreen);
+          });
+          return;
+        }
 
         const meta =
           route.kind === 'node'
@@ -89,6 +103,14 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
         <div className="theme-text-strong mt-4 text-2xl font-black tracking-tight">BI 页面加载失败</div>
         <p className="theme-text-muted mt-3 text-sm leading-7">{error ?? '未找到可展示的 BI 页面。'}</p>
       </Card>
+    );
+  }
+
+  if (route.kind === 'public-screen') {
+    return (
+      <div className="bi-public-runtime-page">
+        <BiRuntimeScreenSurface screen={screen} />
+      </div>
     );
   }
 

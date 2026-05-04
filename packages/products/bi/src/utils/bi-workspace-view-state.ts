@@ -1,4 +1,4 @@
-export type BiWorkspaceSection = 'archives' | 'canvas' | 'settings' | 'sources';
+export type BiWorkspaceSection = 'archives' | 'canvas' | 'menus' | 'settings' | 'sources';
 
 export type BiArchiveTab = 'base' | 'design' | 'sharing' | 'versions';
 
@@ -12,11 +12,11 @@ export type BiWorkspaceViewState = {
 const DEFAULT_STATE: BiWorkspaceViewState = {
   nodeId: null,
   screenId: null,
-  section: 'canvas',
+  section: 'archives',
   tab: 'base',
 };
 
-const SECTION_SET = new Set<BiWorkspaceSection>(['archives', 'canvas', 'settings', 'sources']);
+const SECTION_SET = new Set<BiWorkspaceSection>(['archives', 'canvas', 'menus', 'settings', 'sources']);
 const TAB_SET = new Set<BiArchiveTab>(['base', 'design', 'sharing', 'versions']);
 
 function parseNumber(value: string | null) {
@@ -35,7 +35,7 @@ export function readBiWorkspaceViewState(search: string): BiWorkspaceViewState {
   return {
     nodeId: parseNumber(params.get('nodeId')),
     screenId: parseNumber(params.get('screenId')),
-    section: section && SECTION_SET.has(section as BiWorkspaceSection) ? (section as BiWorkspaceSection) : 'canvas',
+    section: section && SECTION_SET.has(section as BiWorkspaceSection) ? (section as BiWorkspaceSection) : 'archives',
     tab: tab && TAB_SET.has(tab as BiArchiveTab) ? (tab as BiArchiveTab) : 'base',
   };
 }

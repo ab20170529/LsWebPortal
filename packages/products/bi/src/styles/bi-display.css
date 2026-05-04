@@ -400,6 +400,7 @@
   width: 100%;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
@@ -407,6 +408,13 @@
   color: #a1a1aa;
   font-size: 13px;
   text-align: left;
+}
+
+.bi-display-detail-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bi-display-detail-nav-item:hover,
@@ -784,6 +792,22 @@
   padding: 0;
 }
 
+.bi-public-runtime-page {
+  min-height: 100vh;
+  background: #020711;
+}
+
+.bi-public-runtime-page .bi-runtime-surface {
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.bi-public-runtime-page .bi-runtime-surface.has-background {
+  min-height: 100vh;
+  border: 0;
+  border-radius: 0;
+}
+
 .bi-display-stage-loading {
   display: flex;
   min-height: 420px;
@@ -837,6 +861,15 @@
   gap: 16px;
 }
 
+.bi-runtime-surface.has-background {
+  min-height: calc(100vh - 128px);
+  overflow: hidden;
+  border: 1px solid rgba(0, 240, 255, 0.18);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 24px 80px rgba(0, 0, 0, 0.32);
+}
+
 .bi-runtime-summary,
 .bi-runtime-empty-state,
 .bi-runtime-external-state,
@@ -846,6 +879,16 @@
   background: rgba(255, 255, 255, 0.92);
   padding: 16px 18px;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
+.bi-runtime-surface.has-background .bi-runtime-summary,
+.bi-runtime-surface.has-background .bi-runtime-empty-state,
+.bi-runtime-surface.has-background .bi-runtime-external-state,
+.bi-runtime-surface.has-background .bi-runtime-module {
+  border-color: rgba(125, 211, 252, 0.22);
+  background: rgba(4, 12, 24, 0.72);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
 }
 
 .bi-runtime-summary-label,
@@ -870,14 +913,33 @@
   color: #64748b;
 }
 
+.bi-runtime-surface.has-background .bi-runtime-summary-label,
+.bi-runtime-surface.has-background .bi-runtime-module-tag,
+.bi-runtime-surface.has-background .bi-runtime-module-code {
+  color: rgba(186, 230, 253, 0.74);
+}
+
+.bi-runtime-surface.has-background .bi-runtime-summary-text,
+.bi-runtime-surface.has-background .bi-runtime-module-text,
+.bi-runtime-surface.has-background .bi-runtime-external-text,
+.bi-runtime-surface.has-background .bi-runtime-external-url,
+.bi-runtime-surface.has-background .bi-runtime-empty-state,
+.bi-runtime-surface.has-background .bi-runtime-external-state,
+.bi-runtime-surface.has-background .bi-runtime-empty-inline,
+.bi-runtime-surface.has-background .bi-runtime-table-empty {
+  color: rgba(224, 242, 254, 0.82);
+}
+
 .bi-runtime-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  grid-auto-rows: minmax(40px, auto);
+  grid-template-columns: repeat(var(--bi-runtime-grid-columns, 12), minmax(0, 1fr));
 }
 
-.bi-runtime-grid-item.is-span-2 {
-  grid-column: span 2;
+.bi-runtime-grid-item {
+  min-width: 0;
 }
 
 .bi-runtime-module {
@@ -890,6 +952,12 @@
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--bi-display-accent) 16%, transparent), transparent 42%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(239, 246, 255, 0.94) 100%);
+}
+
+.bi-runtime-surface.has-background .bi-runtime-module--metric {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--bi-display-accent) 24%, transparent), transparent 42%),
+    rgba(4, 12, 24, 0.76);
 }
 
 .bi-runtime-module-head,
@@ -912,6 +980,11 @@
   color: #0f172a;
   font-size: 20px;
   font-weight: 700;
+}
+
+.bi-runtime-surface.has-background .bi-runtime-module-title,
+.bi-runtime-surface.has-background .bi-runtime-chart-meta {
+  color: #f8fafc;
 }
 
 .bi-runtime-module-metric {
@@ -966,6 +1039,12 @@
   border: 1px solid rgba(203, 213, 225, 0.74);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.78);
+}
+
+.bi-runtime-surface.has-background .bi-runtime-table-wrap,
+.bi-runtime-surface.has-background .bi-runtime-frame-wrap {
+  border-color: rgba(125, 211, 252, 0.2);
+  background: rgba(2, 6, 23, 0.38);
 }
 
 .bi-runtime-table {
@@ -1090,8 +1169,9 @@
     grid-template-columns: 1fr;
   }
 
-  .bi-runtime-grid-item.is-span-2 {
-    grid-column: span 1;
+  .bi-runtime-grid-item {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
   }
 }
 

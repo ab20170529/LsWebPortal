@@ -9,7 +9,7 @@ import {
 import { platformSystemEntries, type PlatformSystemId } from '@lserp/contracts';
 import { createApiClient } from '@lserp/http';
 
-export type AuthLoginStage = 'identity' | 'company';
+export type AuthLoginStage = 'identity' | 'tenant' | 'company';
 
 export type AuthActiveCompany = {
   companyKey: string;
@@ -42,7 +42,10 @@ export type AuthSession = {
   employeeId: number;
   employeeName?: string;
   expiresAt?: string;
+  businessDbRequired?: boolean;
   loginStage: AuthLoginStage;
+  tenantCode?: string;
+  tenantName?: string;
   roleAssignments: AuthRoleAssignment[];
   systemGrants: AuthSystemGrant[];
   tokenType?: string;
@@ -69,7 +72,10 @@ export type PortalAuthBootstrapPayload = {
     departmentId?: string;
     employeeName?: string;
     expiresAt?: string;
+    businessDbRequired?: boolean;
     loginStage?: AuthLoginStage;
+    tenantCode?: string;
+    tenantName?: string;
     tokenType?: string;
     tokenVersion?: number;
   };
@@ -190,6 +196,10 @@ function dedupeSystemGrants(systemGrants: AuthSystemGrant[]) {
 function deriveActiveCompany(
   sessionContext?: PortalAuthBootstrapPayload['sessionContext'],
 ): AuthActiveCompany | null {
+  if (sessionContext?.loginStage === 'tenant') {
+    return null;
+  }
+
   if (sessionContext?.activeCompany?.companyKey) {
     return sessionContext.activeCompany;
   }
@@ -209,7 +219,11 @@ function deriveLoginStage(
   sessionContext?: PortalAuthBootstrapPayload['sessionContext'],
   activeCompany?: AuthActiveCompany | null,
 ): AuthLoginStage {
-  if (sessionContext?.loginStage === 'identity' || sessionContext?.loginStage === 'company') {
+  if (
+    sessionContext?.loginStage === 'identity'
+    || sessionContext?.loginStage === 'tenant'
+    || sessionContext?.loginStage === 'company'
+  ) {
     return sessionContext.loginStage;
   }
 
@@ -232,7 +246,10 @@ export function normalizeAuthSession(payload: PortalAuthBootstrapPayload): AuthS
     employeeId: payload.user.employeeId,
     employeeName: payload.sessionContext?.employeeName ?? payload.user.displayName,
     expiresAt: payload.sessionContext?.expiresAt,
+    businessDbRequired: payload.sessionContext?.businessDbRequired,
     loginStage: deriveLoginStage(payload.sessionContext, activeCompany),
+    tenantCode: payload.sessionContext?.tenantCode,
+    tenantName: payload.sessionContext?.tenantName,
     roleAssignments: dedupeRoleAssignments(payload.roleAssignments),
     systemGrants: dedupeSystemGrants(payload.systemGrants),
     tokenType: payload.sessionContext?.tokenType,
@@ -342,6 +359,10 @@ export function hasSystemAccess(session: AuthSession | null, systemId: PlatformS
 }
 
 export function hasActiveCompanySession(session: AuthSession | null) {
+  if (session?.loginStage === 'tenant' && session.businessDbRequired === false) {
+    return true;
+  }
+
   return Boolean(
     session
       && session.loginStage === 'company'

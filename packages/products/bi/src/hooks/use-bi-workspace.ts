@@ -4,6 +4,8 @@ import {
   biApi,
   type DataAssetSavePayload,
   type DataAssetFieldSavePayload,
+  type DesignMessageSendPayload,
+  type DesignSessionCreatePayload,
   type DatasourceSavePayload,
   type DirectoryCanvasLayoutItemPayload,
   type DirectorySavePayload,
@@ -19,6 +21,7 @@ import {
 import type {
   BiCanvasMeta,
   BiDatasource,
+  BiDesignSession,
   BiDirectoryNode,
   BiGenerationTask,
   BiNodeType,
@@ -70,6 +73,7 @@ const WORKSPACE_LOAD_ERROR = 'BI 工作台加载失败。';
 const PROMPT_PREVIEW_ERROR = '提示词预览失败。';
 
 type BiWorkspaceOptions = {
+  enableDesignSessions?: boolean;
   initialSelectedNodeId?: number | null;
   initialSelectedScreenId?: number | null;
 };
@@ -79,6 +83,8 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
   const [allScreens, setAllScreens] = useState<BiScreen[]>([]);
   const [datasources, setDatasources] = useState<BiDatasource[]>([]);
   const [designRecords, setDesignRecords] = useState<BiScreenDesignRecord[]>([]);
+  const [designSession, setDesignSession] = useState<BiDesignSession | null>(null);
+  const [designSessions, setDesignSessions] = useState<BiDesignSession[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [generationTask, setGenerationTask] = useState<BiGenerationTask | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -98,7 +104,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     [flatNodes, selectedNodeId],
   );
   const screens = useMemo(
-    () => allScreens.filter((screen) => screen.nodeId === selectedNodeId),
+    () => allScreens.filter((screen) => (screen.nodeId ?? null) === selectedNodeId),
     [allScreens, selectedNodeId],
   );
   const selectedScreen = useMemo(
@@ -106,11 +112,11 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     [allScreens, selectedScreenId],
   );
   const boundDatasources = useMemo(() => {
-    if (!selectedNode) {
+    const datasourceIds = new Set(selectedScreen?.datasourceIds ?? selectedNode?.datasourceIds ?? []);
+    const sourceAssetIds = new Set(selectedScreen?.sourceAssetIds ?? selectedNode?.sourceAssetIds ?? []);
+    if (datasourceIds.size === 0 && sourceAssetIds.size === 0) {
       return [];
     }
-    const datasourceIds = new Set(selectedNode.datasourceIds);
-    const sourceAssetIds = new Set(selectedNode.sourceAssetIds);
     return datasources
       .map((datasource) => {
         const assets =
@@ -128,7 +134,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
         };
       })
       .filter((datasource): datasource is BiDatasource => Boolean(datasource));
-  }, [datasources, selectedNode]);
+  }, [datasources, selectedNode, selectedScreen]);
   const metrics = useMemo(
     () => ({
       assetCount: countAssets(datasources),
@@ -164,7 +170,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       biApi.listAssetCatalog(),
       biApi.listNodeTypes(),
       biApi.listPromptTemplates('SCREEN_GENERATION'),
-      biApi.listScreens(),
+      biApi.listArchives(),
     ]);
 
     startTransition(() => {
@@ -197,11 +203,13 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     };
   }
 
-  async function loadScreenSideData(screenId: number | null) {
+  async function loadScreenSideData(screenId: number | null, preferredSessionId?: number | null) {
     if (!screenId) {
       startTransition(() => {
         setShareTokens([]);
         setDesignRecords([]);
+        setDesignSessions([]);
+        setDesignSession(null);
       });
       return;
     }
@@ -210,10 +218,22 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       biApi.listShareTokens(screenId),
       biApi.listDesignRecords(screenId),
     ]);
+    let nextDesignSessions: BiDesignSession[] = [];
+    let nextDesignSession: BiDesignSession | null = null;
+    if (options?.enableDesignSessions) {
+      nextDesignSessions = await biApi.listDesignSessions(screenId);
+      const nextSessionId =
+        preferredSessionId && nextDesignSessions.some((session) => session.sessionId === preferredSessionId)
+          ? preferredSessionId
+          : nextDesignSessions[0]?.sessionId ?? null;
+      nextDesignSession = nextSessionId ? await biApi.getDesignSession(nextSessionId) : null;
+    }
 
     startTransition(() => {
       setShareTokens(nextShareTokens);
       setDesignRecords(nextDesignRecords);
+      setDesignSessions(nextDesignSessions);
+      setDesignSession(nextDesignSession);
     });
   }
 
@@ -240,7 +260,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
 
   useEffect(() => {
     void hydrate(options?.initialSelectedNodeId, options?.initialSelectedScreenId, { showLoading: true });
-  }, [options?.initialSelectedNodeId, options?.initialSelectedScreenId]);
+  }, [options?.enableDesignSessions, options?.initialSelectedNodeId, options?.initialSelectedScreenId]);
 
   useEffect(() => {
     if (isLoading) {
@@ -384,6 +404,36 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     );
   }
 
+  const bindArchiveSourceAssets = async (archiveId: number, sourceAssetIds: number[]) => {
+    return runLocalMutation(
+      async () => biApi.bindArchiveSourceAssets(archiveId, sourceAssetIds),
+      async (screen) => {
+        startTransition(() => {
+          setAllScreens((current) => upsertScreen(current, screen));
+          setSelectedNodeId(screen.nodeId ?? null);
+          setSelectedScreenId(screen.id);
+        });
+        await loadScreenSideData(screen.id);
+      },
+    );
+  };
+
+  const bindArchiveSourceAssetsForExact = async (archiveId: number, sourceAssetIds: number[]) => {
+    return runLocalMutation(
+      async () => biApi.bindArchiveSourceAssets(archiveId, sourceAssetIds),
+      async (screen) => {
+        startTransition(() => {
+          setAllScreens((current) => upsertScreen(current, screen));
+          setSelectedNodeId(screen.nodeId ?? null);
+          setSelectedScreenId(screen.id);
+        });
+        void loadScreenSideData(screen.id).catch((loadError) => {
+          setError(loadError instanceof Error ? loadError.message : WORKSPACE_LOAD_ERROR);
+        });
+      },
+    );
+  };
+
   async function createDatasource(payload: DatasourceSavePayload) {
     return runLocalMutation(
       async () => biApi.createDatasource(payload),
@@ -452,11 +502,11 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
 
   async function createScreen(payload: ScreenSavePayload) {
     return runLocalMutation(
-      async () => biApi.createScreen(payload),
+      async () => biApi.createArchive(payload),
       async (screen) => {
         startTransition(() => {
           setAllScreens((current) => upsertScreen(current, screen));
-          setSelectedNodeId(screen.nodeId);
+          setSelectedNodeId(screen.nodeId ?? null);
           setSelectedScreenId(screen.id);
         });
         await loadScreenSideData(screen.id);
@@ -466,11 +516,11 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
 
   async function updateScreen(screenId: number, payload: ScreenSavePayload) {
     return runLocalMutation(
-      async () => biApi.updateScreen(screenId, payload),
+      async () => biApi.updateArchive(screenId, payload),
       async (screen) => {
         startTransition(() => {
           setAllScreens((current) => upsertScreen(current, screen));
-          setSelectedNodeId(screen.nodeId);
+          setSelectedNodeId(screen.nodeId ?? null);
           setSelectedScreenId(screen.id);
         });
         await loadScreenSideData(screen.id);
@@ -491,7 +541,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       async (screen) => {
         startTransition(() => {
           setAllScreens((current) => upsertScreen(current, screen));
-          setSelectedNodeId(screen.nodeId);
+          setSelectedNodeId(screen.nodeId ?? null);
           setSelectedScreenId(screen.id);
         });
       },
@@ -563,13 +613,66 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     });
   }
 
+  async function createDesignSession(screenId: number, payload?: DesignSessionCreatePayload) {
+    return runLocalMutation(
+      async () => biApi.createDesignSession(screenId, payload),
+      async (session) => {
+        startTransition(() => {
+          setDesignSession(session);
+          setDesignSessions((current) => [
+            session,
+            ...current.filter((item) => item.sessionId !== session.sessionId),
+          ]);
+        });
+      },
+    );
+  }
+
+  const selectDesignSession = async (sessionId: number | null) => {
+    if (!sessionId) {
+      startTransition(() => {
+        setDesignSession(null);
+      });
+      return null;
+    }
+    const session = await biApi.getDesignSession(sessionId);
+    startTransition(() => {
+      setDesignSession(session);
+    });
+    return session;
+  };
+
+  async function sendDesignMessage(sessionId: number, payload: DesignMessageSendPayload) {
+    setIsMutating(true);
+    setError(null);
+    try {
+      const result = await biApi.sendDesignMessage(sessionId, payload);
+      startTransition(() => {
+        setDesignSession(result.session);
+        setGenerationTask(result.generationTask ?? null);
+        setDesignSessions((current) => [
+          result.session,
+          ...current.filter((item) => item.sessionId !== result.session.sessionId),
+        ]);
+      });
+      await hydrate(selectedNodeId, result.generationTask?.screenId ?? selectedScreenId);
+      await loadScreenSideData(result.session.screenId, result.session.sessionId);
+      return result;
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : WORKSPACE_ERROR);
+      throw mutationError;
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
   async function publishGeneratedVersion(screenId: number, versionId?: number | null) {
     await runLocalMutation(
       async () => biApi.publishGeneratedVersion(screenId, versionId),
       async (screen) => {
         startTransition(() => {
           setAllScreens((current) => upsertScreen(current, screen));
-          setSelectedNodeId(screen.nodeId);
+          setSelectedNodeId(screen.nodeId ?? null);
           setSelectedScreenId(screen.id);
         });
       },
@@ -646,7 +749,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     }
 
     const subtreeNodeIds = new Set(flattenDirectoryNodes([targetNode]).map((node) => node.id));
-    if (allScreens.some((screen) => subtreeNodeIds.has(screen.nodeId))) {
+    if (allScreens.some((screen) => screen.nodeId != null && subtreeNodeIds.has(screen.nodeId))) {
       const message = '当前节点或下级节点仍有关联 BI 档案，请先处理档案后再删除。';
       setError(message);
       throw new Error(message);
@@ -696,15 +799,20 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
   return {
     allScreens,
     autoLayout,
+    bindArchiveSourceAssets,
+    bindArchiveSourceAssetsForExact,
     bindNodeSourceAssets,
     boundDatasources,
     clearError: () => setError(null),
     createDatasource,
+    createDesignSession,
     createScreen,
     createShareToken,
     datasources,
     deleteDirectory,
     designRecords,
+    designSession,
+    designSessions,
     error,
     flatNodes,
     generateAssetBizComments,
@@ -738,8 +846,10 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     selectedNodePath,
     selectedScreen,
     selectedScreenId,
+    selectDesignSession,
     setSelectedNodeId,
     setSelectedScreenId,
+    sendDesignMessage,
     shareTokens,
     updateDatasource,
     updateNodeLayout,

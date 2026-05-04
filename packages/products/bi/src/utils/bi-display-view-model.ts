@@ -29,6 +29,10 @@ export type BiDisplayNodeSummary = {
   totalNodes: number;
 };
 
+export type BiDisplayDetailNavItem = {
+  summary: BiDisplayNodeSummary;
+};
+
 const ACTIVE_STATUSES = new Set(['ACTIVE', 'PUBLISHED']);
 const FALLBACK_ACCENTS = ['#00eaff', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6'];
 
@@ -61,6 +65,9 @@ export function buildDisplayScreenMap(screens: BiScreen[]): BiDisplayScreenMap {
   const screenMap = new Map<number, BiScreen[]>();
 
   screens.forEach((screen) => {
+    if (screen.nodeId == null) {
+      return;
+    }
     const list = screenMap.get(screen.nodeId) ?? [];
     list.push(screen);
     screenMap.set(screen.nodeId, list);
@@ -147,6 +154,15 @@ export function summarizeDisplayNode(
 
 export function buildDisplayNodeSummaries(nodes: BiDirectoryNode[], screenMap: BiDisplayScreenMap) {
   return nodes.map((node, index) => summarizeDisplayNode(node, screenMap, index));
+}
+
+export function buildDisplayDetailNavItems(
+  node: BiDirectoryNode,
+  screenMap: BiDisplayScreenMap,
+): BiDisplayDetailNavItem[] {
+  return buildDisplayNodeSummaries(node.children, screenMap).map((summary) => ({
+    summary,
+  }));
 }
 
 export function formatDisplayRate(rate: number) {

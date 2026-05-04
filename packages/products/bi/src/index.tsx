@@ -1,23 +1,39 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from '@lserp/ui';
 
 import { getDefaultBiDisplayPath } from './display/display-platform-registry';
 import { BiDisplayPlatformPage } from './pages/bi-display-platform-page';
 import { BiRuntimePage } from './pages/bi-runtime-page';
+import { BiWorkspaceExactPage } from './pages/bi-workspace-exact-page';
 import { BiWorkspacePage } from './pages/bi-workspace-page';
 import './styles/bi-display.css';
 import './styles/bi-workspace.css';
+import './styles/bi-workspace-exact.css';
 import { replaceBiDisplay, resolveBiDisplayRoute } from './utils/bi-display-routes';
 import { resolveBiRoute } from './utils/bi-routes';
+
+type BiWorkspaceVersion = 'classic' | 'new';
+
+const BI_WORKSPACE_VERSION_PARAM = 'workspaceVersion';
+const BI_WORKSPACE_VERSION_STORAGE_KEY = 'lserp.bi.workspaceVersion';
+const BI_WORKSPACE_VERSION_OPTIONS: Array<{ label: string; value: BiWorkspaceVersion }> = [
+  { label: '经典版', value: 'classic' },
+  { label: '新版', value: 'new' },
+];
 
 export function BiHomePage() {
   const route = resolveBiRoute(window.location.pathname);
 
   if (route.kind === 'workspace') {
-    return <BiWorkspacePage />;
+    return <BiWorkspaceVersionFrame />;
   }
 
-  if (route.kind === 'node' || route.kind === 'screen' || route.kind === 'share') {
+  if (
+    route.kind === 'node' ||
+    route.kind === 'screen' ||
+    route.kind === 'public-screen' ||
+    route.kind === 'share'
+  ) {
     return <BiRuntimePage route={route} />;
   }
 
@@ -68,4 +84,86 @@ function BiDisplayRouteRedirect({ to }: { to: string }) {
   }, [to]);
 
   return null;
+}
+
+function BiWorkspaceVersionFrame() {
+  const [workspaceVersion, setWorkspaceVersion] = useState<BiWorkspaceVersion>(() => readBiWorkspaceVersion());
+
+  useEffect(() => {
+    const handlePopState = () => setWorkspaceVersion(readBiWorkspaceVersion());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  function handleVersionChange(nextVersion: BiWorkspaceVersion) {
+    if (nextVersion === workspaceVersion) {
+      return;
+    }
+
+    setWorkspaceVersion(nextVersion);
+    writeBiWorkspaceVersion(nextVersion);
+    replaceBiWorkspaceVersionParam(nextVersion);
+  }
+
+  return (
+    <div className="bi-workspace-version-frame" data-bi-workspace-version={workspaceVersion}>
+      <div className="bi-workspace-version-switch" role="group" aria-label="BI 工作台版本切换">
+        <span className="bi-workspace-version-switch-label">工作台版本</span>
+        {BI_WORKSPACE_VERSION_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={
+              option.value === workspaceVersion
+                ? 'bi-workspace-version-switch-button is-active'
+                : 'bi-workspace-version-switch-button'
+            }
+            aria-pressed={option.value === workspaceVersion}
+            onClick={() => handleVersionChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {workspaceVersion === 'new' ? <BiWorkspaceExactPage /> : <BiWorkspacePage />}
+    </div>
+  );
+}
+
+function normalizeBiWorkspaceVersion(value: string | null): BiWorkspaceVersion | null {
+  return value === 'classic' || value === 'new' ? value : null;
+}
+
+function readBiWorkspaceVersion(): BiWorkspaceVersion {
+  if (typeof window === 'undefined') {
+    return 'classic';
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const queryVersion = normalizeBiWorkspaceVersion(params.get(BI_WORKSPACE_VERSION_PARAM));
+  if (queryVersion) {
+    return queryVersion;
+  }
+
+  try {
+    return normalizeBiWorkspaceVersion(window.localStorage.getItem(BI_WORKSPACE_VERSION_STORAGE_KEY)) ?? 'classic';
+  } catch {
+    return 'classic';
+  }
+}
+
+function writeBiWorkspaceVersion(version: BiWorkspaceVersion) {
+  try {
+    window.localStorage.setItem(BI_WORKSPACE_VERSION_STORAGE_KEY, version);
+  } catch {
+    // Some embedded browsers disable storage; the URL state still keeps the switch usable.
+  }
+}
+
+function replaceBiWorkspaceVersionParam(version: BiWorkspaceVersion) {
+  const params = new URLSearchParams(window.location.search);
+  params.set(BI_WORKSPACE_VERSION_PARAM, version);
+  const search = params.toString();
+  const nextUrl = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`;
+  window.history.replaceState(window.history.state, '', nextUrl);
 }
