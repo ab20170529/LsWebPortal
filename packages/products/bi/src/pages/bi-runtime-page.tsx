@@ -7,7 +7,7 @@ import type { BiRoute, BiRuntimeScreen } from '../types';
 import { readBiPublicRuntimeOptions } from '../utils/bi-public-runtime';
 
 type BiRuntimePageProps = {
-  route: Extract<BiRoute, { kind: 'node' | 'screen' | 'public-screen' | 'share' }>;
+  route: Extract<BiRoute, { kind: 'menu' | 'node' | 'screen' | 'public-screen' | 'share' }>;
 };
 
 export function BiRuntimePage({ route }: BiRuntimePageProps) {
@@ -45,6 +45,8 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
         const meta =
           route.kind === 'node'
             ? await biApi.getRuntimeByNode(route.value)
+            : route.kind === 'menu'
+              ? await biApi.getRuntimeByMenu(route.value)
             : route.kind === 'screen'
               ? previewVersionId != null
                 ? await biApi.getPreviewRuntimeByScreen(route.value, previewVersionId)
@@ -55,6 +57,8 @@ export function BiRuntimePage({ route }: BiRuntimePageProps) {
           meta.biType === 'INTERNAL'
             ? route.kind === 'share'
               ? await biApi.queryShareRuntime(route.value)
+              : route.kind === 'menu'
+                ? await biApi.queryRuntimeByMenu(route.value)
               : route.kind === 'screen' && previewVersionId != null
                 ? await biApi.queryPreviewRuntimeByScreen(route.value, previewVersionId)
               : await biApi.queryRuntimeByScreen(meta.screenCode)

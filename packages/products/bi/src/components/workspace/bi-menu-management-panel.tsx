@@ -58,20 +58,20 @@ function mapMenuForm(menu: BiMenu | null): MenuFormState {
 
 function buildMenuPayload(form: MenuFormState): MenuSavePayload {
   return {
-    archiveId: form.targetType === 'ARCHIVE' && form.archiveId ? Number(form.archiveId) : null,
-    linkUrl: form.targetType === 'URL' ? form.linkUrl.trim() : undefined,
+    archiveId: form.archiveId ? Number(form.archiveId) : null,
+    linkUrl: form.linkUrl.trim() || undefined,
     menuCode: form.menuCode.trim(),
     menuName: form.menuName.trim(),
     openMode: form.openMode,
     orderNo: Number(form.orderNo || 0),
     parentId: form.parentId ? Number(form.parentId) : null,
     status: form.status,
-    targetType: form.targetType,
+    targetType: form.linkUrl.trim() ? 'URL' : 'ARCHIVE',
   };
 }
 
-function buildArchiveRuntimePath(screenCode?: string | null) {
-  return screenCode ? `/bi/screen/${encodeURIComponent(screenCode)}` : null;
+function buildMenuRuntimePath(menuCode: string) {
+  return menuCode.trim() ? `/bi/menu/${encodeURIComponent(menuCode.trim())}` : null;
 }
 
 export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuManagementPanelProps) {
@@ -88,15 +88,12 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
     [flatMenus, selectedMenuId],
   );
   const previewTargetUrl = useMemo(() => {
-    if (form.targetType === 'URL') {
+    if (form.linkUrl.trim()) {
       return form.linkUrl.trim() || null;
     }
 
-    const archive = archives.find((item) => String(item.id) === form.archiveId);
-    const fallbackArchiveCode =
-      selectedMenu?.archiveId && String(selectedMenu.archiveId) === form.archiveId ? selectedMenu.archiveCode : null;
-    return buildArchiveRuntimePath(archive?.screenCode ?? fallbackArchiveCode);
-  }, [archives, form.archiveId, form.linkUrl, form.targetType, selectedMenu?.archiveCode, selectedMenu?.archiveId]);
+    return buildMenuRuntimePath(form.menuCode);
+  }, [form.linkUrl, form.menuCode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,7 +171,7 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
     if (!previewTargetUrl) {
       return;
     }
-    if (form.targetType === 'URL' && form.openMode === 'self') {
+    if (form.linkUrl.trim() && form.openMode === 'self') {
       window.location.assign(previewTargetUrl);
       return;
     }
@@ -184,7 +181,7 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
   const canSave =
     form.menuCode.trim().length > 0 &&
     form.menuName.trim().length > 0 &&
-    (form.targetType === 'ARCHIVE' ? form.archiveId : form.linkUrl.trim().length > 0);
+    (form.archiveId || form.linkUrl.trim().length > 0);
 
   return (
     <section className="bi-management-panel">
@@ -231,12 +228,12 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
                     <div className="bi-side-card-title">{menu.menuName}</div>
                     <div className="bi-side-card-subtitle">{menu.menuCode}</div>
                   </div>
-                  <Badge tone={menu.targetType === 'URL' ? 'neutral' : 'brand'}>
-                    {menu.targetType === 'URL' ? '连接地址' : 'BI档案'}
+                  <Badge tone={menu.linkUrl ? 'neutral' : 'brand'}>
+                    {menu.linkUrl ? '外链优先' : 'BI档案'}
                   </Badge>
                 </div>
                 <div className="bi-side-card-meta">
-                  {menu.targetType === 'URL' ? menu.linkUrl : menu.archiveName ?? menu.archiveCode ?? '未绑定档案'}
+                  {menu.linkUrl ?? menu.archiveName ?? menu.archiveCode ?? '未绑定档案'}
                 </div>
               </button>
             ))}
@@ -249,7 +246,7 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
             <div className="bi-panel-card-header">
               <div>
                 <div className="bi-panel-card-title">{selectedMenu ? '编辑菜单' : '新建菜单'}</div>
-                <div className="bi-panel-card-subtitle">保存时会校验 ARCHIVE 只能绑定档案，URL 必须填写连接地址。</div>
+                <div className="bi-panel-card-subtitle">可同时配置档案和外链，预览系统会优先加载外链。</div>
               </div>
             </div>
 
@@ -315,7 +312,7 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
                 </label>
               </div>
 
-              {form.targetType === 'ARCHIVE' ? (
+              <div className="bi-form-grid bi-form-grid-2">
                 <label className="bi-panel-field">
                   <span className="bi-panel-label">绑定档案</span>
                   <select
@@ -333,9 +330,9 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
                     ))}
                   </select>
                 </label>
-              ) : (
+
                 <label className="bi-panel-field">
-                  <span className="bi-panel-label">连接地址</span>
+                  <span className="bi-panel-label">外链 BI 地址</span>
                   <input
                     className="bi-panel-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -345,7 +342,11 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
                     value={form.linkUrl}
                   />
                 </label>
-              )}
+              </div>
+
+              <div className="bi-panel-note">
+                填写外链后，BI 预览和展示会优先加载外链；未填写外链时加载绑定档案。
+              </div>
 
               <div className="bi-form-grid bi-form-grid-3">
                 <label className="bi-panel-field">
@@ -406,7 +407,7 @@ export function BiMenuManagementPanel({ archives, isMutating = false }: BiMenuMa
                   tone="ghost"
                   type="button"
                 >
-                  {form.targetType === 'URL' ? '打开地址' : '预览档案'}
+                  {form.linkUrl.trim() ? '打开外链' : '预览档案'}
                 </Button>
               </div>
             </div>

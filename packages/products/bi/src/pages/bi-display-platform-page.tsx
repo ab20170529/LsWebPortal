@@ -30,9 +30,21 @@ type BiDisplayPlatformPageProps = {
 const TOP_NAV_ITEMS = ['设备总览', '看板中心', '报警中心', '监控平台', '数据管理', '采集云平台'];
 
 async function loadRuntimeScreen(nodeCode: string) {
-  const meta = await biApi.getRuntimeByNode(nodeCode);
+  let meta: BiRuntimeScreen;
+  let loadedFromMenu = false;
+  try {
+    meta = await biApi.getRuntimeByMenu(nodeCode);
+    loadedFromMenu = true;
+  } catch {
+    meta = await biApi.getRuntimeByNode(nodeCode);
+  }
+
   if (meta.biType !== 'INTERNAL') {
     return meta;
+  }
+
+  if (loadedFromMenu) {
+    return biApi.queryRuntimeByMenu(nodeCode);
   }
 
   return biApi.queryRuntimeByScreen(meta.screenCode);

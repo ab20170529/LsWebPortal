@@ -20,6 +20,10 @@ export function resolveBiRoute(pathname: string): BiRoute {
     return { kind: 'node', value: decodeURIComponent(normalized.slice('/bi/node/'.length)) };
   }
 
+  if (normalized.startsWith('/bi/menu/')) {
+    return { kind: 'menu', value: decodeURIComponent(normalized.slice('/bi/menu/'.length)) };
+  }
+
   if (normalized.startsWith('/bi/screen/')) {
     return { kind: 'screen', value: decodeURIComponent(normalized.slice('/bi/screen/'.length)) };
   }

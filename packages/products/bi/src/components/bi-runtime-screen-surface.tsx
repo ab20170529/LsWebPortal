@@ -6,8 +6,6 @@ import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 
 import type { BiRuntimeModule, BiRuntimeScreen } from '../types';
-import { getBiScreenBackgroundStyle } from '../utils/bi-screen-background';
-import { getBiGridTemplateStyle, getBiModuleGridItemStyle } from '../utils/bi-screen-layout';
 
 echarts.use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
@@ -38,8 +36,14 @@ function getModuleLeadingValue(module: BiRuntimeModule) {
   return values[0] ?? '--';
 }
 
-function getModuleFallbackSpan(module: BiRuntimeModule) {
-  return module.moduleType === 'table' ? 12 : 6;
+function getModuleSpan(module: BiRuntimeModule) {
+  const layoutSpan = toFiniteNumber(module.layout?.colSpan) ?? toFiniteNumber(module.layout?.span);
+  const gridWidth = toFiniteNumber(module.layout?.w);
+  if (gridWidth) {
+    return gridWidth >= 8 ? 2 : 1;
+  }
+  const fallbackSpan = module.moduleType === 'table' ? 2 : 1;
+  return Math.max(1, Math.min(2, layoutSpan ?? fallbackSpan));
 }
 
 function getModuleMinHeight(module: BiRuntimeModule) {
@@ -302,11 +306,10 @@ export function BiRuntimeScreenSurface({ screen }: BiRuntimeScreenSurfaceProps) 
   const lastOpenedUrlState = useMemo(() => ({ current: null as string | null }), []);
   const externalTargetUrl = String(screen.externalConfig?.targetUrl ?? '').trim();
   const externalOpenMode = String(screen.externalConfig?.openMode ?? 'iframe').toLowerCase();
-  const backgroundStyle = getBiScreenBackgroundStyle(screen.pageSchema);
-  const surfaceClassName = backgroundStyle ? 'bi-runtime-surface has-background' : 'bi-runtime-surface';
+  const summaryText = typeof screen.pageSchema?.summary === 'string' ? screen.pageSchema.summary.trim() : '';
 
   useEffect(() => {
-    if (screen.biType !== 'EXTERNAL' || !externalTargetUrl) {
+    if (screen.biType !== 'EXTERNAL' || externalOpenMode !== 'blank' || !externalTargetUrl) {
       return;
     }
 
@@ -314,32 +317,15 @@ export function BiRuntimeScreenSurface({ screen }: BiRuntimeScreenSurfaceProps) 
       return;
     }
 
-    if (externalOpenMode === 'blank') {
-      lastOpenedUrlState.current = `${screen.screenCode}:${externalTargetUrl}`;
-      const openedWindow = window.open(externalTargetUrl, '_blank', 'noopener,noreferrer');
-      setDidBlockPopup(!openedWindow);
-    }
-    if (externalOpenMode === 'self') {
-      lastOpenedUrlState.current = `${screen.screenCode}:${externalTargetUrl}`;
-      window.location.assign(externalTargetUrl);
-    }
+    lastOpenedUrlState.current = `${screen.screenCode}:${externalTargetUrl}`;
+    const openedWindow = window.open(externalTargetUrl, '_blank', 'noopener,noreferrer');
+    setDidBlockPopup(!openedWindow);
   }, [externalOpenMode, externalTargetUrl, lastOpenedUrlState, screen.biType, screen.screenCode]);
 
   if (screen.biType === 'EXTERNAL') {
-    if (externalOpenMode === 'self') {
-      return (
-        <div className={surfaceClassName} style={backgroundStyle}>
-          <div className="bi-runtime-external-state">
-            <div className="bi-runtime-external-title">正在打开 BI 连接地址</div>
-            <div className="bi-runtime-external-url">{externalTargetUrl || '未配置连接地址。'}</div>
-          </div>
-        </div>
-      );
-    }
-
     if (externalOpenMode === 'blank') {
       return (
-        <div className={surfaceClassName} style={backgroundStyle}>
+        <div className="bi-runtime-surface">
           <div className="bi-runtime-external-state">
             <div className="bi-runtime-external-title">当前节点使用外链 BI 展示</div>
             <div className="bi-runtime-external-text">
@@ -364,7 +350,7 @@ export function BiRuntimeScreenSurface({ screen }: BiRuntimeScreenSurfaceProps) 
     }
 
     return (
-      <div className={surfaceClassName} style={backgroundStyle}>
+      <div className="bi-runtime-surface">
         <div className="bi-runtime-frame-wrap">
           <iframe
             allowFullScreen
@@ -378,21 +364,23 @@ export function BiRuntimeScreenSurface({ screen }: BiRuntimeScreenSurfaceProps) 
   }
 
   return (
-    <div className={surfaceClassName} style={backgroundStyle}>
+    <div className="bi-runtime-surface">
+      {summaryText ? (
+        <div className="bi-runtime-summary">
+          <div className="bi-runtime-summary-label">Screen Summary</div>
+          <div className="bi-runtime-summary-text">{summaryText}</div>
+        </div>
+      ) : null}
+
       {screen.modules.length === 0 ? (
         <div className="bi-runtime-empty-state">当前节点已绑定 BI 档案，但还没有可渲染的模块。</div>
       ) : (
-        <div className="bi-runtime-grid" style={getBiGridTemplateStyle(screen.moduleLayout, '--bi-runtime-grid-columns')}>
+        <div className="bi-runtime-grid">
           {screen.modules.map((module) => (
             <div
               key={module.moduleId}
-              className="bi-runtime-grid-item"
-              style={getBiModuleGridItemStyle({
-                fallbackSpan: getModuleFallbackSpan(module),
-                layout: module.layout,
-                minHeight: getModuleMinHeight(module),
-                moduleLayout: screen.moduleLayout,
-              })}
+              className={`bi-runtime-grid-item ${getModuleSpan(module) === 2 ? 'is-span-2' : ''}`}
+              style={{ minHeight: getModuleMinHeight(module) }}
             >
               {renderModule(module)}
             </div>

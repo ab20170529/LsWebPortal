@@ -29,6 +29,7 @@ export function BiHomePage() {
   }
 
   if (
+    route.kind === 'menu' ||
     route.kind === 'node' ||
     route.kind === 'screen' ||
     route.kind === 'public-screen' ||

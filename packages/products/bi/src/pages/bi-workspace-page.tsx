@@ -276,6 +276,12 @@ export function BiWorkspacePage() {
     }
   }
 
+  function locateCurrentNodeOnCanvas() {
+    setActiveSection('canvas');
+    setCreatePresetType(null);
+    setCanvasFocusRequest((request) => request + 1);
+  }
+
   function openArchiveTab(tab: BiArchiveTab) {
     setActiveSection('archives');
     setActiveArchiveTab(tab);
@@ -531,13 +537,11 @@ export function BiWorkspacePage() {
               allNodes={workspace.flatNodes}
               boundDatasources={workspace.boundDatasources}
               createPresetType={createPresetType}
-              datasources={workspace.datasources}
               designRecords={workspace.designRecords}
               generationTask={workspace.generationTask}
               isMutating={workspace.isMutating}
               node={workspace.selectedNode}
               onActiveTabChange={setActiveArchiveTab}
-              onBindArchiveSourceAssets={workspace.bindArchiveSourceAssets}
               onClearCreatePreset={() => setCreatePresetType(null)}
               onCreateScreen={workspace.createScreen}
               onCreateShareToken={workspace.createShareToken}
@@ -582,6 +586,7 @@ export function BiWorkspacePage() {
             node={workspace.selectedNode}
             onDeleteNode={() => handleDeleteNode()}
             onEditNode={() => handleEditNode()}
+            onLocateCurrentNode={locateCurrentNodeOnCanvas}
             onOpenArchiveTab={openArchiveTab}
             onOpenPreview={handleOpenPreview}
             onOpenSection={openSection}

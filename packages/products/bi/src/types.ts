@@ -297,6 +297,7 @@ export type BiDesignMessageSendResult = {
 export type BiRoute =
   | { kind: 'workspace' }
   | { kind: 'node'; value: string }
+  | { kind: 'menu'; value: string }
   | { kind: 'screen'; value: string }
   | { kind: 'public-screen'; value: string }
   | { kind: 'share'; value: string }

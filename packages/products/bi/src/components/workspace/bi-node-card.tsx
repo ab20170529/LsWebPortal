@@ -242,7 +242,10 @@ export function BiNodeCard({
             <div className="bi-node-card-type">{getNodeTypeLabel(node.nodeType, node.nodeTypeName)}</div>
           </div>
         </div>
-        <span className="bi-node-card-status">{getStatusLabel(node.status)}</span>
+        <div className="bi-node-card-status-stack">
+          {selected ? <span className="bi-node-card-current">当前选中</span> : null}
+          <span className="bi-node-card-status">{getStatusLabel(node.status)}</span>
+        </div>
       </div>
 
       <div className="bi-node-card-meta-chip" title={node.nodeCode}>

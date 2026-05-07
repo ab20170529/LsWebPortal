@@ -380,6 +380,9 @@ export const biApi = {
   getRuntimeByNode(nodeCode: string) {
     return unwrap<BiRuntimeScreen>(biApiClient.request(`/api/bi/runtime/node/${nodeCode}`));
   },
+  getRuntimeByMenu(menuCode: string) {
+    return unwrap<BiRuntimeScreen>(biApiClient.request(`/api/bi/runtime/menu/${menuCode}`));
+  },
   getRuntimeByScreen(screenCode: string) {
     return unwrap<BiRuntimeScreen>(biApiClient.request(`/api/bi/runtime/screen/${screenCode}`));
   },
@@ -490,6 +493,14 @@ export const biApi = {
   queryRuntimeByScreen(screenCode: string, params?: Record<string, unknown>) {
     return unwrap<BiRuntimeScreen>(
       biApiClient.request(`/api/bi/runtime/screen/${screenCode}/query`, {
+        body: { params: params ?? {} },
+        method: 'POST',
+      }),
+    );
+  },
+  queryRuntimeByMenu(menuCode: string, params?: Record<string, unknown>) {
+    return unwrap<BiRuntimeScreen>(
+      biApiClient.request(`/api/bi/runtime/menu/${menuCode}/query`, {
         body: { params: params ?? {} },
         method: 'POST',
       }),

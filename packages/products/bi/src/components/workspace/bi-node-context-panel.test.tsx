@@ -45,6 +45,7 @@ describe('BiNodeContextPanel', () => {
         node={node}
         onDeleteNode={vi.fn()}
         onEditNode={vi.fn()}
+        onLocateCurrentNode={vi.fn()}
         onOpenArchiveTab={vi.fn()}
         onOpenPreview={vi.fn()}
         onOpenSection={vi.fn()}

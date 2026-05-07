@@ -8,10 +8,14 @@ describe('bi routes', () => {
     expect(resolveBiRoute('/bi/workspace/')).toEqual({ kind: 'workspace' });
   });
 
-  it('resolves node, screen and share routes', () => {
+  it('resolves node, menu, screen and share routes', () => {
     expect(resolveBiRoute('/bi/node/company-north')).toEqual({
       kind: 'node',
       value: 'company-north',
+    });
+    expect(resolveBiRoute('/bi/menu/sales-board')).toEqual({
+      kind: 'menu',
+      value: 'sales-board',
     });
     expect(resolveBiRoute('/bi/screen/sales-board')).toEqual({
       kind: 'screen',
@@ -27,7 +31,7 @@ describe('bi routes', () => {
     });
   });
 
-  it('does not treat BI menu codes as runtime links', () => {
-    expect(resolveBiRoute('/bi/menu/sales-board')).toEqual({ kind: 'not-found' });
+  it('falls back to not-found for unrelated routes', () => {
+    expect(resolveBiRoute('/bi/menu')).toEqual({ kind: 'not-found' });
   });
 });

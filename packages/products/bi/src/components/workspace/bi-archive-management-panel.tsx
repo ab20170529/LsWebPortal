@@ -35,7 +35,6 @@ type BiArchiveManagementPanelProps = {
   allNodes: BiDirectoryNode[];
   boundDatasources: BiDatasource[];
   createPresetType: 'EXTERNAL' | 'INTERNAL' | null;
-  datasources: BiDatasource[];
   designRecords: BiScreenDesignRecord[];
   generationTask: BiGenerationTask | null;
   isMutating: boolean;
@@ -48,12 +47,11 @@ type BiArchiveManagementPanelProps = {
   onActiveTabChange: (tab: BiArchiveTab) => void;
   onClearCreatePreset: () => void;
   onCreateScreen: (payload: ScreenSavePayload) => Promise<BiScreen | void>;
-  onBindArchiveSourceAssets: (archiveId: number, sourceAssetIds: number[]) => Promise<BiScreen | void>;
   onCreateShareToken: (payload: ShareCreatePayload) => Promise<void>;
   onGenerateDraft: (payload: GenerateDraftPayload) => Promise<void>;
   onPreviewPrompt: (payload: {
     datasourceIds?: number[];
-    nodeId?: number | null;
+    nodeId: number;
     prompt: string;
     providerCode?: string;
     screenId?: number;
@@ -166,7 +164,7 @@ function buildEmptyBaseForm(node: BiDirectoryNode | null, biType: 'EXTERNAL' | '
     externalSandboxPolicy: 'allow-same-origin allow-scripts allow-forms',
     externalTargetUrl: '',
     latestDesignPrompt: '',
-    name: node ? `${node.nodeName}${biType === 'EXTERNAL' ? '外链' : '内置'}BI` : `${biType === 'EXTERNAL' ? '外链' : '内置'}BI档案`,
+    name: node ? `${node.nodeName}${biType === 'EXTERNAL' ? '外链' : '内置'}BI` : '',
     screenCode: `${baseCode}_${biType === 'EXTERNAL' ? 'external' : 'internal'}_${suffix}`,
   };
 }
@@ -230,7 +228,7 @@ function buildExternalConfig(form: ArchiveBaseFormState) {
 
 function buildScreenPayload(
   form: ArchiveBaseFormState,
-  nodeId: number | null,
+  nodeId: number,
   includeExternalDraft: boolean,
 ): ScreenSavePayload {
   return {
@@ -290,7 +288,6 @@ export function BiArchiveManagementPanel({
   allNodes,
   boundDatasources,
   createPresetType,
-  datasources,
   designRecords,
   generationTask,
   isMutating,
@@ -302,7 +299,6 @@ export function BiArchiveManagementPanel({
   shareTokens,
   onActiveTabChange,
   onClearCreatePreset,
-  onBindArchiveSourceAssets,
   onCreateScreen,
   onCreateShareToken,
   onGenerateDraft,
@@ -324,7 +320,6 @@ export function BiArchiveManagementPanel({
   const [shareExpiresAt, setShareExpiresAt] = useState('');
   const [manualPrompt, setManualPrompt] = useState(DEFAULT_PROMPT);
   const [selectedTemplateCode, setSelectedTemplateCode] = useState('');
-  const [sourceBindingIds, setSourceBindingIds] = useState<number[]>([]);
   const [versionEditingMode, setVersionEditingMode] = useState<'create' | 'edit'>('edit');
 
   const selectedScreen = useMemo(
@@ -339,14 +334,11 @@ export function BiArchiveManagementPanel({
       null,
     [promptTemplates, selectedTemplateCode],
   );
-  const datasourceIds = useMemo(
-    () =>
-      datasources
-        .filter((datasource) => datasource.assets.some((asset) => sourceBindingIds.includes(asset.id)))
-        .map((datasource) => datasource.id),
-    [datasources, sourceBindingIds],
+  const datasourceIds = useMemo(() => boundDatasources.map((datasource) => datasource.id), [boundDatasources]);
+  const sourceAssetIds = useMemo(
+    () => boundDatasources.flatMap((datasource) => datasource.assets.map((asset) => asset.id)),
+    [boundDatasources],
   );
-  const sourceAssetIds = sourceBindingIds;
   const allowedTables = useMemo(() => collectAllowedTables(boundDatasources), [boundDatasources]);
   const fieldCoverage = useMemo(() => collectFieldCoverage(boundDatasources), [boundDatasources]);
   const versionModulesState = useMemo(
@@ -393,14 +385,14 @@ export function BiArchiveManagementPanel({
     setManualPrompt(DEFAULT_PROMPT);
   }, [selectedScreen]);
 
-  useEffect(() => {
-    setSourceBindingIds(selectedScreen?.sourceAssetIds ?? []);
-  }, [selectedScreen?.id, selectedScreen?.sourceAssetIds]);
-
   async function handleSaveArchiveBase() {
+    if (!node) {
+      return;
+    }
+
     try {
       const includeExternalDraft = !selectedScreen && baseForm.biType === 'EXTERNAL';
-      const payload = buildScreenPayload(baseForm, node?.id ?? null, includeExternalDraft);
+      const payload = buildScreenPayload(baseForm, node.id, includeExternalDraft);
       const saved =
         selectedScreen ? await onUpdateScreen(selectedScreen.id, payload) : await onCreateScreen(payload);
 
@@ -442,7 +434,7 @@ export function BiArchiveManagementPanel({
   }
 
   const canSaveArchive =
-    baseForm.name.trim().length > 0 && baseForm.screenCode.trim().length > 0;
+    Boolean(node) && baseForm.name.trim().length > 0 && baseForm.screenCode.trim().length > 0;
 
   return (
     <section className="bi-management-panel">
@@ -450,12 +442,12 @@ export function BiArchiveManagementPanel({
         <div>
           <div className="bi-management-title">BI 档案管理</div>
           <div className="bi-management-subtitle">
-            独立维护 BI 档案、分析源资产绑定、版本、AI 设计记录、发布与分享入口。
+            管理节点绑定的 BI 档案、版本、AI 设计记录、发布与分享入口。
           </div>
         </div>
         <div className="bi-management-header-actions">
           <label className="bi-management-selector">
-            <span>兼容节点</span>
+            <span>当前节点</span>
             <select
               className="bi-panel-input"
               onChange={(event: ChangeEvent<HTMLSelectElement>) =>
@@ -463,7 +455,6 @@ export function BiArchiveManagementPanel({
               }
               value={node?.id ?? ''}
             >
-              <option value="">独立档案</option>
               {allNodes.map((item) => (
                 <option key={item.id} value={item.id}>
                   {`${'　'.repeat(Math.max(0, Number(item.level ?? 1) - 1))}${item.nodeName}`}
@@ -472,6 +463,7 @@ export function BiArchiveManagementPanel({
             </select>
           </label>
           <Button
+            disabled={!node}
             onClick={() => {
               onSelectScreen(null);
               onClearCreatePreset();
@@ -483,6 +475,7 @@ export function BiArchiveManagementPanel({
             新建内置 BI
           </Button>
           <Button
+            disabled={!node}
             onClick={() => {
               onSelectScreen(null);
               setBaseForm(buildEmptyBaseForm(node, 'EXTERNAL'));
@@ -501,7 +494,7 @@ export function BiArchiveManagementPanel({
             <div>
               <div className="bi-panel-card-title">档案列表</div>
               <div className="bi-panel-card-subtitle">
-                共 {screens.length} 个档案
+                {node ? `当前节点下共 ${screens.length} 个档案` : '请先选择一个节点'}
               </div>
             </div>
           </div>
@@ -527,7 +520,7 @@ export function BiArchiveManagementPanel({
               </button>
             ))}
             {screens.length === 0 ? (
-              <div className="bi-panel-empty">还没有 BI 档案，可以先创建内置 BI 或外链 BI。</div>
+              <div className="bi-panel-empty">当前节点还没有 BI 档案，可以先创建内置 BI 或外链 BI。</div>
             ) : null}
           </div>
         </section>
@@ -633,72 +626,6 @@ export function BiArchiveManagementPanel({
                 </div>
                 <div className="bi-panel-help">
                   `内置 BI` 适合做系统里自己设计的大屏和页面；`外链 BI` 适合跳转到外部系统地址。
-                </div>
-
-                <div className="bi-panel-card bi-panel-card-muted">
-                  <div className="bi-panel-card-header">
-                    <div>
-                      <div className="bi-panel-card-title">档案分析源绑定</div>
-                      <div className="bi-panel-card-subtitle">
-                        当前档案独立绑定分析源资产，AI 生成和运行时 SQL 白名单会优先使用这里的资产。
-                      </div>
-                    </div>
-                    <Button
-                      disabled={!selectedScreen || isMutating}
-                      onClick={() => {
-                        if (!selectedScreen) {
-                          return;
-                        }
-                        void onBindArchiveSourceAssets(selectedScreen.id, sourceBindingIds);
-                      }}
-                      tone="ghost"
-                      type="button"
-                    >
-                      保存绑定
-                    </Button>
-                  </div>
-                  {selectedScreen ? (
-                    <div className="bi-binding-grid">
-                      {datasources.map((datasource) => (
-                        <div key={datasource.id} className="bi-binding-card">
-                          <div className="bi-side-card-header">
-                            <div>
-                              <div className="bi-side-card-title">{datasource.name}</div>
-                              <div className="bi-side-card-subtitle">{datasource.sourceCode}</div>
-                            </div>
-                            <Badge tone="neutral">{datasource.assets.length} 个资产</Badge>
-                          </div>
-                          <div className="bi-selection-list bi-stack-list-tight">
-                            {datasource.assets.map((asset) => {
-                              const checked = sourceBindingIds.includes(asset.id);
-                              return (
-                                <label key={asset.id} className={cx('bi-checkbox-card', checked ? 'is-checked' : '')}>
-                                  <input
-                                    checked={checked}
-                                    onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                                      setSourceBindingIds((current) =>
-                                        event.target.checked
-                                          ? [...new Set([...current, asset.id])]
-                                          : current.filter((item) => item !== asset.id),
-                                      );
-                                    }}
-                                    type="checkbox"
-                                  />
-                                  <div>
-                                    <div className="bi-checkbox-title">{asset.assetName}</div>
-                                    <div className="bi-checkbox-meta">{asset.assetCode}</div>
-                                  </div>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                      {datasources.length === 0 ? <div className="bi-panel-empty">请先在分析源管理中维护资产。</div> : null}
-                    </div>
-                  ) : (
-                    <div className="bi-panel-empty bi-panel-empty-tight">保存档案后即可绑定分析源资产。</div>
-                  )}
                 </div>
 
                 <label className="bi-panel-field">
@@ -987,24 +914,24 @@ export function BiArchiveManagementPanel({
                   <div>
                     <div className="bi-panel-card-title">AI 设计与生成</div>
                     <div className="bi-panel-card-subtitle">
-                      从当前档案绑定的分析源资产直接生成内置 BI，AI 生成和手工设计共用同一份版本内容。
+                      从当前节点直接设计内置 BI，AI 生成和手工设计共用同一份版本内容。
                     </div>
                   </div>
                   <span className="bi-node-card-status">{getGenerationStatusLabel(generationTask?.status)}</span>
                 </div>
 
-                {selectedScreen ? (
+                {node ? (
                   <div className="bi-prompt-box">
                     <div>
-                      <span className="bi-prompt-key">档案</span>
-                      <span className="bi-prompt-value">{selectedScreen.name}</span>
+                      <span className="bi-prompt-key">节点</span>
+                      <span className="bi-prompt-value">{node.nodeName}</span>
                     </div>
                     <div>
                       <span className="bi-prompt-key">分析源资产</span>
                       <span className="bi-prompt-value">
                         {boundDatasources
                           .flatMap((datasource) => datasource.assets.map((asset) => asset.assetName))
-                          .join('，') || '当前档案没有绑定分析源资产'}
+                          .join('，') || '当前节点没有绑定分析源资产'}
                       </span>
                     </div>
                     <div>
@@ -1017,13 +944,13 @@ export function BiArchiveManagementPanel({
                     </div>
                   </div>
                 ) : (
-                  <div className="bi-panel-empty">请先选择或保存一个 BI 档案，再开始设计内置 BI。</div>
+                  <div className="bi-panel-empty">请先选择一个节点，再开始设计内置 BI。</div>
                 )}
 
                 <div className="bi-panel-note bi-panel-guide">
                   <div className="bi-panel-guide-title">设计内置 BI 的推荐步骤</div>
                   <div className="bi-panel-guide-list">
-                    <div className="bi-panel-guide-item">1. 先确认当前档案已经绑定分析源，否则 AI 生成出来的内容会比较空。</div>
+                    <div className="bi-panel-guide-item">1. 先确认当前节点已经绑定分析源，否则 AI 生成出来的内容会比较空。</div>
                     <div className="bi-panel-guide-item">2. 选择提示词模板后，先点“预览提示词”，确认生成方向没问题。</div>
                     <div className="bi-panel-guide-item">3. 再点“生成草稿”，系统会生成一个可继续修改的版本草稿。</div>
                     <div className="bi-panel-guide-item">4. 最后到下方版本内容继续调整、保存，再去“发布分享”。</div>
@@ -1065,12 +992,12 @@ export function BiArchiveManagementPanel({
                   </div>
                   <div className="bi-panel-inline-actions">
                     <Button
-                      disabled={isMutating || !selectedScreen || sourceAssetIds.length === 0}
+                      disabled={isMutating || !node || sourceAssetIds.length === 0}
                       onClick={() =>
-                        selectedScreen
+                        node
                           ? onPreviewPrompt({
                               datasourceIds,
-                              nodeId: selectedScreen.nodeId ?? null,
+                              nodeId: node.id,
                               prompt: manualPrompt,
                               providerCode: selectedTemplate?.providerCode ?? 'RULE_BASED',
                               ...(selectedScreen ? { screenId: selectedScreen.id } : {}),
@@ -1084,12 +1011,12 @@ export function BiArchiveManagementPanel({
                       预览提示词
                     </Button>
                     <Button
-                      disabled={isMutating || !selectedScreen || sourceAssetIds.length === 0}
+                      disabled={isMutating || !node || sourceAssetIds.length === 0}
                       onClick={() =>
-                        selectedScreen
+                        node
                           ? onGenerateDraft({
                               datasourceIds,
-                              nodeId: selectedScreen.nodeId ?? null,
+                              nodeId: node.id,
                               prompt: manualPrompt,
                               providerCode: selectedTemplate?.providerCode ?? 'RULE_BASED',
                               publishMode: 'DRAFT',
