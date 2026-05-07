@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   biApi,
@@ -68,9 +68,28 @@ function buildAutoLayoutMap(nodes: BiDirectoryNode[]) {
   return nextLayout;
 }
 
+function mergeScreenLists(current: BiScreen[], incoming: BiScreen[]) {
+  const nextScreens = new Map(current.map((screen) => [screen.id, screen]));
+  incoming.forEach((screen) => {
+    nextScreens.set(screen.id, screen);
+  });
+  return Array.from(nextScreens.values());
+}
+
 const WORKSPACE_ERROR = 'BI 工作台操作失败。';
 const WORKSPACE_LOAD_ERROR = 'BI 工作台加载失败。';
 const PROMPT_PREVIEW_ERROR = '提示词预览失败。';
+
+function resolveWorkspaceError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : '';
+  if (/failed to fetch|connection refused|networkerror/i.test(message)) {
+    return '后端服务连接失败，请确认 8080 服务正在运行后再重试。';
+  }
+  if (/internal server error|status of 500|\b500\b/i.test(message)) {
+    return '后端处理失败，请稍后重试；如果持续出现，请查看后端日志定位具体接口。';
+  }
+  return message || fallback;
+}
 
 type BiWorkspaceOptions = {
   enableDesignSessions?: boolean;
@@ -97,6 +116,11 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [selectedScreenId, setSelectedScreenId] = useState<number | null>(null);
   const [shareTokens, setShareTokens] = useState<BiShareToken[]>([]);
+  const nodeScreensRequestRef = useRef<{ nodeId: number; promise: Promise<BiScreen[]> } | null>(null);
+  const allScreensRequestRef = useRef<Promise<void> | null>(null);
+  const screenSideDataRequestRef = useRef<{ screenId: number; promise: Promise<void> } | null>(null);
+  const supplementalDataLoadedRef = useRef(false);
+  const supplementalDataRequestRef = useRef<Promise<void> | null>(null);
 
   const flatNodes = useMemo(() => flattenDirectoryNodes(nodes), [nodes]);
   const selectedNode = useMemo(
@@ -165,34 +189,22 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
   }
 
   async function loadWorkspaceBase(preferredNodeId?: number | null, preferredScreenId?: number | null) {
-    const [nextNodes, nextDatasources, nextNodeTypes, nextTemplates, nextAllScreens] = await Promise.all([
-      biApi.listDirectoryTree(),
-      biApi.listAssetCatalog(),
-      biApi.listNodeTypes(),
-      biApi.listPromptTemplates('SCREEN_GENERATION'),
-      biApi.listArchives(),
-    ]);
-
-    startTransition(() => {
-      setNodes(nextNodes);
-      setDatasources(nextDatasources);
-      setNodeTypes(nextNodeTypes);
-      setPromptTemplates(nextTemplates);
-      setAllScreens(nextAllScreens);
-      setLayoutMap(buildAutoLayoutMap(nextNodes));
-    });
-
+    const nextNodes = await biApi.listDirectoryTree();
     const nextFlatNodes = flattenDirectoryNodes(nextNodes);
     const nextSelectedNodeId =
       preferredNodeId && nextFlatNodes.some((node) => node.id === preferredNodeId)
         ? preferredNodeId
         : nextFlatNodes[0]?.id ?? null;
+    const nodeScreens = nextSelectedNodeId ? await biApi.listScreens(nextSelectedNodeId) : [];
     const nextSelectedScreenId =
-      preferredScreenId && nextAllScreens.some((screen) => screen.id === preferredScreenId)
+      preferredScreenId && nodeScreens.some((screen) => screen.id === preferredScreenId)
         ? preferredScreenId
-        : resolveSelectedScreenIdForNode(nextAllScreens, nextSelectedNodeId, null);
+        : resolveSelectedScreenIdForNode(nodeScreens, nextSelectedNodeId, null);
 
     startTransition(() => {
+      setNodes(nextNodes);
+      setAllScreens((current) => mergeScreenLists(current, nodeScreens));
+      setLayoutMap(buildAutoLayoutMap(nextNodes));
       setSelectedNodeId(nextSelectedNodeId);
       setSelectedScreenId(nextSelectedScreenId);
     });
@@ -201,6 +213,77 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       screenId: nextSelectedScreenId,
       selectedNodeId: nextSelectedNodeId,
     };
+  }
+
+  async function loadWorkspaceSupplementalData() {
+    if (supplementalDataLoadedRef.current) {
+      return;
+    }
+    if (supplementalDataRequestRef.current) {
+      return supplementalDataRequestRef.current;
+    }
+
+    const request = Promise.all([
+      biApi.listAssetCatalog(),
+      biApi.listNodeTypes(),
+      biApi.listPromptTemplates('SCREEN_GENERATION'),
+    ])
+      .then(([nextDatasources, nextNodeTypes, nextTemplates]) => {
+        startTransition(() => {
+          setDatasources(nextDatasources);
+          setNodeTypes(nextNodeTypes);
+          setPromptTemplates(nextTemplates);
+        });
+        supplementalDataLoadedRef.current = true;
+      })
+      .finally(() => {
+        supplementalDataRequestRef.current = null;
+      });
+    supplementalDataRequestRef.current = request;
+    return request;
+  }
+
+  async function loadNodeScreens(nodeId: number | null) {
+    if (!nodeId) {
+      return [];
+    }
+    if (nodeScreensRequestRef.current?.nodeId === nodeId) {
+      return nodeScreensRequestRef.current.promise;
+    }
+    const request = biApi.listScreens(nodeId).then((nodeScreens) => {
+      startTransition(() => {
+        setAllScreens((current) => mergeScreenLists(current, nodeScreens));
+      });
+      return nodeScreens;
+    });
+    nodeScreensRequestRef.current = { nodeId, promise: request };
+    try {
+      return await request;
+    } finally {
+      if (nodeScreensRequestRef.current?.promise === request) {
+        nodeScreensRequestRef.current = null;
+      }
+    }
+  }
+
+  async function loadAllScreensInBackground() {
+    if (allScreensRequestRef.current) {
+      return allScreensRequestRef.current;
+    }
+    const request = (async () => {
+      try {
+        const nextAllScreens = await biApi.listScreens();
+        startTransition(() => {
+          setAllScreens((current) => mergeScreenLists(nextAllScreens, current));
+        });
+      } catch {
+        // Keep the current-node screen list available; the full catalog is only for secondary counts.
+      } finally {
+        allScreensRequestRef.current = null;
+      }
+    })();
+    allScreensRequestRef.current = request;
+    return request;
   }
 
   async function loadScreenSideData(screenId: number | null, preferredSessionId?: number | null) {
@@ -214,27 +297,43 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       return;
     }
 
-    const [nextShareTokens, nextDesignRecords] = await Promise.all([
-      biApi.listShareTokens(screenId),
-      biApi.listDesignRecords(screenId),
-    ]);
-    let nextDesignSessions: BiDesignSession[] = [];
-    let nextDesignSession: BiDesignSession | null = null;
-    if (options?.enableDesignSessions) {
-      nextDesignSessions = await biApi.listDesignSessions(screenId);
-      const nextSessionId =
-        preferredSessionId && nextDesignSessions.some((session) => session.sessionId === preferredSessionId)
-          ? preferredSessionId
-          : nextDesignSessions[0]?.sessionId ?? null;
-      nextDesignSession = nextSessionId ? await biApi.getDesignSession(nextSessionId) : null;
+    if (screenSideDataRequestRef.current?.screenId === screenId) {
+      return screenSideDataRequestRef.current.promise;
     }
 
-    startTransition(() => {
-      setShareTokens(nextShareTokens);
-      setDesignRecords(nextDesignRecords);
-      setDesignSessions(nextDesignSessions);
-      setDesignSession(nextDesignSession);
+    let request: Promise<void>;
+    request = Promise.all([
+      biApi.listShareTokens(screenId),
+      biApi.listDesignRecords(screenId),
+      options?.enableDesignSessions ? biApi.listDesignSessions(screenId) : Promise.resolve([]),
+    ]).then(async ([nextShareTokens, nextDesignRecords, nextDesignSessions]) => {
+      if (screenSideDataRequestRef.current?.promise !== request) {
+        return;
+      }
+      let nextDesignSession: BiDesignSession | null = null;
+      if (options?.enableDesignSessions) {
+        const nextSessionId =
+          preferredSessionId && nextDesignSessions.some((session) => session.sessionId === preferredSessionId)
+            ? preferredSessionId
+            : nextDesignSessions[0]?.sessionId ?? null;
+        nextDesignSession = nextSessionId ? await biApi.getDesignSession(nextSessionId) : null;
+      }
+      if (screenSideDataRequestRef.current?.promise !== request) {
+        return;
+      }
+      startTransition(() => {
+        setShareTokens(nextShareTokens);
+        setDesignRecords(nextDesignRecords);
+        setDesignSessions(nextDesignSessions);
+        setDesignSession(nextDesignSession);
+      });
+    }).finally(() => {
+      if (screenSideDataRequestRef.current?.promise === request) {
+        screenSideDataRequestRef.current = null;
+      }
     });
+    screenSideDataRequestRef.current = { screenId, promise: request };
+    return request;
   }
 
   async function hydrate(
@@ -247,10 +346,15 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     }
     setError(null);
     try {
-      const { screenId } = await loadWorkspaceBase(preferredNodeId, preferredScreenId);
-      await loadScreenSideData(screenId);
+      await loadWorkspaceBase(preferredNodeId, preferredScreenId);
+      void loadWorkspaceSupplementalData().catch(() => {
+        setError(WORKSPACE_LOAD_ERROR);
+      });
+      window.setTimeout(() => {
+        void loadAllScreensInBackground();
+      }, 2000);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : WORKSPACE_LOAD_ERROR);
+      setError(resolveWorkspaceError(loadError, WORKSPACE_LOAD_ERROR));
     } finally {
       if (options?.showLoading) {
         setIsLoading(false);
@@ -281,8 +385,8 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     if (isLoading) {
       return;
     }
-    void loadScreenSideData(selectedScreenId);
-  }, [isLoading, selectedScreenId]);
+    void loadNodeScreens(selectedNodeId);
+  }, [isLoading, selectedNodeId]);
 
   async function mutate(
     action: () => Promise<{ nextNodeId?: number | null; nextScreenId?: number | null } | void>,
@@ -293,7 +397,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       const result = await action();
       await hydrate(result?.nextNodeId ?? selectedNodeId, result?.nextScreenId ?? selectedScreenId);
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : WORKSPACE_ERROR);
+      setError(resolveWorkspaceError(mutationError, WORKSPACE_ERROR));
       throw mutationError;
     } finally {
       setIsMutating(false);
@@ -310,7 +414,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       }
       return result;
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : WORKSPACE_ERROR);
+      setError(resolveWorkspaceError(mutationError, WORKSPACE_ERROR));
       throw mutationError;
     } finally {
       setIsMutating(false);
@@ -367,7 +471,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
           setLayoutMap((current) => removeLayoutEntries(current, [tempNodeId]));
           setSelectedNodeId((current) => (current === tempNodeId ? previousSelectedNodeId : current));
         });
-        setError(mutationError instanceof Error ? mutationError.message : WORKSPACE_ERROR);
+        setError(resolveWorkspaceError(mutationError, WORKSPACE_ERROR));
         throw mutationError;
       } finally {
         setIsMutating(false);
@@ -509,7 +613,6 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
           setSelectedNodeId(screen.nodeId ?? null);
           setSelectedScreenId(screen.id);
         });
-        await loadScreenSideData(screen.id);
       },
     );
   }
@@ -523,7 +626,6 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
           setSelectedNodeId(screen.nodeId ?? null);
           setSelectedScreenId(screen.id);
         });
-        await loadScreenSideData(screen.id);
       },
     );
   }
@@ -580,7 +682,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       });
       return preview;
     } catch (previewError) {
-      setError(previewError instanceof Error ? previewError.message : PROMPT_PREVIEW_ERROR);
+      setError(resolveWorkspaceError(previewError, PROMPT_PREVIEW_ERROR));
       throw previewError;
     } finally {
       setIsMutating(false);
@@ -781,7 +883,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
         setLayoutMap(previousLayoutMap);
         setSelectedNodeId(previousSelectedNodeId);
       });
-      setError(mutationError instanceof Error ? mutationError.message : WORKSPACE_ERROR);
+      setError(resolveWorkspaceError(mutationError, WORKSPACE_ERROR));
       throw mutationError;
     } finally {
       setIsMutating(false);
@@ -794,6 +896,10 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
       setGenerationTask(task);
     });
     return task;
+  }
+
+  async function refreshScreenSideData() {
+    await loadScreenSideData(selectedScreenId);
   }
 
   return {
@@ -832,6 +938,7 @@ export function useBiWorkspace(options?: BiWorkspaceOptions) {
     publishScreenVersion,
     replaceAssetFields,
     refreshGenerationTask,
+    refreshScreenSideData,
     regenerateVersion,
     revokeShareToken,
     saveAsset,

@@ -15,6 +15,10 @@ type BiSourceManagementPanelProps = {
   isMutating: boolean;
   node: BiDirectoryNode | null;
   onBindSourceAssets: (nodeId: number, sourceAssetIds: number[]) => Promise<void>;
+  onContinueFlow?: () => void;
+  continueFlowHint?: string;
+  continueFlowLabel?: string;
+  beginnerMode?: boolean;
   onCreateDatasource: (payload: DatasourceSavePayload) => Promise<BiDatasource | void>;
   onGenerateBizComments: (assetId: number) => Promise<unknown>;
   onReplaceAssetFields: (
@@ -202,6 +206,10 @@ export function BiSourceManagementPanel({
   isMutating,
   node,
   onBindSourceAssets,
+  onContinueFlow,
+  continueFlowHint = '下一步会继续完成当前节点的 BI 配置。',
+  continueFlowLabel = '继续下一步',
+  beginnerMode = true,
   onCreateDatasource,
   onGenerateBizComments,
   onReplaceAssetFields,
@@ -213,6 +221,7 @@ export function BiSourceManagementPanel({
   const [datasourceForm, setDatasourceForm] = useState<DatasourceFormState>(emptyDatasourceForm());
   const [assetEditorMode, setAssetEditorMode] = useState<'create' | 'edit'>('edit');
   const [assetForm, setAssetForm] = useState<AssetFormState>(emptyAssetForm());
+  const [advancedEditorOpen, setAdvancedEditorOpen] = useState(false);
   const [selectedDatasourceId, setSelectedDatasourceId] = useState<number | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
 
@@ -226,11 +235,16 @@ export function BiSourceManagementPanel({
   );
   const boundAssetCount = node?.sourceAssetIds.length ?? 0;
   const totalAssetCount = datasources.reduce((total, datasource) => total + datasource.assets.length, 0);
+  const selectedDatasourceBoundAssetCount =
+    selectedDatasource?.assets.filter((asset) => bindingIds.includes(asset.id)).length ?? 0;
   const hasBindingChanged = node
     ? bindingIds.length !== node.sourceAssetIds.length ||
       bindingIds.some((assetId) => !node.sourceAssetIds.includes(assetId))
     : false;
-  const sourceActionTitle = !node
+  const isSourceStepComplete = Boolean(node && bindingIds.length > 0 && !hasBindingChanged);
+  const sourceActionTitle = isSourceStepComplete
+    ? '分析源已绑定完成'
+    : !node
     ? '先选择节点'
     : bindingIds.length === 0
       ? '先勾选分析源'
@@ -239,7 +253,9 @@ export function BiSourceManagementPanel({
         : selectedAsset
           ? '维护当前资产'
           : '选择要维护的资产';
-  const sourceActionHint = !node
+  const sourceActionHint = isSourceStepComplete
+    ? '当前节点已经有可用分析资产。新手可以直接继续下一步；只有需要改字段、SQL 或说明时再展开高级维护。'
+    : !node
     ? '当前没有选中节点，可以先维护全局数据源目录。'
     : bindingIds.length === 0
       ? '从上方列表勾选这个节点允许使用的表或 SQL 资产。'
@@ -251,6 +267,7 @@ export function BiSourceManagementPanel({
 
   useEffect(() => {
     setBindingIds(node?.sourceAssetIds ?? []);
+    setAdvancedEditorOpen(false);
   }, [node?.id, node?.sourceAssetIds]);
 
   useEffect(() => {
@@ -307,6 +324,16 @@ export function BiSourceManagementPanel({
     }
   }
 
+  async function handleSaveBindingAndContinue() {
+    if (!node) {
+      return;
+    }
+    await onBindSourceAssets(node.id, bindingIds);
+    if (bindingIds.length > 0) {
+      onContinueFlow?.();
+    }
+  }
+
   async function handleSaveAsset(includeDetectedFields = true) {
     if (!selectedDatasource) {
       return;
@@ -346,87 +373,42 @@ export function BiSourceManagementPanel({
 
       <section className="bi-source-action-panel">
         <div>
-          <div className="bi-source-action-kicker">当前应该做</div>
+          <div className="bi-source-action-kicker">当前主任务</div>
           <div className="bi-source-action-title">{sourceActionTitle}</div>
           <div className="bi-source-action-text">{sourceActionHint}</div>
         </div>
+        <div className="bi-source-action-stats">
+          <span>数据源 {datasources.length}</span>
+          <span>资产 {totalAssetCount}</span>
+          <span>已绑定 {bindingIds.length}</span>
+        </div>
         <div className="bi-source-action-buttons">
-          {node ? (
-            <Button
-              disabled={isMutating || !hasBindingChanged}
-              onClick={() => onBindSourceAssets(node.id, bindingIds)}
-            >
-              保存节点绑定
-            </Button>
-          ) : null}
-          <Button disabled={!selectedDatasource} onClick={() => setAssetEditorMode('create')} tone="ghost">
-            新建分析资产
-          </Button>
+          {isSourceStepComplete ? (
+            <>
+              <Button disabled={!onContinueFlow} onClick={onContinueFlow}>
+                {continueFlowLabel}
+              </Button>
+              <Button onClick={() => setAdvancedEditorOpen(true)} tone="ghost">
+                维护数据源和字段
+              </Button>
+            </>
+          ) : (
+            <>
+              {node ? (
+                <Button
+                  disabled={isMutating || !hasBindingChanged}
+                  onClick={() => void handleSaveBindingAndContinue()}
+                >
+                  保存绑定并继续
+                </Button>
+              ) : null}
+              <Button disabled={!selectedDatasource} onClick={() => setAssetEditorMode('create')} tone="ghost">
+                新建分析资产
+              </Button>
+            </>
+          )}
         </div>
       </section>
-
-      {node ? (
-        <section className="bi-panel-card bi-source-binding-panel">
-          <div className="bi-panel-card-header">
-            <div>
-              <div className="bi-panel-card-title">节点分析源绑定</div>
-              <div className="bi-panel-card-subtitle">
-                AI 生成和运行只使用已勾选资产。
-              </div>
-            </div>
-            <div className="bi-source-binding-summary">
-              <span>已选择 {bindingIds.length} 个</span>
-              <span>可用 {totalAssetCount} 个</span>
-            </div>
-            <Button disabled={isMutating || !hasBindingChanged} onClick={() => onBindSourceAssets(node.id, bindingIds)}>
-              保存节点绑定
-            </Button>
-          </div>
-
-          <div className="bi-binding-grid">
-            {datasources.map((datasource) => (
-              <div key={datasource.id} className={cx('bi-binding-card', datasource.assets.length === 0 ? 'is-empty' : '')}>
-                <div className="bi-side-card-header">
-                  <div>
-                    <div className="bi-side-card-title">{datasource.name}</div>
-                    <div className="bi-side-card-subtitle">{datasource.sourceCode}</div>
-                  </div>
-                  <Badge tone="neutral">{datasource.assets.length} 个资产</Badge>
-                </div>
-                <div className="bi-selection-list bi-stack-list-tight">
-                  {datasource.assets.map((asset) => {
-                    const checked = bindingIds.includes(asset.id);
-                    return (
-                      <label key={asset.id} className={cx('bi-checkbox-card', checked ? 'is-checked' : '')}>
-                        <input
-                          checked={checked}
-                          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                            setBindingIds((current) =>
-                              event.target.checked
-                                ? [...new Set([...current, asset.id])]
-                                : current.filter((item) => item !== asset.id),
-                            );
-                          }}
-                          type="checkbox"
-                        />
-                        <div>
-                          <div className="bi-checkbox-title">{asset.assetName}</div>
-                          <div className="bi-checkbox-meta">
-                            {asset.assetCode} / {getAssetTypeLabel(asset.assetType)}
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                  {datasource.assets.length === 0 ? (
-                    <div className="bi-binding-empty">暂无可绑定资产</div>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       <div className="bi-management-layout bi-source-management-layout">
         <div className="bi-source-catalog-panel">
@@ -485,6 +467,12 @@ export function BiSourceManagementPanel({
                   </button>
                 );
               })}
+              {datasources.length === 0 ? (
+                <div className="bi-panel-empty">
+                  <div>还没有数据源。先新建一个数据源，再添加可绑定的分析资产。</div>
+                  <Button onClick={() => setDatasourceEditorMode('create')}>新建数据源</Button>
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -496,7 +484,9 @@ export function BiSourceManagementPanel({
                   资产
                 </div>
                 <div className="bi-panel-card-subtitle">
-                  {selectedDatasource ? selectedDatasource.name : '请先选择数据源'}
+                  {selectedDatasource
+                    ? `${selectedDatasource.name} / 已绑定 ${selectedDatasourceBoundAssetCount} 个`
+                    : '请先选择数据源'}
                 </div>
               </div>
               <button
@@ -510,30 +500,53 @@ export function BiSourceManagementPanel({
             </div>
             {selectedDatasource ? (
               <div className="bi-stack-list">
-                {selectedDatasource.assets.map((asset) => (
-                  <button
-                    key={asset.id}
-                    className={cx('bi-asset-card', asset.id === selectedAssetId ? 'is-selected' : '')}
-                    onClick={() => {
-                      setSelectedAssetId(asset.id);
-                      setAssetEditorMode('edit');
-                    }}
-                    type="button"
-                  >
-                    <div className="bi-side-card-header">
-                      <div>
-                        <div className="bi-side-card-title">{asset.assetName}</div>
-                        <div className="bi-side-card-subtitle">{asset.assetCode}</div>
-                      </div>
-                      <Badge tone="brand">{getAssetTypeLabel(asset.assetType)}</Badge>
+                {selectedDatasource.assets.map((asset) => {
+                  const checked = bindingIds.includes(asset.id);
+                  const selected = asset.id === selectedAssetId;
+                  return (
+                    <div
+                      key={asset.id}
+                      className={cx('bi-asset-card bi-source-asset-row', selected ? 'is-selected' : '', checked ? 'is-bound' : '')}
+                    >
+                      <label className="bi-source-asset-check">
+                        <input
+                          checked={checked}
+                          disabled={!node}
+                          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                            setBindingIds((current) =>
+                              event.target.checked
+                                ? [...new Set([...current, asset.id])]
+                                : current.filter((item) => item !== asset.id),
+                            );
+                          }}
+                          type="checkbox"
+                        />
+                        <span>{checked ? '已绑定' : '绑定'}</span>
+                      </label>
+                      <button
+                        className="bi-source-asset-main"
+                        onClick={() => {
+                          setSelectedAssetId(asset.id);
+                          setAssetEditorMode('edit');
+                        }}
+                        type="button"
+                      >
+                        <div className="bi-side-card-header">
+                          <div>
+                            <div className="bi-side-card-title">{asset.assetName}</div>
+                            <div className="bi-side-card-subtitle">{asset.assetCode}</div>
+                          </div>
+                          <Badge tone="brand">{getAssetTypeLabel(asset.assetType)}</Badge>
+                        </div>
+                        <div className="bi-side-card-meta">
+                          {asset.assetType === 'TABLE'
+                            ? `${asset.tableSchema ?? 'dbo'}.${asset.tableName ?? ''}`
+                            : asset.sourceTables.join(', ') || '未声明来源表'}
+                        </div>
+                      </button>
                     </div>
-                    <div className="bi-side-card-meta">
-                      {asset.assetType === 'TABLE'
-                        ? `${asset.tableSchema ?? 'dbo'}.${asset.tableName ?? ''}`
-                        : asset.sourceTables.join(', ') || '未声明来源表'}
-                    </div>
-                  </button>
-                ))}
+                  );
+                })}
                 {selectedDatasource.assets.length === 0 ? (
                   <div className="bi-panel-empty bi-panel-empty-tight">这个数据源下还没有分析资产。</div>
                 ) : null}
@@ -544,7 +557,34 @@ export function BiSourceManagementPanel({
           </section>
         </div>
 
-        <section className="bi-panel-scroll bi-management-editor bi-source-editor-panel">
+        <section
+          className={cx(
+            'bi-panel-scroll bi-management-editor bi-source-editor-panel',
+            beginnerMode && isSourceStepComplete && !advancedEditorOpen ? 'is-guided' : '',
+          )}
+        >
+          {isSourceStepComplete ? (
+            <div className="bi-source-next-step-card">
+              <div>
+                <div className="bi-source-next-step-kicker">本步骤已完成</div>
+                <div className="bi-source-next-step-title">分析源已经准备好</div>
+                <div className="bi-source-next-step-text">
+                  当前节点已绑定 {bindingIds.length} 个分析资产。{continueFlowHint}
+                </div>
+              </div>
+              <div className="bi-source-next-step-actions">
+                <Button disabled={!onContinueFlow} onClick={onContinueFlow}>
+                  {continueFlowLabel}
+                </Button>
+                <Button
+                  onClick={() => setAdvancedEditorOpen((open) => !open)}
+                  tone="ghost"
+                >
+                  {advancedEditorOpen ? '收起高级维护' : '展开高级维护'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="bi-source-workflow-heading bi-source-workflow-heading-editor">
             <span className="bi-source-workflow-step">2</span>
             <div>

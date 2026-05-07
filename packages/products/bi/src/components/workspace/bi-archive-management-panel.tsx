@@ -28,6 +28,7 @@ import {
   getScreenDesignStatusLabel,
 } from '../../utils/bi-directory';
 import type { BiArchiveTab } from '../../utils/bi-workspace-view-state';
+import type { BiWorkspaceNextStep } from '../../utils/bi-workspace-next-step';
 import { ExternalLinkIcon, HistoryIcon, PlayIcon, ShareIcon } from './bi-icons';
 
 type BiArchiveManagementPanelProps = {
@@ -44,11 +45,15 @@ type BiArchiveManagementPanelProps = {
   screens: BiScreen[];
   selectedScreenId: number | null;
   shareTokens: BiShareToken[];
+  nextStep: BiWorkspaceNextStep;
   onActiveTabChange: (tab: BiArchiveTab) => void;
   onClearCreatePreset: () => void;
+  onContinueFlow: () => void;
   onCreateScreen: (payload: ScreenSavePayload) => Promise<BiScreen | void>;
   onCreateShareToken: (payload: ShareCreatePayload) => Promise<void>;
   onGenerateDraft: (payload: GenerateDraftPayload) => Promise<void>;
+  onNotify: (message: string) => void;
+  onOpenSources: () => void;
   onPreviewPrompt: (payload: {
     datasourceIds?: number[];
     nodeId: number;
@@ -96,9 +101,9 @@ type VersionFormState = {
 };
 
 const ARCHIVE_TABS: Array<{ id: BiArchiveTab; label: string }> = [
-  { id: 'base', label: '基础信息' },
-  { id: 'versions', label: '版本管理' },
-  { id: 'design', label: '设计与生成' },
+  { id: 'base', label: '基础' },
+  { id: 'versions', label: '版本' },
+  { id: 'design', label: '设计生成' },
   { id: 'sharing', label: '发布分享' },
 ];
 
@@ -297,11 +302,15 @@ export function BiArchiveManagementPanel({
   screens,
   selectedScreenId,
   shareTokens,
+  nextStep,
   onActiveTabChange,
   onClearCreatePreset,
+  onContinueFlow,
   onCreateScreen,
   onCreateShareToken,
   onGenerateDraft,
+  onNotify,
+  onOpenSources,
   onPreviewPrompt,
   onPublishGeneratedVersion,
   onPublishVersion,
@@ -416,7 +425,7 @@ export function BiArchiveManagementPanel({
         }
       }
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'JSON 格式不正确，请检查后再保存。');
+      onNotify(error instanceof Error ? error.message : 'JSON 格式不正确，请检查后再保存。');
     }
   }
 
@@ -424,20 +433,93 @@ export function BiArchiveManagementPanel({
     try {
       onClearWorkspaceError();
       if (versionSaveBlockedReason) {
-        window.alert(versionSaveBlockedReason);
+        onNotify(versionSaveBlockedReason);
         return;
       }
       await onSaveScreenVersion(screenId, buildVersionPayload(versionForm));
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : '版本 JSON 格式不正确，请检查后再保存。');
+      onNotify(error instanceof Error ? error.message : '版本 JSON 格式不正确，请检查后再保存。');
     }
   }
 
   const canSaveArchive =
     Boolean(node) && baseForm.name.trim().length > 0 && baseForm.screenCode.trim().length > 0;
+  const hasDesignContext = sourceAssetIds.length > 0;
+  const hasDraftVersion = Boolean(selectedScreen?.versions.length);
+  const publishedVersionId = selectedScreen ? getPublishedVersionId(selectedScreen) : null;
+  const hasPublishedVersion = Boolean(publishedVersionId);
+  const activeTabLabel = ARCHIVE_TABS.find((tab) => tab.id === activeTab)?.label ?? '基础';
+  const canRunDesign = Boolean(node) && hasDesignContext;
+  const designPrimaryActionLabel = !node
+    ? '先选择节点'
+    : !hasDesignContext
+      ? '去绑定分析源'
+      : hasDraftVersion
+        ? '重新生成草稿'
+        : '生成草稿';
+  const designPrimaryHint = !node
+    ? '先在目录画布或顶部节点选择器里选中一个节点。'
+    : !hasDesignContext
+      ? '当前节点还没有可用于生成的分析源，先绑定表或 SQL 资产。'
+      : hasDraftVersion
+        ? '已经有草稿版本，可以继续调整提示词后重新生成。'
+        : '上下文已经准备好，可以直接生成第一版 BI 草稿。';
+  function buildDesignPayload() {
+    if (!node) {
+      return null;
+    }
+
+    return {
+      datasourceIds,
+      nodeId: node.id,
+      prompt: manualPrompt,
+      providerCode: selectedTemplate?.providerCode ?? 'RULE_BASED',
+      publishMode: 'DRAFT' as const,
+      ...(selectedScreen ? { screenId: selectedScreen.id } : {}),
+      screenCode: baseForm.screenCode.trim(),
+      screenName: baseForm.name.trim(),
+      sourceAssetIds,
+      ...(selectedTemplate ? { templateCode: selectedTemplate.templateCode } : {}),
+    };
+  }
+
+  function handlePreviewDesignPrompt() {
+    const payload = buildDesignPayload();
+    if (!payload) {
+      return Promise.resolve();
+    }
+
+    const { publishMode: _publishMode, screenCode: _screenCode, screenName: _screenName, ...previewPayload } = payload;
+    return onPreviewPrompt(previewPayload);
+  }
+
+  function handleGenerateDesignDraft() {
+    const payload = buildDesignPayload();
+    return payload ? onGenerateDraft(payload) : Promise.resolve();
+  }
+
+  function handleRegenerateDesignDraft() {
+    const payload = buildDesignPayload();
+    if (!selectedScreen || !payload) {
+      return Promise.resolve();
+    }
+
+    const { nodeId: _nodeId, screenCode: _screenCode, screenId: _screenId, screenName: _screenName, ...regeneratePayload } =
+      payload;
+    return onRegenerateVersion(selectedScreen.id, regeneratePayload);
+  }
+
+  function handleDesignPrimaryAction() {
+    if (!node || !hasDesignContext) {
+      onOpenSources();
+      return;
+    }
+
+    void (hasDraftVersion && selectedScreen ? handleRegenerateDesignDraft() : handleGenerateDesignDraft());
+  }
 
   return (
-    <section className="bi-management-panel">
+    <section className="bi-management-panel bi-archive-management-panel">
       <div className="bi-management-header">
         <div>
           <div className="bi-management-title">BI 档案管理</div>
@@ -488,8 +570,8 @@ export function BiArchiveManagementPanel({
         </div>
       </div>
 
-      <div className="bi-management-layout bi-management-layout-wide">
-        <section className="bi-panel-card bi-management-column">
+      <div className="bi-management-layout bi-management-layout-wide bi-archive-management-layout">
+        <section className="bi-panel-card bi-management-column bi-archive-list-panel">
           <div className="bi-panel-card-header">
             <div>
               <div className="bi-panel-card-title">档案列表</div>
@@ -520,13 +602,55 @@ export function BiArchiveManagementPanel({
               </button>
             ))}
             {screens.length === 0 ? (
-              <div className="bi-panel-empty">当前节点还没有 BI 档案，可以先创建内置 BI 或外链 BI。</div>
+              <div className="bi-panel-empty">
+                <div>当前节点还没有 BI 档案。</div>
+                <Button
+                  disabled={!node}
+                  onClick={() => {
+                    onSelectScreen(null);
+                    onClearCreatePreset();
+                    setBaseForm(buildEmptyBaseForm(node, 'INTERNAL'));
+                    onActiveTabChange('base');
+                  }}
+                >
+                  创建内置 BI
+                </Button>
+              </div>
             ) : null}
           </div>
         </section>
 
-        <section className="bi-panel-scroll">
-          <div className="bi-context-tabs bi-context-tabs-wide">
+        <section className="bi-panel-scroll bi-archive-editor-panel">
+          <div className="bi-archive-editor-header">
+            <div>
+              <div className="bi-archive-editor-kicker">当前档案 / {activeTabLabel}</div>
+              <div className="bi-archive-editor-title">{baseForm.name || selectedScreen?.name || '新建 BI 档案'}</div>
+              <div className="bi-archive-editor-meta">
+                <span>{baseForm.biType === 'EXTERNAL' ? '外链 BI' : '内置 BI'}</span>
+                <span>{selectedScreen ? getScreenDesignStatusLabel(selectedScreen.designStatus) : '待创建'}</span>
+                <span>{selectedScreen?.versions.length ?? 0} 个版本</span>
+                <span>{hasPublishedVersion ? `已发布 #${publishedVersionId}` : '未发布'}</span>
+              </div>
+            </div>
+            {activeTab === 'base' ? (
+              <Button disabled={isMutating || !canSaveArchive} onClick={() => void handleSaveArchiveBase()}>
+                {selectedScreen ? '保存基础信息' : '创建档案'}
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="bi-archive-flow-card">
+            <div>
+              <div className="bi-archive-flow-kicker">当前主任务</div>
+              <div className="bi-archive-flow-title">{nextStep.title}</div>
+              <div className="bi-archive-flow-text">{nextStep.hint}</div>
+            </div>
+            <Button disabled={!node} onClick={onContinueFlow}>
+              {nextStep.actionLabel}
+            </Button>
+          </div>
+
+          <div className="bi-context-tabs bi-context-tabs-wide bi-archive-tabs">
             {ARCHIVE_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -545,7 +669,7 @@ export function BiArchiveManagementPanel({
                 <div>
                   <div className="bi-panel-card-title">档案基础信息</div>
                   <div className="bi-panel-card-subtitle">
-                    维护档案类型、访问方式、业务说明、设计说明与外链配置。
+                    名称、类型、访问方式和业务描述。
                   </div>
                 </div>
                 {selectedScreen ? (
@@ -652,31 +776,34 @@ export function BiArchiveManagementPanel({
                   />
                 </label>
                 <div className="bi-panel-help">写页面结构和展示重点，比如“上方核心指标，中间趋势，底部区域对比”。</div>
-                <label className="bi-panel-field">
-                  <span className="bi-panel-label">最近一次设计提示词</span>
-                  <textarea
-                    aria-label="最近一次设计提示词"
-                    className="bi-panel-textarea"
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                      setBaseForm((current) => ({ ...current, latestDesignPrompt: event.target.value }))
-                    }
-                    value={baseForm.latestDesignPrompt}
-                  />
-                </label>
-                <div className="bi-panel-help">这里记录最近一次给 AI 的提示词，后面继续生成或复盘时会更方便。</div>
-                <label className="bi-panel-field">
-                  <span className="bi-panel-label">扩展元信息 JSON</span>
-                  <textarea
-                    aria-label="扩展元信息 JSON"
-                    className="bi-panel-textarea bi-panel-code"
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                      setBaseForm((current) => ({ ...current, designMetaText: event.target.value }))
-                    }
-                    placeholder='例如：{"owner":"分析团队","category":"经营分析"}'
-                    value={baseForm.designMetaText}
-                  />
-                </label>
-                <div className="bi-panel-help">这个是给高级扩展用的；如果现在不确定怎么填，可以先留空。</div>
+                <details className="bi-panel-disclosure">
+                  <summary>高级信息</summary>
+                  <div className="bi-panel-form bi-panel-form-spaced">
+                    <label className="bi-panel-field">
+                      <span className="bi-panel-label">最近一次设计提示词</span>
+                      <textarea
+                        aria-label="最近一次设计提示词"
+                        className="bi-panel-textarea"
+                        onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                          setBaseForm((current) => ({ ...current, latestDesignPrompt: event.target.value }))
+                        }
+                        value={baseForm.latestDesignPrompt}
+                      />
+                    </label>
+                    <label className="bi-panel-field">
+                      <span className="bi-panel-label">扩展元信息 JSON</span>
+                      <textarea
+                        aria-label="扩展元信息 JSON"
+                        className="bi-panel-textarea bi-panel-code"
+                        onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                          setBaseForm((current) => ({ ...current, designMetaText: event.target.value }))
+                        }
+                        placeholder='例如：{"owner":"分析团队","category":"经营分析"}'
+                        value={baseForm.designMetaText}
+                      />
+                    </label>
+                  </div>
+                </details>
 
                 {baseForm.biType === 'EXTERNAL' ? (
                   <div className="bi-panel-card bi-panel-card-muted">
@@ -1289,14 +1416,17 @@ function JsonEditor({
   value: string;
 }) {
   return (
-    <label className="bi-panel-field">
-      <span className="bi-panel-label">{label}</span>
-      <textarea
-        aria-label={label}
-        className="bi-panel-textarea bi-panel-code"
-        onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
-        value={value}
-      />
-    </label>
+    <details className="bi-json-editor">
+      <summary>{label}</summary>
+      <label className="bi-panel-field">
+        <span className="bi-panel-label">{label}</span>
+        <textarea
+          aria-label={label}
+          className="bi-panel-textarea bi-panel-code"
+          onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
+          value={value}
+        />
+      </label>
+    </details>
   );
 }
