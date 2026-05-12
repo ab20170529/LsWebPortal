@@ -154,7 +154,7 @@ export function PortalLoginPage({ targetLabel }: PortalLoginPageProps) {
   };
 
   return (
-    <div className="font-display main-gradient portal-login-scene relative min-h-screen overflow-x-hidden text-slate-900">
+    <div className="font-display main-gradient portal-auth-scene relative min-h-screen overflow-x-hidden text-slate-900">
       <div className="pointer-events-none fixed inset-0 mesh-bg" />
       <div className="blob -left-24 -top-48 h-[600px] w-[600px] bg-sky-200" />
       <div

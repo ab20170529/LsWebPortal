@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  ClipboardList,
+  Clock3,
+  ListTodo,
+  Save,
+  Search,
+  SendHorizontal,
+  SlidersHorizontal,
+} from 'lucide-react';
 
-import { Badge, Button, Card, cx } from '@lserp/ui';
+import { Badge, Card, cx } from '@lserp/ui';
 
 import { getProjectStatusLabel, getProjectStatusTone } from '../../project-display';
 import { useProjectToast } from '../../project-toast';
@@ -17,84 +33,137 @@ import {
   toNullableNumber,
 } from './task-submission-utils';
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+const TASK_STATUS_FILTERS = [
+  { value: 'ALL', label: '全部状态' },
+  { value: 'NOT_STARTED', label: '未开始' },
+  { value: 'IN_PROGRESS', label: '进行中' },
+  { value: 'COMPLETED', label: '已完成' },
+  { value: 'PAUSED', label: '已暂停' },
+];
 
-function StatCard({ label, value, icon, color = 'bg-slate-100 text-slate-600' }: { label: string; value: string | number; icon?: ReactNode; color?: string }) {
+function clampProgress(value?: number | null) {
+  if (value == null || Number.isNaN(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, value));
+}
+
+function getProgressTone(value: number) {
+  if (value >= 100) return 'bg-[#12b981]';
+  if (value >= 50) return 'bg-[#1f7cff]';
+  if (value > 0) return 'bg-[#ff8a00]';
+  return 'bg-[#d8e2f0]';
+}
+
+function StatItem({
+  colorClass,
+  delta,
+  deltaTone = 'text-[#14c59a]',
+  icon,
+  label,
+  valueClass = 'text-[#111c33]',
+  value,
+}: {
+  colorClass: string;
+  delta: string;
+  deltaTone?: string;
+  icon: ReactNode;
+  label: string;
+  valueClass?: string;
+  value: number;
+}) {
   return (
-    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-      {icon && (
-        <div className={cx('w-10 h-10 rounded-xl flex items-center justify-center', color)}>
-          {icon}
+    <div className="flex min-w-0 items-center gap-4 px-5 py-4">
+      <div className={cx('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg shadow-[0_8px_18px_rgba(37,99,235,0.08)]', colorClass)}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm font-medium leading-5 text-[#5e7291]">{label}</div>
+        <div className="mt-1 flex items-baseline gap-2">
+          <span className={cx('text-[30px] font-bold leading-none', valueClass)}>{value}</span>
+          <span className="text-sm font-medium text-[#8da0bd]">项</span>
         </div>
-      )}
-      <div>
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{label}</p>
-        <p className={cx('text-2xl font-bold leading-none mt-1', icon ? color.replace('bg-', 'text-') : 'text-slate-800')}>{value}</p>
+        <div className="mt-2 flex items-center gap-1 text-xs font-medium text-[#7e91b0]">
+          <span>较昨日</span>
+          <span className={deltaTone}>{delta}</span>
+        </div>
       </div>
     </div>
   );
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+function Field({
+  children,
+  label,
+  suffix,
+}: {
+  children: ReactNode;
+  label: string;
+  suffix?: ReactNode;
+}) {
   return (
-    <label className="block space-y-2">
-      <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{label}</div>
+    <label className="block">
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-[#5e7291]">{label}</span>
+        {suffix}
+      </div>
       {children}
     </label>
   );
 }
 
 function ProgressBar({ value }: { value: number }) {
-  const color = value >= 100 ? 'bg-emerald-500' : value >= 50 ? 'bg-sky-500' : value >= 25 ? 'bg-amber-400' : 'bg-slate-300';
+  const progress = clampProgress(value);
+
   return (
     <div className="flex items-center gap-3">
-      <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+      <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-[#e9eff8]">
         <div
-          className={cx('h-full rounded-full transition-all duration-300', color)}
-          style={{ width: `${Math.min(value, 100)}%` }}
+          className={cx('h-full rounded-full transition-all duration-200', getProgressTone(progress))}
+          style={{ width: `${progress}%` }}
         />
       </div>
-      <span className="w-10 shrink-0 text-right text-xs font-bold text-slate-600">{value}%</span>
+      <span className="w-11 shrink-0 text-right text-sm font-medium text-[#263653]">{progress}%</span>
     </div>
   );
 }
 
-// Icon Components
-function ClockIcon() {
+function TaskHeroIllustration() {
   return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-      <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M10 5v5l3 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
+    <div className="pointer-events-none absolute inset-y-0 left-[52%] hidden w-[360px] -translate-x-1/2 items-center justify-center lg:flex">
+      <div className="relative h-[118px] w-[330px]">
+        <div className="absolute left-[70px] top-[32px] h-14 w-14 rounded-full bg-[#d9e9ff] opacity-80" />
+        <div className="absolute right-[72px] top-[20px] h-20 w-20 rounded-full bg-[#eef5ff]" />
+        <div className="absolute left-[82px] top-[42px] h-12 w-10 -rotate-12 rounded-lg bg-[#dbe9ff] opacity-80" />
+        <div className="absolute right-[94px] top-[36px] h-14 w-11 rotate-12 rounded-lg bg-[#dbe9ff] opacity-75" />
+        <div className="absolute left-1/2 bottom-1 h-7 w-[158px] -translate-x-1/2 rounded-full bg-[#b9d4ff] opacity-35 blur-sm" />
+        <div className="absolute left-1/2 top-[16px] flex h-[92px] w-[72px] -translate-x-1/2 items-center justify-center rounded-[10px] border border-[#98c2ff] bg-white shadow-[0_18px_34px_rgba(42,111,255,0.24)]">
+          <div className="absolute -top-4 left-1/2 flex h-8 w-11 -translate-x-1/2 items-center justify-center rounded-md bg-[#2f80ff] text-white shadow-[0_10px_24px_rgba(47,128,255,0.32)]">
+            <ClipboardList size={20} strokeWidth={2} />
+          </div>
+          <div className="mt-3 w-full space-y-2 px-3">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="flex items-center gap-2">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#e8f2ff] text-[#2f80ff] shadow-[inset_0_0_0_1px_rgba(47,128,255,0.12)]">
+                  <Check size={11} strokeWidth={2.2} />
+                </span>
+                <span className="h-2 flex-1 rounded-full bg-[#dbe9ff]" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="absolute right-[92px] top-[55px] flex h-9 w-9 items-center justify-center rounded-full bg-[#2f80ff] text-white shadow-[0_10px_24px_rgba(47,128,255,0.32)]">
+          <Check size={20} strokeWidth={2.4} />
+        </div>
+      </div>
+    </div>
   );
 }
 
-function AlertIcon() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-      <path d="M10 2L2 17h16L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M10 8v4M10 14v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-  );
+function isPendingTask(task: TaskSubmissionTask) {
+  const status = (task.status ?? 'NOT_STARTED').toUpperCase();
+  return status === 'NOT_STARTED' || status === 'PAUSED';
 }
-
-function CheckIcon() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-      <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M6.5 10l2.5 2.5 4.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-const STATUS_OPTIONS = [
-  { value: 'NOT_STARTED', label: '未开始', tone: 'neutral' as const },
-  { value: 'IN_PROGRESS', label: '进行中', tone: 'brand' as const },
-  { value: 'COMPLETED', label: '已完成', tone: 'success' as const },
-  { value: 'PAUSED', label: '已暂停', tone: 'warning' as const },
-];
-
-// ─── Main Component ────────────────────────────────────────────────────────────
 
 export function ProjectTaskSubmissionPage({
   detailLoading,
@@ -106,15 +175,24 @@ export function ProjectTaskSubmissionPage({
   const [keyword, setKeyword] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(tasks[0]?.id ?? null);
   const [form, setForm] = useState<TaskFormState>(toForm(tasks[0] ?? null));
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const filteredTasks = useMemo(() => {
     const search = keyword.trim().toLowerCase();
-    if (!search) return tasks;
-    return tasks.filter((task) =>
+    let nextTasks = tasks;
+
+    if (statusFilter !== 'ALL') {
+      nextTasks = nextTasks.filter((task) => (task.status ?? 'NOT_STARTED').toUpperCase() === statusFilter);
+    }
+
+    if (!search) return nextTasks;
+
+    return nextTasks.filter((task) =>
       `${task.taskTitle} ${task.responsibleName ?? ''} ${task.status ?? ''}`.toLowerCase().includes(search),
     );
-  }, [keyword, tasks]);
+  }, [keyword, statusFilter, tasks]);
 
   const selectedTask = useMemo(
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
@@ -123,9 +201,9 @@ export function ProjectTaskSubmissionPage({
 
   const counts = useMemo(() => {
     const total = tasks.length;
-    const pending = tasks.filter((t) => t.status === 'NOT_STARTED' || !t.status).length;
-    const inProgress = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
-    const completed = tasks.filter((t) => t.status === 'COMPLETED').length;
+    const pending = tasks.filter(isPendingTask).length;
+    const inProgress = tasks.filter((task) => task.status === 'IN_PROGRESS').length;
+    const completed = tasks.filter((task) => task.status === 'COMPLETED').length;
     return { total, pending, inProgress, completed };
   }, [tasks]);
 
@@ -237,151 +315,213 @@ export function ProjectTaskSubmissionPage({
 
   if (!selectedProject) {
     return (
-      <div className="flex h-full items-center justify-center p-8">
-        <Card className="w-full max-w-lg rounded-3xl p-10 text-center">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
-            <svg className="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24">
-              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+      <div className="flex h-full items-center justify-center bg-[#f5f8fc] p-5">
+        <Card className="w-full max-w-lg rounded-lg border border-[#e4ebf5] bg-white p-5 text-center shadow-[0_14px_34px_rgba(24,39,75,0.08)]">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg bg-[#edf4ff] text-[#1f7cff]">
+            <ClipboardCheck size={28} strokeWidth={1.9} />
           </div>
-          <div className="text-2xl font-black tracking-tight text-slate-900">任务填报</div>
-          <div className="mt-3 text-sm leading-7 text-slate-500">
-            请先在「项目台账」中选择一个项目，再进入当前页面进行任务接收和完成说明填报。
+          <div className="mt-4 text-xl font-bold text-[#111c33]">任务填报</div>
+          <div className="mt-3 text-sm leading-6 text-[#5e7291]">
+            请先在项目台账中选择一个项目，再进入当前页面进行任务接收和完成说明填报。
           </div>
-          <Button className="mt-6" onClick={() => {}}>
-            前往项目台账
-          </Button>
         </Card>
       </div>
     );
   }
 
-  return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f3f5f9]">
+  const activeProgress = toNullableNumber(form.progressRate) ?? selectedTask?.progressRate ?? 0;
+  const progress = clampProgress(activeProgress);
 
-      {/* Header */}
-      <div className="bg-white px-6 pt-6 pb-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 text-white shadow-[0_8px_20px_-8px_rgba(124,58,237,0.6)]">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 20 20">
-                <path d="M9 5H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                <path d="M15 12H9M12 8v8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5"/>
-              </svg>
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden bg-[#f5f8fc]">
+      <div className="relative min-h-[122px] overflow-hidden rounded-lg border border-[#e8eff8] bg-[linear-gradient(96deg,#ffffff_0%,#f7fbff_38%,#eaf3ff_100%)] px-5 shadow-[0_14px_34px_rgba(24,39,75,0.06)]">
+        <TaskHeroIllustration />
+        <div className="relative z-10 flex h-full items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#6f4cff,#8d35ff)] text-white shadow-[0_12px_22px_rgba(112,72,255,0.32)]">
+              <ClipboardCheck size={24} strokeWidth={1.9} />
             </div>
-            <div>
-              <div className="text-2xl font-black tracking-tight text-slate-900">任务填报</div>
-              <div className="mt-0.5 text-sm text-slate-500">接收任务、填报进度、填写完成说明</div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold leading-7 text-[#111c33]">任务填报</h1>
+              <p className="mt-1 text-xs font-medium leading-5 text-[#5e7291]">接收任务、填报进度、填写完成说明</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700">
-            <div className="h-2 w-2 rounded-full bg-violet-500" />
-            {selectedProject.projectName}
+          <div className="hidden h-9 max-w-[260px] shrink-0 items-center gap-2 rounded-md bg-white px-4 text-sm font-semibold text-[#1f65e8] shadow-[0_10px_26px_rgba(31,101,232,0.12)] md:flex">
+            <span className="h-2 w-2 rounded-full bg-[#1f7cff]" />
+            <span className="truncate">{selectedProject.projectName}</span>
+            <ChevronDown size={14} strokeWidth={2} />
           </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 px-6 py-4 xl:grid-cols-4">
-        <StatCard label="任务总数" value={counts.total} />
-        <StatCard label="进行中" value={counts.inProgress} icon={<ClockIcon />} color="bg-blue-100 text-blue-600" />
-        <StatCard label="待跟进" value={counts.pending} icon={<AlertIcon />} color="bg-amber-100 text-amber-600" />
-        <StatCard label="已完成" value={counts.completed} icon={<CheckIcon />} color="bg-emerald-100 text-emerald-600" />
-      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex min-h-0 flex-col gap-2">
+          <Card className="rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_12px_28px_rgba(24,39,75,0.05)]">
+            <div className="grid divide-y divide-[#edf2f8] md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-4">
+              <StatItem
+                colorClass="bg-[#edf4ff] text-[#1f7cff]"
+                delta="+1"
+                icon={<ListTodo size={24} strokeWidth={1.9} />}
+                label="任务总数"
+                value={counts.total}
+              />
+              <StatItem
+                colorClass="bg-[#edf4ff] text-[#1f7cff]"
+                delta="0"
+                deltaTone="text-[#7e91b0]"
+                icon={<Clock3 size={24} strokeWidth={1.9} />}
+                label="进行中"
+                valueClass="text-[#1f7cff]"
+                value={counts.inProgress}
+              />
+              <StatItem
+                colorClass="bg-[#fff3e8] text-[#ff7a00]"
+                delta="+1"
+                icon={<AlertTriangle size={24} strokeWidth={1.9} />}
+                label="待跟进"
+                valueClass="text-[#ff7a00]"
+                value={counts.pending}
+              />
+              <StatItem
+                colorClass="bg-[#e9fbf3] text-[#10b981]"
+                delta="+1"
+                icon={<CheckCircle2 size={24} strokeWidth={1.9} />}
+                label="已完成"
+                valueClass="text-[#10b981]"
+                value={counts.completed}
+              />
+            </div>
+          </Card>
 
-      {/* Main Content */}
-      <div className="min-h-0 flex-1 overflow-hidden px-6 pb-6">
-        <div className="flex h-full gap-4">
-
-          {/* Left: Task List */}
-          <Card className="flex w-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl p-0">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/60 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-slate-700">我的任务</span>
-                <div className="rounded-xl bg-white px-2.5 py-1 text-xs font-bold text-slate-500 border border-slate-200">
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_12px_28px_rgba(24,39,75,0.05)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#edf2f8] px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="text-base font-bold text-[#111c33]">我的任务</span>
+                <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-[#d8e6fa] bg-[#f3f8ff] px-2 text-sm font-semibold text-[#1f65e8]">
                   {filteredTasks.length}
-                </div>
+                </span>
               </div>
-              <div className="relative">
-                <svg className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 20 20">
-                  <circle cx="9" cy="9" r="4.5" stroke="currentColor" strokeWidth="1.6"/>
-                  <path d="M12.5 12.5 16.5 16.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6"/>
-                </svg>
-                <input
-                  className="h-10 w-full min-w-[200px] rounded-xl border border-slate-200 bg-white pl-9 pr-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
-                  onChange={(event: ChangeEvent<HTMLInputElement>) => setKeyword(event.target.value)}
-                  placeholder="搜索任务..."
-                  value={keyword}
-                />
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8da0bd]"
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                  <input
+                    className="h-9 w-[240px] rounded-md border border-[#d9e3f1] bg-white pl-9 pr-3 text-sm text-[#263653] outline-none transition placeholder:text-[#9badc6] focus:border-[#1f7cff] focus:ring-2 focus:ring-[#dceaff]"
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setKeyword(event.target.value)}
+                    placeholder="搜索任务名称"
+                    value={keyword}
+                  />
+                </div>
+                <div className="relative">
+                  <button
+                    aria-expanded={isStatusFilterOpen}
+                    aria-label="任务状态筛选"
+                    className={cx(
+                      'relative flex h-9 w-9 items-center justify-center rounded-md border bg-white text-[#6f83a3] shadow-[0_2px_5px_rgba(15,23,42,0.03)] transition hover:border-[#b8c9e2] hover:text-[#1f65e8] focus:border-[#1f7cff] focus:outline-none focus:ring-2 focus:ring-[#dceaff]',
+                      statusFilter === 'ALL' ? 'border-[#d9e3f1]' : 'border-[#9ec5ff] bg-[#f3f8ff] text-[#1f65e8]',
+                    )}
+                    onClick={() => setIsStatusFilterOpen((open) => !open)}
+                    title="筛选"
+                    type="button"
+                  >
+                    <SlidersHorizontal size={16} strokeWidth={1.9} />
+                    {statusFilter !== 'ALL' ? (
+                      <span className="absolute right-[7px] top-[7px] h-1.5 w-1.5 rounded-full bg-[#1f7cff]" />
+                    ) : null}
+                  </button>
+                  {isStatusFilterOpen ? (
+                    <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-32 overflow-hidden rounded-md border border-[#d9e3f1] bg-white py-1 shadow-[0_10px_28px_rgba(24,39,75,0.12)]">
+                      {TASK_STATUS_FILTERS.map((filter) => {
+                        const isActive = statusFilter === filter.value;
+                        return (
+                          <button
+                            className={cx(
+                              'flex h-8 w-full items-center justify-between px-3 text-left text-sm font-medium transition',
+                              isActive ? 'bg-[#edf4ff] text-[#1f65e8]' : 'text-[#263653] hover:bg-[#f6f9fd]',
+                            )}
+                            key={filter.value}
+                            onClick={() => {
+                              setStatusFilter(filter.value);
+                              setIsStatusFilterOpen(false);
+                            }}
+                            type="button"
+                          >
+                            <span>{filter.label}</span>
+                            {isActive ? <Check size={14} strokeWidth={2} /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full min-w-[600px] border-collapse">
-                <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
-                  <tr className="text-left text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                    <th className="px-5 py-3 pl-6">任务标题</th>
-                    <th className="px-4 py-3">状态</th>
-                    <th className="px-4 py-3">进度</th>
-                    <th className="px-4 py-3 pr-6">截止时间</th>
+              <table className="w-full min-w-[760px] border-collapse">
+                <thead className="sticky top-0 z-10 bg-[#f8fbff]">
+                  <tr className="text-left text-sm font-medium text-[#6b7f9e]">
+                    <th className="px-5 py-4">任务标题</th>
+                    <th className="px-4 py-4">状态</th>
+                    <th className="px-4 py-4">进度</th>
+                    <th className="px-4 py-4">截止时间</th>
+                    <th className="px-5 py-4">负责人</th>
                   </tr>
                 </thead>
                 <tbody>
                   {detailLoading ? (
-                    <tr><td className="px-5 py-16 pl-6 text-center text-sm text-slate-400" colSpan={4}>加载中...</td></tr>
+                    <tr>
+                      <td className="px-5 py-8 text-center text-sm text-[#7e91b0]" colSpan={5}>
+                        加载中...
+                      </td>
+                    </tr>
                   ) : filteredTasks.length === 0 ? (
                     <tr>
-                      <td className="px-5 py-20 pl-6 text-center" colSpan={4}>
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="text-sm font-semibold text-slate-400">暂无可填报任务</div>
-                        </div>
+                      <td className="px-5 py-8 text-center text-sm font-medium text-[#7e91b0]" colSpan={5}>
+                        暂无可填报任务
                       </td>
                     </tr>
                   ) : (
                     filteredTasks.map((task) => {
                       const isSelected = task.id === selectedTaskId;
-                      const tone = getProjectStatusTone(task.status);
+                      const rowProgress = clampProgress(task.progressRate);
+
                       return (
                         <tr
                           key={task.id}
                           className={cx(
-                            'group cursor-pointer border-b border-slate-100 transition-all duration-150',
-                            isSelected ? 'bg-[#f5f0ff]' : 'hover:bg-slate-50',
+                            'group cursor-pointer border-t border-[#edf2f8] transition-colors duration-150',
+                            isSelected ? 'bg-[#f4f0ff]' : 'bg-white hover:bg-[#f8fbff]',
                           )}
                           onClick={() => setSelectedTaskId(task.id)}
                         >
-                          <td className="px-4 py-4 pl-6">
-                            <div className="flex items-center gap-2.5">
-                              <div className={cx(
-                                'h-2 w-2 shrink-0 rounded-full transition-all',
-                                isSelected ? 'bg-violet-500' : 'bg-slate-300 group-hover:bg-violet-400',
-                              )} />
-                              <span className={cx(
-                                'text-sm font-semibold',
-                                isSelected ? 'text-violet-800' : 'text-slate-800',
-                              )}>
-                                {task.taskTitle}
-                              </span>
+                          <td className="px-5 py-4">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span
+                                className={cx(
+                                  'h-2.5 w-2.5 shrink-0 rounded-full',
+                                  isSelected ? 'bg-[#7b3ff2]' : 'bg-[#c7d4e6]',
+                                )}
+                              />
+                              <span className="truncate text-sm font-semibold text-[#1b2842]">{task.taskTitle}</span>
                             </div>
-                            {task.responsibleName && (
-                              <div className="mt-1 flex items-center gap-1.5 pl-4.5">
-                                <div className="h-4 w-4 rounded-full bg-gradient-to-br from-slate-100 to-slate-200" />
-                                <span className="text-xs text-slate-400">{task.responsibleName}</span>
-                              </div>
-                            )}
                           </td>
                           <td className="px-4 py-4">
-                            <span className="font-semibold">
-                              <Badge tone={tone}>
-                                {getProjectStatusLabel(task.status ?? 'NOT_STARTED')}
-                              </Badge>
-                            </span>
+                            <Badge tone={getProjectStatusTone(task.status)}>
+                              {getProjectStatusLabel(task.status ?? 'NOT_STARTED')}
+                            </Badge>
                           </td>
                           <td className="px-4 py-4">
-                            <ProgressBar value={task.progressRate ?? 0} />
+                            <ProgressBar value={rowProgress} />
                           </td>
-                          <td className="px-4 py-4 pr-6">
-                            <span className="text-sm text-slate-500">{formatDateTime(task.planEndTime)}</span>
+                          <td className="px-4 py-4 text-sm font-medium text-[#526681]">
+                            {formatDateTime(task.planEndTime)}
+                          </td>
+                          <td className="px-5 py-4 text-sm font-semibold text-[#263653]">
+                            {task.responsibleName || '--'}
                           </td>
                         </tr>
                       );
@@ -390,225 +530,155 @@ export function ProjectTaskSubmissionPage({
                 </tbody>
               </table>
             </div>
-          </Card>
 
-          {/* Right: Task Detail Form */}
-          <Card className="w-[380px] shrink-0 overflow-y-auto rounded-2xl p-6">
-            {!selectedTask ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="text-center">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-                    <svg className="h-7 w-7 text-slate-300" fill="none" viewBox="0 0 24 24">
-                      <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" stroke="currentColor" strokeWidth="1.5"/>
-                      <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7Z" stroke="currentColor" strokeWidth="1.5"/>
-                    </svg>
-                  </div>
-                  <div className="text-sm font-semibold text-slate-500">选择左侧任务后<br />再进行填报操作</div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Task Title */}
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">当前任务</div>
-                  <div className="mt-2 text-xl font-black leading-snug tracking-tight text-slate-900">{selectedTask.taskTitle}</div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Badge tone={getProjectStatusTone(selectedTask.status)}>
-                      {getProjectStatusLabel(selectedTask.status ?? 'NOT_STARTED')}
-                    </Badge>
-                    <span className="text-sm text-slate-400">
-                      {selectedTask.responsibleName ? `负责人：${selectedTask.responsibleName}` : '暂无负责人'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Time Info */}
-                <div className="space-y-2 rounded-2xl bg-slate-50 p-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400">计划开始</span>
-                    <span className="font-semibold text-slate-700">{formatDateTime(selectedTask.planStartTime)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400">计划结束</span>
-                    <span className="font-semibold text-slate-700">{formatDateTime(selectedTask.planEndTime)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400">实际开始</span>
-                    <span className={cx('font-semibold', selectedTask.actualStartTime ? 'text-emerald-600' : 'text-slate-400')}>
-                      {formatDateTime(selectedTask.actualStartTime)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400">完成时间</span>
-                    <span className={cx('font-semibold', selectedTask.actualEndTime ? 'text-emerald-600' : 'text-slate-400')}>
-                      {formatDateTime(selectedTask.actualEndTime)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Status Selection */}
-                <div>
-                  <div className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">任务状态</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {STATUS_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        className={cx(
-                          'flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-semibold transition-all',
-                          form.status === opt.value
-                            ? opt.tone === 'success'
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                              : opt.tone === 'brand'
-                              ? 'border-sky-300 bg-sky-50 text-sky-700'
-                              : opt.tone === 'warning'
-                              ? 'border-amber-300 bg-amber-50 text-amber-700'
-                              : 'border-slate-300 bg-slate-100 text-slate-700'
-                            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50',
-                        )}
-                        onClick={() => setForm((current) => ({ ...current, status: opt.value }))}
-                        type="button"
-                      >
-                        <span className={cx(
-                          'h-1.5 w-1.5 rounded-full',
-                          opt.tone === 'success' ? 'bg-emerald-500' : opt.tone === 'brand' ? 'bg-sky-500' : opt.tone === 'warning' ? 'bg-amber-500' : 'bg-slate-300',
-                        )} />
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Progress */}
-                <Field label="当前进度">
-                  <div className="flex items-center gap-3">
-                    <input
-                      className="field-input flex-1"
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setForm((current) => ({ ...current, progressRate: event.target.value }))}
-                      placeholder="0 - 100"
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={form.progressRate}
-                    />
-                    <span className="text-sm font-bold text-slate-400">%</span>
-                  </div>
-                </Field>
-
-                {/* Finish Desc */}
-                <Field label="完成说明">
-                  <textarea
-                    className="field-textarea"
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                      setForm((current) => ({ ...current, finishDesc: event.target.value }))}
-                    placeholder="填写当前任务的完成说明、结果说明或进展说明"
-                    rows={4}
-                    value={form.finishDesc}
-                  />
-                </Field>
-
-                {/* Remark */}
-                <Field label="补充备注">
-                  <textarea
-                    className="field-textarea"
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                      setForm((current) => ({ ...current, remark: event.target.value }))}
-                    placeholder="补充执行说明或注意事项"
-                    rows={3}
-                    value={form.remark}
-                  />
-                </Field>
-
-                {/* Actions */}
-                <div className="space-y-2 pt-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 transition-all hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700 disabled:opacity-50"
-                      disabled={submitting}
-                      onClick={() => { void handleAcceptTask(); }}
-                      type="button"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 20 20">
-                        <path d="M5 10l4 4 6-8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6"/>
-                      </svg>
-                      接收任务
-                    </button>
-                    <button
-                      className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50"
-                      disabled={submitting}
-                      onClick={() => { void handleSaveTask(); }}
-                      type="button"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 20 20">
-                        <path d="M5 5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5Z" stroke="currentColor" strokeWidth="1.5"/>
-                        <path d="M7 3v2M11 3v2M7 7h6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5"/>
-                      </svg>
-                      保存填报
-                    </button>
-                  </div>
-                  <button
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-sm font-bold text-white shadow-[0_4px_14px_-4px_rgba(16,185,129,0.5)] transition-all hover:shadow-[0_6px_18px_-4px_rgba(16,185,129,0.65)] active:scale-95 disabled:opacity-50"
-                    disabled={submitting || !form.finishDesc.trim()}
-                    onClick={() => { void handleCompleteTask(); }}
-                    type="button"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 20 20">
-                      <path d="M5 10l4 4 6-8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"/>
-                    </svg>
-                    提交完成
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="flex items-center justify-end gap-2 border-t border-[#edf2f8] px-5 py-3">
+              <button
+                aria-label="上一页"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-[#d9e3f1] text-[#8da0bd] disabled:opacity-60"
+                disabled
+                type="button"
+              >
+                <ChevronLeft size={16} strokeWidth={1.8} />
+              </button>
+              <span className="flex h-8 min-w-8 items-center justify-center rounded-md border border-[#1f7cff] bg-[#eef5ff] px-2 text-sm font-semibold text-[#1f65e8]">
+                1
+              </span>
+              <button
+                aria-label="下一页"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-[#d9e3f1] text-[#8da0bd] disabled:opacity-60"
+                disabled
+                type="button"
+              >
+                <ChevronRight size={16} strokeWidth={1.8} />
+              </button>
+            </div>
           </Card>
         </div>
-      </div>
 
-      <style>{`
-        .field-input {
-          display: flex;
-          height: 44px;
-          width: 100%;
-          border-radius: 12px;
-          border: 1.5px solid #e2e8f0;
-          background: #f8fafc;
-          padding: 0 14px;
-          font-size: 14px;
-          color: #1e293b;
-          outline: none;
-          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-        }
-        .field-input:focus {
-          border-color: #38bdf8;
-          background: #ffffff;
-          box-shadow: 0 0 0 3px rgba(56,189,248,0.12);
-        }
-        .field-input::placeholder {
-          color: #94a3b8;
-        }
-        .field-textarea {
-          display: flex;
-          width: 100%;
-          border-radius: 12px;
-          border: 1.5px solid #e2e8f0;
-          background: #f8fafc;
-          padding: 12px 14px;
-          font-size: 14px;
-          color: #1e293b;
-          outline: none;
-          resize: vertical;
-          min-height: 88px;
-          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-        }
-        .field-textarea:focus {
-          border-color: #38bdf8;
-          background: #ffffff;
-          box-shadow: 0 0 0 3px rgba(56,189,248,0.12);
-        }
-        .field-textarea::placeholder {
-          color: #94a3b8;
-        }
-      `}</style>
+        <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_12px_28px_rgba(24,39,75,0.05)]">
+          {!selectedTask ? (
+            <div className="flex min-h-[320px] flex-1 items-center justify-center px-5 py-8">
+              <div className="text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg bg-[#edf4ff] text-[#1f7cff]">
+                  <ClipboardCheck size={28} strokeWidth={1.9} />
+                </div>
+                <div className="mt-4 text-sm font-semibold text-[#5e7291]">选择左侧任务后再进行填报操作</div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="px-5 pt-4">
+                <div className="text-sm font-medium text-[#7e91b0]">当前任务</div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <h2 className="min-w-0 flex-1 text-xl font-bold leading-7 text-[#111c33]">{selectedTask.taskTitle}</h2>
+                  <Badge tone={getProjectStatusTone(selectedTask.status)}>
+                    {getProjectStatusLabel(selectedTask.status ?? 'NOT_STARTED')}
+                  </Badge>
+                </div>
+                <div className="mt-2 inline-flex h-7 max-w-full items-center rounded-full bg-[#f2f6fb] px-3 text-sm font-medium text-[#5e7291]">
+                  {selectedTask.responsibleName ? `负责人：${selectedTask.responsibleName}` : '暂无负责人'}
+                </div>
+              </div>
+
+              <div className="mx-5 mt-3 space-y-2 rounded-lg bg-[#f7faff] p-3">
+                {[
+                  ['计划开始', formatDateTime(selectedTask.planStartTime)],
+                  ['计划结束', formatDateTime(selectedTask.planEndTime)],
+                  ['实际开始', formatDateTime(selectedTask.actualStartTime)],
+                  ['完成时间', formatDateTime(selectedTask.actualEndTime)],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between gap-4 text-sm">
+                    <span className="font-medium text-[#7e91b0]">{label}</span>
+                    <span className="text-right font-semibold text-[#263653]">{value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-auto px-5 pb-3 pt-3">
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-[#5e7291]">当前进度</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="h-8 w-20 rounded-md border border-[#d9e3f1] bg-white px-3 text-right text-sm font-semibold text-[#263653] outline-none transition focus:border-[#1f7cff] focus:ring-2 focus:ring-[#dceaff]"
+                        max={100}
+                        min={0}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setForm((current) => ({ ...current, progressRate: event.target.value }))}
+                        placeholder="0"
+                        type="number"
+                        value={form.progressRate}
+                      />
+                      <span className="text-sm font-semibold text-[#5e7291]">%</span>
+                    </div>
+                  </div>
+                  <ProgressBar value={progress} />
+                </div>
+
+                <div className="mt-3 space-y-3">
+                  <Field
+                    label="完成说明"
+                    suffix={<span className="text-xs font-medium text-[#8da0bd]">{form.finishDesc.length}/500</span>}
+                  >
+                    <textarea
+                      className="min-h-[72px] w-full resize-none rounded-md border border-[#d9e3f1] bg-white px-3 py-2 text-sm leading-6 text-[#263653] outline-none transition placeholder:text-[#9badc6] focus:border-[#1f7cff] focus:ring-2 focus:ring-[#dceaff]"
+                      maxLength={500}
+                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                        setForm((current) => ({ ...current, finishDesc: event.target.value }))}
+                      placeholder="填写当前任务的完成说明、结果说明或进展说明"
+                      value={form.finishDesc}
+                    />
+                  </Field>
+
+                  <Field
+                    label="补充备注"
+                    suffix={<span className="text-xs font-medium text-[#8da0bd]">{form.remark.length}/500</span>}
+                  >
+                    <textarea
+                      className="min-h-[68px] w-full resize-none rounded-md border border-[#d9e3f1] bg-white px-3 py-2 text-sm leading-6 text-[#263653] outline-none transition placeholder:text-[#9badc6] focus:border-[#1f7cff] focus:ring-2 focus:ring-[#dceaff]"
+                      maxLength={500}
+                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                        setForm((current) => ({ ...current, remark: event.target.value }))}
+                      placeholder="补充执行说明或注意事项"
+                      value={form.remark}
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 border-t border-[#edf2f8] px-5 py-2.5">
+                <button
+                  className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#d9e3f1] bg-white text-[13px] font-semibold text-[#263653] transition hover:border-[#1f7cff] hover:text-[#1f65e8] disabled:opacity-50"
+                  disabled={submitting}
+                  onClick={() => { void handleAcceptTask(); }}
+                  type="button"
+                >
+                  <Check size={15} strokeWidth={2} />
+                  接收任务
+                </button>
+                <button
+                  className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#d9e3f1] bg-white text-[13px] font-semibold text-[#263653] transition hover:border-[#1f7cff] hover:text-[#1f65e8] disabled:opacity-50"
+                  disabled={submitting}
+                  onClick={() => { void handleSaveTask(); }}
+                  type="button"
+                >
+                  <Save size={15} strokeWidth={1.9} />
+                  保存填报
+                </button>
+                <button
+                  className="flex h-8 items-center justify-center gap-1.5 rounded-md bg-[#1f7cff] text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.22)] transition hover:bg-[#176df0] disabled:opacity-50"
+                  disabled={submitting || !form.finishDesc.trim()}
+                  onClick={() => { void handleCompleteTask(); }}
+                  type="button"
+                >
+                  <SendHorizontal size={15} strokeWidth={1.9} />
+                  提交完成
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

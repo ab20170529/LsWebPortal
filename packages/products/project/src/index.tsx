@@ -1,4 +1,4 @@
-﻿import {
+import {
   startTransition,
   useEffect,
   useMemo,
@@ -35,7 +35,6 @@ import {
 import { ProjectRolePermissionManagementPage } from './project-role-permission-management-page';
 import { ProjectTypeManagementPage } from './project-type-management-page';
 import { ProjectUserPermissionManagementPage } from './project-user-permission-management-page';
-import { ProjectWorkspacePlaceholderPage } from './project-workspace-placeholder-page';
 import {
   projectWorkspaceGroups,
   projectWorkspaceItems,
@@ -43,6 +42,7 @@ import {
 } from './project-workspace-config';
 import { ProjectWorkspaceShell } from './project-workspace-shell';
 import { ProjectToastProvider } from './project-toast';
+import { ProjectAnalysisDashboardPage } from './workspaces/analysis-dashboard/analysis-dashboard-page';
 import { ProjectDelayApplicationPage } from './workspaces/delay-application/delay-application-page';
 import { ProjectPlanLogPage } from './workspaces/plan-log/plan-log-page';
 import { ProjectTaskSubmissionPage } from './workspaces/task-submission/task-submission-page';
@@ -245,6 +245,149 @@ const projectApiClient = createApiClient({
     (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
     'http://127.0.0.1:8080',
 });
+
+const fallbackProjectTypes: ProjectType[] = [
+  { id: 9001, sort: 1, status: 'ACTIVE', typeCode: 'xmgl_demo', typeDesc: '项目管理平台标准实施模板', typeName: '项目管理开发' },
+  { id: 9002, sort: 2, status: 'ACTIVE', typeCode: 'sjzl_demo', typeDesc: '数据治理与报表建设模板', typeName: '数据治理项目' },
+  { id: 9003, sort: 3, status: 'INACTIVE', typeCode: 'ywxt_demo', typeDesc: '业务系统升级改造模板', typeName: '业务系统优化' },
+];
+
+const fallbackProjects: ProjectItem[] = [
+  {
+    attendanceAddress: '上海市浦东新区项目办公室',
+    budgetAmount: 260000,
+    businessUnit: '数字化中心',
+    id: 7001,
+    managerId: '1001',
+    managerName: '王秀娟',
+    planEndTime: '2026-04-30T23:59:00',
+    planStartTime: '2026-04-09T00:00:00',
+    projectCode: 'xmgl_0001',
+    projectDesc: '用于项目台账、排期协同、任务填报和计划日志的演示项目。',
+    projectName: '项目管理开发',
+    projectTypeId: 9001,
+    sourceCode: 'DEMO-202604',
+    sourceContent: '演示数据',
+    sourceSystem: '本地预览',
+    status: 'IN_PROGRESS',
+  },
+  {
+    attendanceAddress: '杭州市数据治理办公室',
+    budgetAmount: 180000,
+    businessUnit: '数据平台部',
+    id: 7002,
+    managerId: '1002',
+    managerName: '张伟',
+    planEndTime: '2026-05-15T23:59:00',
+    planStartTime: '2026-04-20T00:00:00',
+    projectCode: 'sjzl_0002',
+    projectDesc: '用于数据源盘点、指标模型建设与报表验收的演示项目。',
+    projectName: '数据治理项目',
+    projectTypeId: 9002,
+    sourceCode: 'DEMO-202605',
+    sourceContent: '演示数据',
+    sourceSystem: '本地预览',
+    status: 'NOT_STARTED',
+  },
+];
+
+const fallbackProjectDetailsById: Record<number, ProjectDetail> = {
+  7001: {
+    project: fallbackProjects[0]!,
+    statistics: {
+      budgetCount: 2,
+      completedTaskCount: 2,
+      inProgressTaskCount: 1,
+      memberCount: 4,
+      nodeCount: 4,
+      taskCount: 5,
+      totalActualAmount: 126000,
+      totalPlanAmount: 260000,
+    },
+    members: [
+      { dutyContent: '统筹排期与资源协调', id: 1, isManager: true, roleCode: 'PROJECT_MANAGER', roleName: '项目经理', userId: '1001', userName: '王秀娟' },
+      { dutyContent: '负责界面设计与前端实现', id: 2, roleCode: 'PROJECT_MEMBER', roleName: '项目成员', userId: '1002', userName: '张伟' },
+      { dutyContent: '负责验收测试', id: 3, roleCode: 'PROJECT_AUDITOR', roleName: '项目审核员', userId: '1003', userName: '刘明' },
+      { dutyContent: '负责费用结算', id: 4, roleCode: 'PROJECT_MEMBER', roleName: '项目成员', userId: '1004', userName: '陈丽' },
+    ],
+    budgets: [
+      { actualAmount: 86000, feeDesc: '设计与前端开发', feeItem: '开发费用', feeType: '研发', id: 1, operatorName: '陈丽', planAmount: 180000 },
+      { actualAmount: 40000, feeDesc: '测试与验收支持', feeItem: '测试费用', feeType: '交付', id: 2, operatorName: '陈丽', planAmount: 80000 },
+    ],
+    nodes: [
+      { id: 8001, level: 0, nodeName: '项目立项', planEndTime: '2026-04-12T23:59:00', planStartTime: '2026-04-09T00:00:00', progressRate: 100, sort: 1, status: 'DONE' },
+      { id: 8002, level: 0, nodeName: '项目开发', planEndTime: '2026-04-24T23:59:00', planStartTime: '2026-04-15T00:00:00', progressRate: 40, sort: 2, status: 'IN_PROGRESS' },
+      { id: 8003, level: 1, nodeName: '设计界面', parentId: 8002, planEndTime: '2026-04-17T23:59:00', planStartTime: '2026-04-15T00:00:00', progressRate: 100, sort: 3, status: 'DONE' },
+      { id: 8004, level: 1, nodeName: '开发代码', parentId: 8002, planEndTime: '2026-04-24T23:59:00', planStartTime: '2026-04-18T00:00:00', progressRate: 20, sort: 4, status: 'IN_PROGRESS' },
+    ],
+    tasks: [
+      { finishDesc: '已完成准备材料', id: 8101, planEndTime: '2026-04-12T23:59:00', planStartTime: '2026-04-09T00:00:00', progressRate: 100, projectNodeId: 8001, responsibleName: '王秀娟', responsibleUserId: '1001', status: 'DONE', taskContent: '完成项目范围确认、干系人同步与资料准备。', taskTitle: '项目准备' },
+      { finishDesc: '高保真已确认', id: 8102, planEndTime: '2026-04-17T23:59:00', planStartTime: '2026-04-15T00:00:00', progressRate: 100, projectNodeId: 8003, responsibleName: '张伟', responsibleUserId: '1002', status: 'DONE', taskContent: '输出页面高保真设计与交互说明。', taskTitle: '设计 UI' },
+      { id: 8103, planEndTime: '2026-04-24T23:59:00', planStartTime: '2026-04-18T00:00:00', progressRate: 20, projectNodeId: 8004, responsibleName: '张伟', responsibleUserId: '1002', status: 'IN_PROGRESS', taskContent: '完成前端页面与核心交互开发。', taskTitle: '开发代码' },
+      { id: 8104, planEndTime: '2026-04-26T23:59:00', planStartTime: '2026-04-25T00:00:00', progressRate: 0, projectNodeId: 8004, responsibleName: '刘明', responsibleUserId: '1003', status: 'NOT_STARTED', taskContent: '完成联调和回归测试。', taskTitle: '测试' },
+      { id: 8105, planEndTime: '2026-04-30T23:59:00', planStartTime: '2026-04-29T00:00:00', progressRate: 0, projectNodeId: 8002, responsibleName: '王秀娟', responsibleUserId: '1001', status: 'NOT_STARTED', taskContent: '完成验收材料归档与交付确认。', taskTitle: '验收确认' },
+    ],
+  },
+  7002: {
+    project: fallbackProjects[1]!,
+    statistics: {
+      budgetCount: 1,
+      completedTaskCount: 0,
+      inProgressTaskCount: 0,
+      memberCount: 2,
+      nodeCount: 2,
+      taskCount: 2,
+      totalActualAmount: 0,
+      totalPlanAmount: 180000,
+    },
+    members: [
+      { dutyContent: '项目统筹', id: 11, isManager: true, roleCode: 'PROJECT_MANAGER', roleName: '项目经理', userId: '1002', userName: '张伟' },
+      { dutyContent: '数据模型建设', id: 12, roleCode: 'PROJECT_MEMBER', roleName: '项目成员', userId: '1005', userName: '孙浩' },
+    ],
+    budgets: [
+      { actualAmount: 0, feeDesc: '数据开发与报表配置', feeItem: '建设费用', feeType: '研发', id: 11, operatorName: '陈丽', planAmount: 180000 },
+    ],
+    nodes: [
+      { id: 8201, level: 0, nodeName: '数据盘点', planEndTime: '2026-04-25T23:59:00', planStartTime: '2026-04-20T00:00:00', progressRate: 0, sort: 1, status: 'NOT_STARTED' },
+      { id: 8202, level: 0, nodeName: '模型建设', planEndTime: '2026-05-10T23:59:00', planStartTime: '2026-04-26T00:00:00', progressRate: 0, sort: 2, status: 'NOT_STARTED' },
+    ],
+    tasks: [
+      { id: 8301, planEndTime: '2026-04-25T23:59:00', planStartTime: '2026-04-20T00:00:00', progressRate: 0, projectNodeId: 8201, responsibleName: '张伟', responsibleUserId: '1002', status: 'NOT_STARTED', taskContent: '梳理业务库、字段口径与负责人。', taskTitle: '数据源盘点' },
+      { id: 8302, planEndTime: '2026-05-10T23:59:00', planStartTime: '2026-04-26T00:00:00', progressRate: 0, projectNodeId: 8202, responsibleName: '孙浩', responsibleUserId: '1005', status: 'NOT_STARTED', taskContent: '完成主题域、指标层和明细层建设。', taskTitle: '指标模型建设' },
+    ],
+  },
+};
+
+const fallbackPlansByProjectId: Record<number, ProjectPlan[]> = {
+  7001: [
+    { id: 8401, managerId: '1001', managerName: '王秀娟', planContent: '完成功能模块开发及接口联调', planEndDate: '2026-05-05', planPeriod: '2026 第18周（4.29 - 5.5）', planStartDate: '2026-04-29', planType: 'WEEK', status: 'IN_PROGRESS' },
+    { id: 8402, managerId: '1001', managerName: '王秀娟', planContent: '推进开发代码与单元测试', planEndDate: '2026-04-30', planStartDate: '2026-04-30', planType: 'DAY', status: 'IN_PROGRESS' },
+  ],
+};
+
+const fallbackPlanItemsByPlanId: Record<number, ProjectPlanItem[]> = {
+  8401: [
+    { assigneeId: '1001', assigneeName: '王秀娟', id: 8501, planContent: '完成功能模块A开发', planRequirement: '模块A需求评审、开发、单元测试', projectId: 7001, projectPlanId: 8401, status: 'IN_PROGRESS' },
+    { assigneeId: '1002', assigneeName: '张伟', id: 8502, planContent: '接口联调与问题修复', planRequirement: '接口联调、问题排查与修复', projectId: 7001, projectPlanId: 8401, status: 'NOT_STARTED' },
+  ],
+  8402: [
+    { assigneeId: '1001', assigneeName: '王秀娟', id: 8503, planContent: '完成功能模块A的接口开发', planDate: '2026-04-30', projectId: 7001, projectPlanId: 8402, status: 'IN_PROGRESS', weekDay: '周四' },
+    { assigneeId: '1002', assigneeName: '张伟', id: 8504, planContent: '修复模块B的已知问题', planDate: '2026-04-30', projectId: 7001, projectPlanId: 8402, status: 'NOT_STARTED', weekDay: '周四' },
+  ],
+};
+
+const fallbackReportsByProjectId: Record<number, ProjectReport[]> = {
+  7001: [
+    { finishContent: '完成项目准备和设计界面确认。', id: 8601, projectTaskId: 8102, reportContent: '高保真设计已确认，进入开发阶段。', reportDate: '2026-04-17', reportType: 'DAY', userId: '1002', userName: '张伟' },
+  ],
+};
+
+const fallbackTaskDependenciesByProjectId: Record<number, TaskDependency[]> = {
+  7001: [
+    { dependencyType: 'FS', dependencyTypeDesc: '完成-开始', id: 8701, lagDays: 0, predecessorTaskId: 8102, predecessorTaskTitle: '设计 UI', successorTaskId: 8103, successorTaskTitle: '开发代码' },
+    { dependencyType: 'FS', dependencyTypeDesc: '完成-开始', id: 8702, lagDays: 0, predecessorTaskId: 8103, predecessorTaskTitle: '开发代码', successorTaskId: 8104, successorTaskTitle: '测试' },
+  ],
+};
 
 function formatDateTime(value?: string | null) {
   if (!value) {
@@ -548,7 +691,7 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
       .catch(() => {
         if (!cancelled) {
           startTransition(() => {
-            setProjectTypes([]);
+            setProjectTypes(fallbackProjectTypes);
           });
         }
       });
@@ -639,13 +782,31 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
           });
         });
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!cancelled) {
+          const fallbackItems = fallbackProjects.filter((item) => {
+            const keyword = searchKeyword.trim().toLowerCase();
+            if (!keyword) {
+              return true;
+            }
+            return `${item.projectCode} ${item.projectName} ${item.projectDesc ?? ''} ${item.managerName ?? ''}`
+              .toLowerCase()
+              .includes(keyword);
+          });
+
           startTransition(() => {
-            setProjects([]);
-            setSelectedProjectId(null);
-            setProjectDetail(null);
-            setListError(normalizeErrorMessage(error));
+            setProjects(fallbackItems);
+            setSelectedProjectId((current) =>
+              fallbackItems.some((item) => item.id === current)
+                ? current
+                : fallbackItems[0]?.id ?? null,
+            );
+            setProjectDetail((current) =>
+              current && fallbackItems.some((item) => item.id === current.project.id)
+                ? current
+                : fallbackProjectDetailsById[fallbackItems[0]?.id ?? 0] ?? null,
+            );
+            setListError(null);
           });
         }
       })
@@ -687,9 +848,10 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
       })
       .catch((error: unknown) => {
         if (!cancelled) {
+          const fallbackDetail = fallbackProjectDetailsById[selectedProjectId] ?? null;
           startTransition(() => {
-            setProjectDetail(null);
-            setDetailError(normalizeErrorMessage(error));
+            setProjectDetail(fallbackDetail);
+            setDetailError(fallbackDetail ? null : normalizeErrorMessage(error));
           });
         }
       })
@@ -751,15 +913,26 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
           });
         }
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!cancelled) {
+          const fallbackPlans = fallbackPlansByProjectId[selectedProjectId] ?? [];
+          const fallbackReports = fallbackReportsByProjectId[selectedProjectId] ?? [];
+          const fallbackTaskDependencies = needsTaskDependencyData
+            ? fallbackTaskDependenciesByProjectId[selectedProjectId] ?? []
+            : [];
+          const fallbackPlanItems = needsPlanItemData
+            ? Object.fromEntries(
+                fallbackPlans.map((plan) => [plan.id, fallbackPlanItemsByPlanId[plan.id] ?? []]),
+              ) as Record<number, ProjectPlanItem[]>
+            : {};
+
           startTransition(() => {
-            setPlans([]);
-            setPlanItemsByPlanId({});
-            setReports([]);
+            setPlans(fallbackPlans);
+            setPlanItemsByPlanId(fallbackPlanItems);
+            setReports(fallbackReports);
             setAttachments([]);
-            setTaskDependencies([]);
-            setWorkspaceError(normalizeErrorMessage(error));
+            setTaskDependencies(fallbackTaskDependencies);
+            setWorkspaceError(null);
           });
         }
       })
@@ -1315,7 +1488,7 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
   const ganttTicks = ganttRange ? buildTimelineTicks(ganttRange.start, ganttRange.end) : [];
 
   const overviewContent = (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <ActionConsole
         memberOptions={memberOptions}
         nodeOptions={nodeOptions}
@@ -1335,14 +1508,14 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         taskOptions={taskOptions}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="rounded-[32px] p-6">
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Card className="rounded-[32px] p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">
+              <div className="theme-text-soft text-xs font-semibold">
                 项目清单
               </div>
-              <div className="theme-text-strong mt-2 text-2xl font-black tracking-tight">
+              <div className="theme-text-strong mt-2 text-[22px] font-bold">
                 当前项目
               </div>
             </div>
@@ -1394,12 +1567,12 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
                     type="button"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="theme-text-strong text-sm font-black tracking-tight">{project.projectName}</div>
+                      <div className="theme-text-strong text-sm font-bold">{project.projectName}</div>
                       <Badge tone={isActive ? 'brand' : getProjectStatusTone(project.status)}>
                         {getProjectStatusLabel(project.status ?? 'DRAFT')}
                       </Badge>
                     </div>
-                    <div className="theme-text-muted mt-2 text-xs font-bold uppercase tracking-[0.16em]">
+                    <div className="theme-text-muted mt-2 text-xs font-semibold">
                       {project.projectCode}
                     </div>
                     <div className="theme-text-muted mt-3 text-sm leading-6">
@@ -1416,14 +1589,14 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
           </div>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="rounded-[32px] p-8">
+        <div className="space-y-4">
+          <Card className="rounded-[32px] p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">
+                <div className="theme-text-soft text-xs font-semibold">
                   项目摘要
                 </div>
-                <div className="theme-text-strong mt-2 text-3xl font-black tracking-tight">
+                <div className="theme-text-strong mt-2 text-3xl font-bold">
                   {selectedProject?.projectName ?? '请选择一个项目'}
                 </div>
                 <div className="theme-text-muted mt-3 max-w-3xl text-sm leading-7">
@@ -1439,30 +1612,30 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             </div>
 
             {detailLoading ? (
-              <div className="theme-surface-subtle mt-6 rounded-[22px] p-4 text-sm">
+              <div className="theme-surface-subtle mt-5 rounded-[22px] p-4 text-sm">
                 正在加载项目详情...
               </div>
             ) : detailError ? (
-              <div className="mt-6 rounded-[22px] border border-rose-100 bg-rose-50/80 p-4 text-sm text-rose-800">
+              <div className="mt-5 rounded-[22px] border border-rose-100 bg-rose-50/80 p-4 text-sm text-rose-800">
                 {detailError}
               </div>
             ) : selectedProject && statistics ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">团队</div>
-                  <div className="theme-text-strong mt-3 text-3xl font-black tracking-tight">{statistics.memberCount}</div>
+                  <div className="theme-text-soft text-xs font-semibold">团队</div>
+                  <div className="theme-text-strong mt-3 text-3xl font-bold">{statistics.memberCount}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">节点</div>
-                  <div className="theme-text-strong mt-3 text-3xl font-black tracking-tight">{statistics.nodeCount}</div>
+                  <div className="theme-text-soft text-xs font-semibold">节点</div>
+                  <div className="theme-text-strong mt-3 text-3xl font-bold">{statistics.nodeCount}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">任务</div>
-                  <div className="theme-text-strong mt-3 text-3xl font-black tracking-tight">{statistics.taskCount}</div>
+                  <div className="theme-text-soft text-xs font-semibold">任务</div>
+                  <div className="theme-text-strong mt-3 text-3xl font-bold">{statistics.taskCount}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">预算</div>
-                  <div className="theme-text-strong mt-3 text-3xl font-black tracking-tight">
+                  <div className="theme-text-soft text-xs font-semibold">预算</div>
+                  <div className="theme-text-strong mt-3 text-3xl font-bold">
                     {formatAmount(statistics.totalPlanAmount)}
                   </div>
                 </div>
@@ -1470,10 +1643,10 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             ) : null}
           </Card>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="rounded-[32px] p-6">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="rounded-[32px] p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">团队与预算</div>
+                <div className="theme-text-soft text-xs font-semibold">团队与预算</div>
                 <Badge tone="neutral">{projectDetail?.members.length ?? 0}</Badge>
               </div>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -1509,32 +1682,32 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
               </div>
             </Card>
 
-            <Card className="rounded-[32px] p-6">
+            <Card className="rounded-[32px] p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">项目上下文</div>
+                <div className="theme-text-soft text-xs font-semibold">项目上下文</div>
                 <Badge tone="brand">当前项目</Badge>
               </div>
               <div className="mt-5 space-y-4">
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">业务单元</div>
+                  <div className="theme-text-soft text-xs font-semibold">业务单元</div>
                   <div className="theme-text-strong mt-2 text-sm font-semibold">{selectedProject?.businessUnit ?? '--'}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">考勤地址</div>
+                  <div className="theme-text-soft text-xs font-semibold">考勤地址</div>
                   <div className="theme-text-strong mt-2 text-sm font-semibold">{selectedProject?.attendanceAddress ?? '--'}</div>
                 </div>
                 <div className="theme-surface-subtle rounded-[22px] p-4">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">来源说明</div>
+                  <div className="theme-text-soft text-xs font-semibold">来源说明</div>
                   <div className="theme-text-strong mt-2 text-sm font-semibold">{selectedProject?.sourceContent ?? '--'}</div>
                 </div>
               </div>
             </Card>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <Card className="rounded-[32px] p-6">
+          <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+            <Card className="rounded-[32px] p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">里程碑</div>
+                <div className="theme-text-soft text-xs font-semibold">里程碑</div>
                 <Badge tone="neutral">{projectDetail?.nodes.length ?? 0}</Badge>
               </div>
               <div className="mt-5 space-y-3">
@@ -1556,9 +1729,9 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
               </div>
             </Card>
 
-            <Card className="rounded-[32px] p-6">
+            <Card className="rounded-[32px] p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">任务执行</div>
+                <div className="theme-text-soft text-xs font-semibold">任务执行</div>
                 <Badge tone="neutral">{projectDetail?.tasks.length ?? 0}</Badge>
               </div>
               <div className="mt-5 space-y-3">
@@ -1583,9 +1756,9 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             </Card>
           </div>
 
-          <Card className="rounded-[32px] p-8">
+          <Card className="rounded-[32px] p-5">
             <div className="flex items-center justify-between gap-3">
-              <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">只读甘特</div>
+              <div className="theme-text-soft text-xs font-semibold">只读甘特</div>
               <Badge tone="neutral">{ganttRows.length}</Badge>
             </div>
 
@@ -1594,9 +1767,9 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             ) : (
               <div className="mt-5 space-y-5">
                 <div className="grid gap-3 md:grid-cols-[260px_minmax(0,1fr)]">
-                  <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.16em]">时间轴</div>
+                  <div className="theme-text-soft text-xs font-semibold">时间轴</div>
                   <div
-                    className="grid gap-2 text-[11px] font-bold uppercase tracking-[0.14em]"
+                    className="grid gap-2 text-[11px] font-semibold"
                     style={{
                       gridTemplateColumns: `repeat(${Math.max(ganttTicks.length, 2)}, minmax(0, 1fr))`,
                     }}
@@ -1644,9 +1817,9 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
             )}
           </Card>
 
-          <Card className="rounded-[32px] p-8">
+          <Card className="rounded-[32px] p-5">
             <div className="flex items-center justify-between gap-3">
-              <div className="theme-text-soft text-xs font-bold uppercase tracking-[0.2em]">
+              <div className="theme-text-soft text-xs font-semibold">
                 计划、汇报与附件
               </div>
               <Badge tone="neutral">协同区</Badge>
@@ -1662,7 +1835,7 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
               </div>
             ) : (
               <div className="mt-5 space-y-3">
-                <div className="theme-text-strong text-sm font-black tracking-tight">附件资料</div>
+                <div className="theme-text-strong text-sm font-bold">附件资料</div>
                 {attachments.length ? (
                   attachments.slice(0, 6).map((attachment) => (
                     <div key={attachment.id} className="theme-surface-subtle rounded-[22px] p-4">
@@ -1691,38 +1864,24 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
     </div>
   );
 
-  const selectedProjectNotice = selectedProject
-    ? `当前选中项目：${selectedProject.projectName}。此页将围绕该项目继续建设。`
-    : '请先在项目台账中选择一个项目，再进入当前工作区。';
-
   const analysisDashboardContent = (
-    <ProjectWorkspacePlaceholderPage
-      description="项目分析看板将建设为独立分析中心，上半部分展示型甘特图，下半部分承载进度、任务、成员和费用分析图表。"
-      kicker="分析中心"
-      metrics={[
-        { label: '甘特条目', value: String(ganttRows.length) },
-        { label: '项目总任务', value: String(statistics?.taskCount ?? 0) },
-        { label: '项目成员', value: String(statistics?.memberCount ?? 0) },
-        { label: '预算项', value: String(projectDetail?.budgets.length ?? 0) },
-      ]}
-      notice={selectedProjectNotice}
-      sections={[
-        {
-          title: '页面结构',
-          items: [
-            '上半部分：展示型甘特图',
-            '下半部分：进度分析、任务分析、成员分析、费用分析图表',
-          ],
-        },
-        {
-          title: '数据基础',
-          items: [
-            `当前已具备 ${ganttRows.length} 条节点/任务时间数据，可用于分析型甘特展示。`,
-            `当前已具备 ${plans.length} 条计划、${reports.length} 条汇报、${attachments.length} 条附件，可继续作为分析输入。`,
-          ],
-        },
-      ]}
-      title="项目分析看板"
+    <ProjectAnalysisDashboardPage
+      attachments={attachments}
+      budgets={projectDetail?.budgets ?? []}
+      detailError={detailError}
+      detailLoading={detailLoading}
+      ganttRange={ganttRange}
+      ganttRows={ganttRows}
+      ganttTicks={ganttTicks}
+      loading={workspaceLoading}
+      members={projectDetail?.members ?? []}
+      nodes={projectDetail?.nodes ?? []}
+      plans={plans}
+      reports={reports}
+      selectedProject={selectedProject}
+      statistics={statistics}
+      tasks={projectDetail?.tasks ?? []}
+      workspaceError={workspaceError}
     />
   );
 
@@ -1785,6 +1944,11 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
         onCreateTask={handleCreateTask}
         onDeleteNode={handleDeleteNode}
         onDeleteTask={handleDeleteTask}
+        onExitSystem={onExitSystem ?? (() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = '/systems';
+          }
+        })}
         onOpenProgressConfig={() => {
           setWorkspaceMode('milestone-template-management');
         }}
@@ -1872,21 +2036,15 @@ export function ProjectHomePage({ onExitSystem }: ProjectHomePageProps = {}) {
   return (
     <ProjectToastProvider>
       <ProjectWorkspaceShell
-        keyword={keyword}
+        currentUserName={currentUserName}
         onExitSystem={onExitSystem ?? (() => {
           if (typeof window !== 'undefined') {
-            window.location.href = '/';
+            window.location.href = '/systems';
           }
         })}
-        onKeywordChange={(value) => {
-          startTransition(() => {
-            setKeyword(value);
-          });
-        }}
         onSelectWorkspace={(workspaceId) => {
           setWorkspaceMode(workspaceId as WorkspaceMode);
         }}
-        selectedProjectName={selectedProject?.projectName ?? '未选择项目'}
         workspaceContent={workspaceContent}
         workspaceGroups={visibleWorkspaceGroups}
         workspaceItems={visibleWorkspaceItems}

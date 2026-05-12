@@ -1,4 +1,22 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ButtonHTMLAttributes,
+  type ChangeEvent,
+  type ReactNode,
+} from 'react';
+import {
+  FileStack,
+  FolderKanban,
+  LoaderCircle,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 
 import { Badge, Button, Card, cx } from '@lserp/ui';
 
@@ -31,7 +49,7 @@ export type ProjectSavePayload = {
 function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold text-slate-500">
+      <span className="text-xs font-medium text-[#6b7f9e]">
         {label}
         {required && <span className="ml-1 text-red-400">*</span>}
       </span>
@@ -233,37 +251,76 @@ function formatBudget(value?: number | null) {
   return String(value);
 }
 
+function formatCurrency(value?: number | null) {
+  if (value == null) return '--';
+  return new Intl.NumberFormat('zh-CN', {
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color, icon }: { label: string; value: number; color?: string; icon?: ReactNode }) {
+const PROJECT_ICON_STROKE_WIDTH = 1.8;
+
+type ProjectIconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  label: string;
+  tone?: 'danger' | 'default';
+};
+
+function ProjectIconButton({
+  children,
+  className,
+  label,
+  tone = 'default',
+  type = 'button',
+  ...props
+}: ProjectIconButtonProps) {
   return (
-    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+    <button
+      aria-label={label}
+      className={cx(
+        'inline-flex h-7 w-7 items-center justify-center rounded-md text-[#8da0bd] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--project-control-focus-ring)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#8da0bd]',
+        tone === 'danger'
+          ? 'hover:bg-rose-50 hover:text-rose-600'
+          : 'hover:bg-[#edf6ff] hover:text-[var(--portal-color-brand-600)]',
+        typeof className === 'string' ? className : undefined,
+      )}
+      title={label}
+      type={type}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StatCard({ label, value, color, icon }: { label: string; value: number; color?: string; icon?: ReactNode }) {
+  const valueClass =
+    color?.includes('sky') ? 'text-[#1f65e8]' :
+      color?.includes('emerald') ? 'text-[#16b978]' :
+        color?.includes('amber') ? 'text-[#ff8a00]' :
+          'text-[#111c33]';
+
+  return (
+    <div className="flex min-h-[80px] flex-col justify-center px-4 py-3">
       {icon && (
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color?.replace('text-', 'bg-') ?? 'bg-slate-100'}`}>
+        <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-md ${color?.replace('text-', 'bg-') ?? 'bg-slate-100'}`}>
           {icon}
         </div>
       )}
       <div>
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{label}</p>
-        <p className={`text-2xl font-bold ${color ?? 'text-slate-800'} leading-none mt-1`}>{value}</p>
+        <p className="text-[13px] font-medium text-[#6b7f9e]">{label}</p>
+        <p className={`mt-1 text-2xl font-bold leading-8 ${valueClass}`}>{value}</p>
       </div>
     </div>
   );
 }
 
-function DrawerCloseIcon() {
-  return (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 20 20">
-      <path d="M6 6 14 14M14 6 6 14" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-slate-100 last:border-0">
-      <span className="shrink-0 text-sm text-slate-500">{label}</span>
-      <span className="text-right text-sm font-medium text-slate-800">{value}</span>
+    <div className="flex items-start justify-between gap-4 border-b border-[#edf2f8] py-3 last:border-0">
+      <span className="shrink-0 text-[13px] font-medium text-[#6b7f9e]">{label}</span>
+      <span className="text-right text-[13px] font-medium text-[#263653]">{value}</span>
     </div>
   );
 }
@@ -283,30 +340,32 @@ function Drawer({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[2px] transition-opacity"
+        className="fixed inset-0 z-40 bg-[#111c33]/20 transition-opacity"
         onClick={onClose}
       />
       {/* Drawer panel */}
-      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-[520px] animate-slideInRight overflow-hidden bg-white shadow-[-20px_0_60px_-20px_rgba(15,23,42,0.25)]">
+      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-[520px] animate-slideInRight overflow-hidden border-l border-[#e4ebf5] bg-white shadow-[-14px_0_30px_rgba(24,39,75,0.08)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+        <div className="flex items-center justify-between border-b border-[#edf2f8] px-5 py-4">
           <div>
-            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+            <div className="text-xs font-medium text-[#8da0bd]">
               {mode === 'create' ? '新增项目' : '编辑项目'}
             </div>
-            <div className="mt-1 text-xl font-black tracking-tight text-slate-900">{title}</div>
+            <div className="mt-1 text-base font-bold text-[#111c33]">{title}</div>
           </div>
           <button
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-400 transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-600"
+            aria-label="关闭项目表单"
+            className="portal-project-shell__icon-button"
             onClick={onClose}
+            title="关闭项目表单"
             type="button"
           >
-            <DrawerCloseIcon />
+            <X size={16} strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="h-[calc(100%-76px)] overflow-y-auto px-6 py-6">
+        <div className="h-[calc(100%-68px)] overflow-y-auto px-5 py-4">
           {children}
         </div>
       </div>
@@ -507,255 +566,417 @@ export function ProjectManagementPage({
       : currentEditingProject
         ? canManageProject(currentEditingProject)
         : false;
+  const selectedProject = useMemo(() => {
+    if (selectedProjectId == null) {
+      return null;
+    }
+
+    if (projectDetail?.project && projectDetail.project.id === selectedProjectId) {
+      return projectDetail.project;
+    }
+
+    return projects.find((project) => project.id === selectedProjectId) ?? null;
+  }, [projectDetail, projects, selectedProjectId]);
+  const selectedProjectTypeName = selectedProject?.projectTypeId
+    ? typeNameById.get(selectedProject.projectTypeId) ?? '--'
+    : '--';
+  const canManageSelectedProject = selectedProject ? canManageProject(selectedProject) : false;
+  const hasKeyword = keyword.trim().length > 0;
+  const isInitializationReady = Boolean(selectedProject?.projectTypeId);
+
+  async function initializeProject(project: ProjectManagementProjectItem) {
+    if (!canManageProject(project)) {
+      setFeedback({ message: '当前账号没有初始化该项目的权限。', tone: 'danger' });
+      return;
+    }
+
+    setSubmitting(true);
+    setFeedback(null);
+    try {
+      await onInitByType(project.id);
+      onSelectProject(project.id);
+      setFeedback({ message: '项目已按类型初始化。', tone: 'success' });
+    } catch (error) {
+      setFeedback({ message: errorMessage(error), tone: 'danger' });
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className="flex flex-col gap-6 h-full">
-
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">项目台账</h1>
-          <p className="text-slate-500 text-sm mt-1">管理并监控全量项目生命周期，支持快速检索与操作。</p>
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden bg-[#f5f8fc]">
+      <div className="flex shrink-0 flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold leading-7 text-[#111c33]">项目台账</h1>
+          <p className="mt-1 max-w-3xl text-sm font-medium leading-6 text-[#5e7291]">
+            创建、查看并初始化项目，在进入排期与执行工作前先确认项目状态和下一步动作。
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="portal-project-shell__search">
+            <Search
+              aria-hidden="true"
+              className="portal-project-shell__search-icon"
+              size={16}
+              strokeWidth={PROJECT_ICON_STROKE_WIDTH}
+            />
+            <input
+              className="portal-project-shell__search-input"
+              onChange={(event: ChangeEvent<HTMLInputElement>) => onKeywordChange(event.target.value)}
+              placeholder="搜索项目名称、编码或负责人"
+              value={keyword}
+            />
+          </label>
           <button
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors text-sm font-medium shadow-sm"
+            className="portal-project-shell__secondary-button"
             onClick={onRefresh}
             type="button"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 20 20">
-              <path d="M3.5 10a6.5 6.5 0 1 1 .9 3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6"/>
-              <path d="M3 7.5V10h2.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6"/>
-            </svg>
+            <RefreshCw size={16} strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
             刷新
           </button>
           <button
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg text-white hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm shadow-blue-200"
+            className="portal-project-shell__primary-button"
             disabled={!canCreateProject}
             onClick={openCreate}
             type="button"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 20 20">
-              <path d="M10 4v12M4 10h12" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8"/>
-            </svg>
+            <Plus size={16} strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
             新增项目
           </button>
         </div>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="项目总数" value={stats.total} color="text-slate-800" />
-        <StatCard label="进行中项目" value={stats.active} color="text-blue-600" />
-        <StatCard label="已完成项目" value={stats.completed} color="text-emerald-600" />
-        <StatCard label="草稿/待处理" value={stats.draft} color="text-amber-600" />
-      </div>
-
-      {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">
-        <div className="flex-1 min-w-[200px] relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 20 20" width="16" height="16">
-            <circle cx="9" cy="9" r="4.5" stroke="currentColor" strokeWidth="1.6"/>
-            <path d="M12.5 12.5 16.5 16.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6"/>
-          </svg>
-          <input
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-            onChange={(event: ChangeEvent<HTMLInputElement>) => onKeywordChange(event.target.value)}
-            placeholder="搜索项目编码或名称..."
-            value={keyword}
-          />
+      <Card className="shrink-0 overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+        <div className="grid divide-y divide-[#edf2f8] sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
+          <StatCard label="项目总数" value={stats.total} color="text-slate-800" />
+          <StatCard label="进行中" value={stats.active} color="text-sky-600" />
+          <StatCard label="已完成" value={stats.completed} color="text-emerald-600" />
+          <StatCard label="草稿 / 待处理" value={stats.draft} color="text-amber-600" />
         </div>
-        <select className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">项目状态</option>
-          <option value="RUNNING">进行中</option>
-          <option value="COMPLETED">已完成</option>
-          <option value="DRAFT">草稿</option>
-          <option value="PAUSED">暂停</option>
-        </select>
-        <select className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">项目类型</option>
-          {projectTypes.map((type) => (
-            <option key={type.id} value={type.id}>{type.typeName}</option>
-          ))}
-        </select>
-        <button className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors text-sm font-medium">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 20 20">
-            <path d="M3 4h14M6 10h8M9 16h2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6"/>
-          </svg>
-          更多筛选
-        </button>
-        <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg border border-slate-200">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 20 20">
-            <path d="M10 3v14M3 10h14" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6"/>
-          </svg>
-        </button>
-      </div>
+      </Card>
 
-      {/* Main Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">项目编码</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">项目名称</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">项目类型</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">项目经理</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">状态</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">计划周期</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">预算 (元)</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-                  {listLoading ? (
-                  <tr>
-                    <td className="px-6 py-20 text-center text-sm text-slate-400" colSpan={8}>加载中...</td>
+      <div className="grid min-h-0 flex-1 gap-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.92fr)]">
+        <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+          <div className="border-b border-[#edf2f8] px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-base font-bold text-[#111c33]">项目列表</div>
+              </div>
+              <div className="rounded-full border border-[#d9e3f1] bg-[#f8fbff] px-3 py-1 text-[13px] font-medium text-[#526681]">
+                共 {projects.length} 个项目
+              </div>
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto">
+            {listLoading ? (
+              <div className="flex h-full min-h-[280px] items-center justify-center px-4 py-8 text-[13px] font-medium text-[#8da0bd]">
+                正在加载项目台账...
+              </div>
+            ) : listError ? (
+              <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+                <div className="text-base font-bold text-rose-700">项目台账加载失败</div>
+                <div className="max-w-sm text-sm leading-6 text-rose-500">{listError}</div>
+                <button
+                  className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-[13px] font-medium text-rose-700 transition hover:bg-rose-100"
+                  onClick={onRefresh}
+                  type="button"
+                >
+                  重试
+                </button>
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100">
+                  <FolderKanban className="h-8 w-8 text-slate-300" strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
+                </div>
+                <div className="text-base font-bold text-[#263653]">
+                  {hasKeyword ? '没有找到匹配的项目' : '还没有项目台账记录'}
+                </div>
+                <div className="max-w-sm text-[13px] font-medium leading-6 text-[#526681]">
+                  {hasKeyword
+                    ? '试试调整关键词，或清空搜索后重新查看全部项目。'
+                    : '先创建第一个项目，再继续排期、执行和交付管理。'}
+                </div>
+                {!hasKeyword && canCreateProject ? (
+                  <button
+                    className="portal-project-shell__primary-button mt-2"
+                    onClick={openCreate}
+                    type="button"
+                  >
+                    <Plus size={16} strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
+                    新增项目
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <table className="w-full min-w-[1260px] table-fixed border-collapse text-left">
+                <colgroup>
+                  <col className="w-[260px]" />
+                  <col className="w-[140px]" />
+                  <col className="w-[130px]" />
+                  <col className="w-[140px]" />
+                  <col className="w-[110px]" />
+                  <col className="w-[220px]" />
+                  <col className="w-[110px]" />
+                  <col className="w-[150px]" />
+                </colgroup>
+                <thead className="sticky top-0 z-10 bg-[#f8fbff]">
+                  <tr className="border-b border-[#edf2f8]">
+                    <th className="whitespace-nowrap px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">项目名称</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">项目编码</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">类型</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">负责人</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">状态</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">计划周期</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">预算</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-right text-[13px] font-medium text-[#6b7f9e]">操作</th>
                   </tr>
-                ) : listError ? (
-                  <tr>
-                    <td className="px-6 py-20 text-center text-sm text-rose-600" colSpan={8}>{listError}</td>
-                  </tr>
-                ) : projects.length === 0 ? (
-                  <tr>
-                    <td className="px-6 py-20 text-center" colSpan={8}>
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-                          <svg className="h-7 w-7 text-slate-300" fill="none" viewBox="0 0 24 24">
-                            <path d="M3 7.5C3 6.12 4.12 5 5.5 5h13C19.88 5 21 6.12 21 7.5v9c0 1.38-1.12 2.5-2.5 2.5h-13A2.48 2.48 0 0 1 3 16.5v-9Z" stroke="currentColor" strokeWidth="1.5"/>
-                            <path d="M8 9h8M8 13h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5"/>
-                          </svg>
-                        </div>
-                        <div className="text-sm font-semibold text-slate-500">暂无匹配的项目</div>
-                        <div className="text-xs text-slate-400">点击右上角「新增项目」开始创建</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  projects.map((project) => {
+                </thead>
+                <tbody className="divide-y divide-[#edf2f8]">
+                  {projects.map((project) => {
                     const isSelected = project.id === selectedProjectId;
                     const tone = getProjectStatusTone(project.status);
                     const canManageCurrentProject = canManageProject(project);
+
                     return (
                       <tr
                         key={project.id}
-                        className="hover:bg-slate-50/50 transition-colors group"
+                        className={cx(
+                          'group cursor-pointer border-l-4 transition-colors',
+                          isSelected
+                            ? 'border-l-[#1f7cff] bg-[#edf6ff]'
+                            : 'border-l-transparent hover:bg-[#f8fbff]',
+                        )}
                         onClick={() => onSelectProject(project.id)}
                       >
-                        {/* Project code */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-mono text-slate-600">{project.projectCode}</span>
-                        </td>
-
-                        {/* Project name */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-slate-900">{project.projectName}</span>
-                            {project.projectDesc && (
-                              <span className="text-xs text-slate-400">{project.projectDesc}</span>
-                            )}
+                        <td className="px-4 py-3">
+                          <div className="flex min-w-0 flex-col">
+                            <span className="truncate text-[13px] font-medium text-[#263653]">{project.projectName}</span>
+                            <span className="mt-1 line-clamp-1 text-xs font-medium text-[#8da0bd]">
+                              {project.projectDesc || '暂无项目说明'}
+                            </span>
                           </div>
                         </td>
-
-                        {/* Type */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-slate-600">
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className="font-mono text-[13px] font-medium text-[#526681]">{project.projectCode}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className="text-[13px] font-medium text-[#526681]">
                             {project.projectTypeId ? typeNameById.get(project.projectTypeId) ?? '--' : '--'}
                           </span>
                         </td>
-
-                        {/* Manager */}
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="whitespace-nowrap px-4 py-3">
                           {project.managerName ? (
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-600">
+                              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">
                                 {project.managerName.slice(0, 1)}
                               </div>
-                              <span className="text-sm text-slate-600">{project.managerName}</span>
+                              <span className="text-[13px] font-medium text-[#526681]">{project.managerName}</span>
                             </div>
                           ) : (
-                            <span className="text-sm text-slate-400">--</span>
+                            <span className="text-[13px] font-medium text-[#8da0bd]">--</span>
                           )}
                         </td>
-
-                        {/* Status */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-semibold">
-                            <Badge tone={tone}>
-                              {getProjectStatusLabel(project.status)}
-                            </Badge>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <Badge tone={tone}>{getProjectStatusLabel(project.status)}</Badge>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className="text-[13px] font-medium text-[#526681]">{formatRange(project.planStartTime, project.planEndTime)}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className="text-[13px] font-medium text-[#263653]">
+                            {project.budgetAmount != null ? formatCurrency(project.budgetAmount) : '--'}
                           </span>
                         </td>
-
-                        {/* Period */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-slate-500">{formatRange(project.planStartTime, project.planEndTime)}</span>
-                        </td>
-
-                        {/* Budget */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">
-                            {project.budgetAmount != null ? `${project.budgetAmount.toLocaleString()}` : '--'}
-                          </span>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              title="编辑"
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          <div
+                            className={cx(
+                              'flex items-center justify-end gap-1 transition-opacity',
+                              isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+                            )}
+                          >
+                            <ProjectIconButton
+                              label="编辑项目"
                               disabled={!canManageCurrentProject}
-                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); openEdit(project); }}
-                              type="button"
+                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                e.stopPropagation();
+                                openEdit(project);
+                              }}
                             >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 16 16">
-                                <path d="M11.5 2.5a1.414 1.414 0 1 1 2 2L5 13l-3 .75.75-3L11.5 2.5Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.4"/>
-                              </svg>
-                            </button>
-                            <button
-                              title="初始化节点"
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                              <Pencil size={16} strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
+                            </ProjectIconButton>
+                            <ProjectIconButton
+                              label="按类型初始化"
                               disabled={submitting || !canManageCurrentProject}
-                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); void onInitByType(project.id).catch((error) => setFeedback({ message: errorMessage(error), tone: 'danger' })); }}
-                              type="button"
+                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                e.stopPropagation();
+                                void initializeProject(project);
+                              }}
                             >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 16 16">
-                                <path d="M8 2v12M2 8h12" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4"/>
-                              </svg>
-                            </button>
-                            <button
-                              title="删除"
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                              <FileStack size={16} strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
+                            </ProjectIconButton>
+                            <ProjectIconButton
+                              label="删除项目"
+                              tone="danger"
                               disabled={submitting || !canManageCurrentProject}
-                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); void remove(project.id); }}
-                              type="button"
+                              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                e.stopPropagation();
+                                void remove(project.id);
+                              }}
                             >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 16 16">
-                                <path d="M3 4h10M6 4V3h4v1M5 4v8a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4"/>
-                              </svg>
-                            </button>
+                              <Trash2 size={16} strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
+                            </ProjectIconButton>
                           </div>
                         </td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
-        </div>
-        
-        {/* Pagination */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-          <span className="text-sm text-slate-500">共 {projects.length} 条数据</span>
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-1 bg-white border border-slate-200 rounded text-sm text-slate-400 cursor-not-allowed">上一页</button>
-            <button className="px-3 py-1 bg-blue-600 border border-blue-600 rounded text-sm text-white">1</button>
-            <button className="px-3 py-1 bg-white border border-slate-200 rounded text-sm text-slate-600 hover:bg-slate-50">2</button>
-            <button className="px-3 py-1 bg-white border border-slate-200 rounded text-sm text-slate-600 hover:bg-slate-50">3</button>
-            <button className="px-3 py-1 bg-white border border-slate-200 rounded text-sm text-slate-600 hover:bg-slate-50">下一页</button>
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
-        </div>
+        </Card>
+
+        <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+          {!selectedProject ? (
+            <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-sky-50 text-sky-500">
+                <FolderKanban className="h-8 w-8" strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
+              </div>
+              <div className="text-base font-bold text-[#263653]">先选择一个项目</div>
+              <div className="max-w-sm text-[13px] font-medium leading-6 text-[#526681]">
+                从左侧列表选择项目后，这里会显示项目关键状态、初始化说明和下一步建议动作。
+              </div>
+            </div>
+          ) : (
+            <>
+                <div className="border-b border-[#edf2f8] px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                    <div className="text-xs font-medium text-[#8da0bd]">当前项目</div>
+                    <h2 className="mt-1 truncate text-base font-bold text-[#111c33]">
+                      {selectedProject.projectName}
+                    </h2>
+                    <div className="mt-1 text-[13px] font-medium text-[#526681]">项目编码：{selectedProject.projectCode}</div>
+                  </div>
+                  <Badge tone={getProjectStatusTone(selectedProject.status)}>
+                    {getProjectStatusLabel(selectedProject.status)}
+                  </Badge>
+                </div>
+
+                {detailLoading ? (
+                  <div className="mt-3 flex items-center gap-2 rounded-md border border-sky-100 bg-sky-50 px-4 py-3 text-[13px] font-medium text-sky-700">
+                    <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
+                    正在加载更完整的项目详情，当前先展示列表中的基础信息。
+                  </div>
+                ) : null}
+
+                {!canManageSelectedProject ? (
+                  <div className="mt-3 rounded-md border border-[#d9e3f1] bg-[#f8fbff] px-4 py-3 text-[13px] font-medium text-[#526681]">
+                    你可以查看该项目，但当前没有维护和初始化权限。
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+                <div
+                  className={cx(
+                    'rounded-lg border p-4 shadow-[0_10px_24px_rgba(24,39,75,0.04)]',
+                    isInitializationReady
+                      ? 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.88),rgba(255,255,255,0.96))]'
+                      : 'border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,235,0.92),rgba(255,255,255,0.96))]',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-[13px] font-bold text-[#263653]">初始化准备</div>
+                        <span
+                          className={cx(
+                            'rounded-full border px-2.5 py-1 text-[11px] font-semibold',
+                            isInitializationReady
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : 'border-amber-200 bg-amber-50 text-amber-700',
+                          )}
+                        >
+                          {isInitializationReady ? '可初始化' : '待补类型'}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[13px] font-medium leading-6 text-[#526681]">
+                        {selectedProject.projectTypeId
+                          ? `当前项目类型为“${selectedProjectTypeName}”，可以按类型初始化节点与任务模板。`
+                          : '当前项目还没有项目类型，初始化前需要先补全项目类型。'}
+                      </div>
+                    </div>
+                    {canManageSelectedProject ? (
+                      <button
+                        className="portal-project-shell__primary-button shrink-0"
+                        disabled={submitting || !selectedProject.projectTypeId}
+                        onClick={() => {
+                          void initializeProject(selectedProject);
+                        }}
+                        type="button"
+                      >
+                        按类型初始化
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-[#e4ebf5] bg-white">
+                  <div className="border-b border-[#edf2f8] px-4 py-3 text-[13px] font-bold text-[#263653]">
+                    项目概览
+                  </div>
+                  <div className="px-4 py-2">
+                    <InfoRow label="项目类型" value={selectedProjectTypeName} />
+                    <InfoRow label="项目经理" value={selectedProject.managerName || '--'} />
+                    <InfoRow label="计划周期" value={formatRange(selectedProject.planStartTime, selectedProject.planEndTime)} />
+                    <InfoRow label="预算金额" value={selectedProject.budgetAmount != null ? `¥ ${formatCurrency(selectedProject.budgetAmount)}` : '--'} />
+                    <InfoRow label="业务单元" value={selectedProject.businessUnit || '--'} />
+                    <InfoRow label="来源系统" value={selectedProject.sourceSystem || '--'} />
+                    <InfoRow label="来源单号" value={selectedProject.sourceCode || '--'} />
+                    <InfoRow label="考勤地址" value={selectedProject.attendanceAddress || '--'} />
+                    <InfoRow label="项目简介" value={selectedProject.projectDesc || '--'} />
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-[#edf2f8] bg-[#f8fbff] p-4">
+                  <div className="text-[13px] font-bold text-[#263653]">下一步建议</div>
+                  <div className="mt-2 text-[13px] font-medium leading-6 text-[#526681]">
+                    先确认项目信息和初始化状态，再进入排期协同或成员执行工作区，避免在错误项目上继续推进。
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {canManageSelectedProject ? (
+                      <button
+                        className="portal-project-shell__secondary-button"
+                        onClick={() => {
+                          openEdit(selectedProject);
+                        }}
+                        type="button"
+                      >
+                        编辑项目
+                      </button>
+                    ) : null}
+                    {canManageSelectedProject ? (
+                      <button
+                        className="portal-project-shell__secondary-button hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                        disabled={submitting}
+                        onClick={() => {
+                          void remove(selectedProject.id);
+                        }}
+                        type="button"
+                      >
+                        删除项目
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </Card>
       </div>
 
       {/* Right-side Drawer */}
@@ -763,22 +984,19 @@ export function ProjectManagementPage({
         <Drawer mode={drawerMode} onClose={closeDrawer} title={drawerTitle}>
           {detailLoading && drawerMode === 'edit' ? (
             <div className="mb-4 flex items-center gap-2 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
-              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 20 20">
-                <circle className="opacity-25" cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="3"/>
-                <path className="opacity-75" d="M10 2a8 8 0 0 1 8 8" stroke="currentColor" strokeLinecap="round" strokeWidth="3"/>
-              </svg>
+              <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
               正在加载项目详情，已先展示当前可编辑信息。
             </div>
           ) : null}
 
           {/* Basic Info */}
-          <div className="mb-6">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="h-1.5 w-1.5 rounded-full bg-[#2563eb]" />
-              <span className="text-sm font-bold text-slate-700">基本信息</span>
+          <div className="mb-4">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="h-1.5 w-1.5 rounded-full bg-[var(--portal-color-brand-500)]" />
+              <span className="text-[13px] font-bold text-[#263653]">基本信息</span>
             </div>
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="项目名称" required>
                   <input
                     className="field-input"
@@ -797,7 +1015,7 @@ export function ProjectManagementPage({
                 </Field>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="项目类型" required>
                   <select
                     className="field-input"
@@ -842,13 +1060,13 @@ export function ProjectManagementPage({
           </div>
 
           {/* Source Info */}
-          <div className="mb-6">
-            <div className="mb-4 flex items-center gap-2">
+          <div className="mb-4">
+            <div className="mb-3 flex items-center gap-2">
               <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-              <span className="text-sm font-bold text-slate-700">来源信息</span>
+              <span className="text-[13px] font-bold text-[#263653]">来源信息</span>
             </div>
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="来源系统">
                   <input
                     className="field-input"
@@ -879,13 +1097,13 @@ export function ProjectManagementPage({
           </div>
 
           {/* Time & Budget */}
-          <div className="mb-6">
-            <div className="mb-4 flex items-center gap-2">
+          <div className="mb-4">
+            <div className="mb-3 flex items-center gap-2">
               <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              <span className="text-sm font-bold text-slate-700">时间与预算</span>
+              <span className="text-[13px] font-bold text-[#263653]">时间与预算</span>
             </div>
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="计划开始">
                   <input
                     className="field-input"
@@ -903,7 +1121,7 @@ export function ProjectManagementPage({
                   />
                 </Field>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="预算金额">
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">¥</span>
@@ -929,12 +1147,12 @@ export function ProjectManagementPage({
           </div>
 
           {/* Attendance */}
-          <div className="mb-6">
-            <div className="mb-4 flex items-center gap-2">
+          <div className="mb-4">
+            <div className="mb-3 flex items-center gap-2">
               <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              <span className="text-sm font-bold text-slate-700">考勤设置</span>
+              <span className="text-[13px] font-bold text-[#263653]">考勤设置</span>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Field label="考勤地址">
                 <input
                   className="field-input"
@@ -943,7 +1161,7 @@ export function ProjectManagementPage({
                   value={draft.attendanceAddress}
                 />
               </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="经度">
                   <input
                     className="field-input"
@@ -967,7 +1185,7 @@ export function ProjectManagementPage({
           </div>
 
           {/* Description */}
-          <div className="mb-8">
+          <div className="mb-4">
             <Field label="项目简介">
               <textarea
                 className="field-textarea"
@@ -980,14 +1198,14 @@ export function ProjectManagementPage({
           </div>
 
           {/* Footer Actions */}
-          <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-slate-100 bg-white pt-5">
-            <div className="text-xs text-slate-400">
+          <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-[#edf2f8] bg-white pt-4">
+            <div className="text-xs font-medium text-[#8da0bd]">
               <span className="text-rose-500">*</span> 为必填项
             </div>
             <div className="flex items-center gap-2">
               {drawerMode === 'edit' && editingProjectId !== null && (
                 <button
-                  className="flex h-10 items-center gap-2 rounded-2xl border border-sky-100 px-4 text-sm font-semibold text-sky-700 transition-all hover:border-sky-300 hover:bg-sky-50"
+                  className="portal-project-shell__secondary-button"
                   disabled={submitting || !canSubmitCurrentDrawer}
                   onClick={() => { void onInitByType(editingProjectId).catch((error) => setFeedback({ message: errorMessage(error), tone: 'danger' })); }}
                   type="button"
@@ -996,24 +1214,21 @@ export function ProjectManagementPage({
                 </button>
               )}
               <button
-                className="flex h-10 items-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50"
+                className="portal-project-shell__secondary-button"
                 onClick={closeDrawer}
                 type="button"
               >
                 取消
               </button>
               <button
-                className="flex h-10 items-center gap-2 rounded-2xl bg-gradient-to-r from-[#2563eb] to-[#1d4ed8] px-5 text-sm font-semibold text-white shadow-[0_4px_14px_-4px_rgba(37,99,235,0.5)] transition-all hover:shadow-[0_6px_18px_-4px_rgba(37,99,235,0.65)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="portal-project-shell__primary-button"
                 disabled={submitting || !canSubmitCurrentDrawer}
                 onClick={() => { void submit(); }}
                 type="button"
               >
                 {submitting ? (
                   <>
-                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 20 20">
-                      <circle className="opacity-25" cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="3"/>
-                      <path className="opacity-75" d="M10 2a8 8 0 0 1 8 8" stroke="currentColor" strokeLinecap="round" strokeWidth="3"/>
-                    </svg>
+                    <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={PROJECT_ICON_STROKE_WIDTH} />
                     保存中...
                   </>
                 ) : (
@@ -1026,48 +1241,41 @@ export function ProjectManagementPage({
       ) : null}
 
       <style>{`
+        .field-input,
+        .field-textarea {
+          width: 100%;
+          border-radius: 6px;
+          border: 1px solid #d9e3f1;
+          background: #fff;
+          font-size: 13px;
+          font-weight: 500;
+          color: #263653;
+          outline: none;
+          transition: border-color 0.16s ease, box-shadow 0.16s ease;
+        }
         .field-input {
           display: flex;
-          height: 44px;
-          width: 100%;
-          border-radius: 14px;
-          border: 1.5px solid #e2e8f0;
-          background: #f8fafc;
-          padding: 0 14px;
-          font-size: 14px;
-          color: #1e293b;
-          outline: none;
-          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+          height: 36px;
+          padding: 0 12px;
         }
-        .field-input:focus {
-          border-color: #38bdf8;
-          background: #ffffff;
-          box-shadow: 0 0 0 3px rgba(56,189,248,0.12);
-        }
-        .field-input::placeholder {
-          color: #94a3b8;
+        .field-input.pl-7 {
+          padding-left: 28px;
         }
         .field-textarea {
           display: flex;
-          width: 100%;
-          border-radius: 14px;
-          border: 1.5px solid #e2e8f0;
-          background: #f8fafc;
-          padding: 12px 14px;
-          font-size: 14px;
-          color: #1e293b;
-          outline: none;
-          resize: vertical;
-          min-height: 88px;
-          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+          min-height: 96px;
+          resize: none;
+          padding: 10px 12px;
+          line-height: 1.6;
         }
+        .field-input:focus,
         .field-textarea:focus {
-          border-color: #38bdf8;
-          background: #ffffff;
-          box-shadow: 0 0 0 3px rgba(56,189,248,0.12);
+          border-color: #1f7cff;
+          box-shadow: 0 0 0 3px #dceaff;
         }
+        .field-input::placeholder,
         .field-textarea::placeholder {
-          color: #94a3b8;
+          color: #9aabc4;
         }
       `}</style>
     </div>

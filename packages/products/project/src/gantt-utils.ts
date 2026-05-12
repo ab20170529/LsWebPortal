@@ -23,12 +23,45 @@ import {
 // 日期工具
 // ─────────────────────────────────────────────────────────────────────────────
 
+function toChinaCalendarDate(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function parseChinaCalendarDateParts(value: string): Date | null {
+  const match = value.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function getChinaCalendarDaySerial(date: Date): number {
+  const localDate = toChinaCalendarDate(date);
+  return Math.round(
+    Date.UTC(localDate.getFullYear(), localDate.getMonth(), localDate.getDate()) / DAY_IN_MS,
+  );
+}
+
 export function parseDateValue(value?: string | null): Date | null {
   if (!value) return null;
+  const calendarDate = parseChinaCalendarDateParts(value);
+  if (calendarDate) return calendarDate;
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return toChinaCalendarDate(date);
 }
 
 export function formatMonthDay(date?: Date | null): string {
@@ -64,22 +97,18 @@ export function areDatesEqual(left: Date | null, right: Date | null): boolean {
 }
 
 export function addDays(date: Date, days: number): Date {
-  const next = new Date(date.getTime());
+  const next = toChinaCalendarDate(date);
   next.setDate(next.getDate() + days);
-  next.setHours(0, 0, 0, 0);
-  return next;
+  return toChinaCalendarDate(next);
 }
 
 export function daysBetween(start: Date, end: Date): number {
-  return Math.round((end.getTime() - start.getTime()) / DAY_IN_MS);
+  return getChinaCalendarDaySerial(end) - getChinaCalendarDaySerial(start);
 }
 
 export function parseInputDate(value: string): Date | null {
   if (!value.trim()) return null;
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return parseChinaCalendarDateParts(value);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,8 +228,9 @@ export function buildTimelineCategories(nodes: NodeItem[], tasks: TaskItem[]): T
       if (children.length) stack.unshift(...children);
     }
     const descendantTaskCount = subCategories.reduce((s, c) => s + c.tasks.length, 0);
+    const directTaskGroupCount = rootTasks.length ? 1 : 0;
     return {
-      count: Math.max(1, rootTasks.length + subCategories.length + descendantTaskCount),
+      count: Math.max(1, directTaskGroupCount + rootTasks.length + subCategories.length + descendantTaskCount),
       id: `cat-${root.id}`,
       node: root,
       subCategories,
@@ -226,12 +256,13 @@ export function buildTimelineCategories(nodes: NodeItem[], tasks: TaskItem[]): T
 export function buildTimelineRows(categories: TimelineCategory[]): TimelineRow[] {
   const rows: TimelineRow[] = [];
   categories.forEach((cat) => {
+    const rootNodeEntityId = cat.node.id !== 0 ? cat.node.id : undefined;
     rows.push({
       categoryId: cat.id,
       count: cat.count,
       endDate: parseDateValue(cat.node.planEndTime) ?? parseDateValue(cat.node.actualEndTime),
-      entityId: cat.node.id > 0 ? cat.node.id : undefined,
-      entityKind: cat.node.id > 0 ? 'node' : undefined,
+      entityId: rootNodeEntityId,
+      entityKind: rootNodeEntityId !== undefined ? 'node' : undefined,
       id: cat.id,
       progress: normalizeProgress(cat.node.progressRate),
       rowType: 'category',
@@ -239,22 +270,38 @@ export function buildTimelineRows(categories: TimelineCategory[]): TimelineRow[]
       status: cat.node.status,
       title: cat.title,
     });
-    cat.tasks.forEach((task) => {
+    if (cat.tasks.length) {
+      const directSubCategoryId = `${cat.id}-direct`;
       rows.push({
         categoryId: cat.id,
-        endDate: parseDateValue(task.planEndTime) ?? parseDateValue(task.actualEndTime),
-        entityId: task.id,
-        entityKind: 'task',
-        id: `task-${task.id}`,
-        owner: task.responsibleName,
-        parentNodeId: cat.node.id > 0 ? cat.node.id : undefined,
-        progress: normalizeProgress(task.progressRate),
-        rowType: 'item',
-        startDate: parseDateValue(task.planStartTime) ?? parseDateValue(task.actualStartTime),
-        status: task.status,
-        title: task.taskTitle,
+        count: cat.tasks.length,
+        endDate: null,
+        id: directSubCategoryId,
+        progress: 0,
+        rowType: 'subCategory',
+        startDate: null,
+        status: null,
+        subCategoryId: directSubCategoryId,
+        title: '任务清单',
       });
-    });
+      cat.tasks.forEach((task) => {
+        rows.push({
+          categoryId: cat.id,
+          endDate: parseDateValue(task.planEndTime) ?? parseDateValue(task.actualEndTime),
+          entityId: task.id,
+          entityKind: 'task',
+          id: `task-${task.id}`,
+          owner: task.responsibleName,
+          parentNodeId: cat.node.id > 0 ? cat.node.id : undefined,
+          progress: normalizeProgress(task.progressRate),
+          rowType: 'item',
+          startDate: parseDateValue(task.planStartTime) ?? parseDateValue(task.actualStartTime),
+          status: task.status,
+          subCategoryId: directSubCategoryId,
+          title: task.taskTitle,
+        });
+      });
+    }
     cat.subCategories.forEach((sub) => {
       rows.push({
         categoryId: cat.id,
@@ -311,12 +358,45 @@ export function getBarPalette(row: TimelineRow) {
       progress: 'rgba(59, 130, 246, 0.50)',
     };
   }
-  if ((row.status ?? '').toUpperCase() === 'COMPLETED') {
+  const status = (row.status ?? '').trim().toUpperCase();
+  if (status.includes('DONE') || status.includes('SUCCESS') || status.includes('FINISH') || status.includes('COMPLETE')) {
     return {
       badge: 'bg-emerald-500/10 text-emerald-700',
       border: '#4fd1a5',
       fill: 'rgba(16, 185, 129, 0.12)',
       progress: 'rgba(16, 185, 129, 0.50)',
+    };
+  }
+  if (status.includes('RUNNING') || status.includes('PROGRESS') || status.includes('PROCESS')) {
+    return {
+      badge: 'bg-sky-500/10 text-sky-700',
+      border: '#4fa3ff',
+      fill: 'rgba(14, 165, 233, 0.12)',
+      progress: 'rgba(14, 165, 233, 0.50)',
+    };
+  }
+  if (status.includes('RISK') || status.includes('ERROR') || status.includes('STOP') || status.includes('REJECTED')) {
+    return {
+      badge: 'bg-rose-500/10 text-rose-700',
+      border: '#fb7185',
+      fill: 'rgba(244, 63, 94, 0.12)',
+      progress: 'rgba(244, 63, 94, 0.50)',
+    };
+  }
+  if (status.includes('WAITING') || status.includes('PENDING')) {
+    return {
+      badge: 'bg-amber-500/10 text-amber-700',
+      border: '#f59e0b',
+      fill: 'rgba(245, 158, 11, 0.12)',
+      progress: 'rgba(245, 158, 11, 0.50)',
+    };
+  }
+  if (status.includes('NOT_STARTED') || status.includes('DRAFT') || !status) {
+    return {
+      badge: 'bg-slate-500/10 text-slate-600',
+      border: '#94a3b8',
+      fill: 'rgba(100, 116, 139, 0.10)',
+      progress: 'rgba(100, 116, 139, 0.38)',
     };
   }
   return {
@@ -340,11 +420,12 @@ function calcEndpointX(
   type: 'start' | 'end',
   timelineStart: Date,
   dayCount: number,
+  dayColumnWidth = DAY_COLUMN_WIDTH,
 ): number {
   const date = type === 'start' ? row.startDate : row.endDate;
-  if (!date) return type === 'start' ? 0 : dayCount * DAY_COLUMN_WIDTH;
+  if (!date) return type === 'start' ? 0 : dayCount * dayColumnWidth;
   const days = daysBetween(timelineStart, date);
-  return type === 'start' ? days * DAY_COLUMN_WIDTH : (days + 1) * DAY_COLUMN_WIDTH;
+  return type === 'start' ? days * dayColumnWidth : (days + 1) * dayColumnWidth;
 }
 
 export function calculateDependencyLines(
@@ -352,10 +433,15 @@ export function calculateDependencyLines(
   rows: TimelineRow[],
   timelineRange: { start: Date },
   timelineDays: Array<unknown>,
+  dayColumnWidth = DAY_COLUMN_WIDTH,
 ): DependencyLine[] {
   const dayCount = timelineDays.length;
   const taskRowMap = new Map<string, TimelineRow>();
+  const rowTopMap = new Map<string, number>();
+  let nextTop = 0;
   rows.forEach((row) => {
+    rowTopMap.set(row.id, nextTop);
+    nextTop += getRowHeight(row);
     if (row.entityKind === 'task') taskRowMap.set(`task-${row.entityId}`, row);
   });
 
@@ -367,39 +453,36 @@ export function calculateDependencyLines(
     if (!pred.startDate && !pred.endDate) continue;
     if (!succ.startDate && !succ.endDate) continue;
 
-    const predIdx = rows.findIndex((r) => r.id === pred.id);
-    const succIdx = rows.findIndex((r) => r.id === succ.id);
-    if (predIdx === -1 || succIdx === -1) continue;
+    const predTop = rowTopMap.get(pred.id);
+    const succTop = rowTopMap.get(succ.id);
+    if (predTop === undefined || succTop === undefined) continue;
 
-    let predY = 0, succY = 0;
-    for (let i = 0; i < predIdx; i++) predY += getRowHeight(rows[i]!);
-    for (let i = 0; i < succIdx; i++) succY += getRowHeight(rows[i]!);
-    predY += getRowHeight(pred) / 2;
-    succY += getRowHeight(succ) / 2;
+    const predY = predTop + getRowHeight(pred) / 2;
+    const succY = succTop + getRowHeight(succ) / 2;
 
     let fromX: number, toX: number;
     let fromType: 'start' | 'end', toType: 'start' | 'end';
-    const lag = (dep.lagDays || 0) * DAY_COLUMN_WIDTH;
+    const lag = (dep.lagDays || 0) * dayColumnWidth;
 
     switch (dep.dependencyType) {
       case 'FS':
-        fromX = calcEndpointX(pred, 'end', timelineRange.start, dayCount);
-        toX = calcEndpointX(succ, 'start', timelineRange.start, dayCount) + lag;
+        fromX = calcEndpointX(pred, 'end', timelineRange.start, dayCount, dayColumnWidth);
+        toX = calcEndpointX(succ, 'start', timelineRange.start, dayCount, dayColumnWidth) + lag;
         fromType = 'end'; toType = 'start';
         break;
       case 'FF':
-        fromX = calcEndpointX(pred, 'end', timelineRange.start, dayCount);
-        toX = calcEndpointX(succ, 'end', timelineRange.start, dayCount) + lag;
+        fromX = calcEndpointX(pred, 'end', timelineRange.start, dayCount, dayColumnWidth);
+        toX = calcEndpointX(succ, 'end', timelineRange.start, dayCount, dayColumnWidth) + lag;
         fromType = 'end'; toType = 'end';
         break;
       case 'SS':
-        fromX = calcEndpointX(pred, 'start', timelineRange.start, dayCount);
-        toX = calcEndpointX(succ, 'start', timelineRange.start, dayCount) + lag;
+        fromX = calcEndpointX(pred, 'start', timelineRange.start, dayCount, dayColumnWidth);
+        toX = calcEndpointX(succ, 'start', timelineRange.start, dayCount, dayColumnWidth) + lag;
         fromType = 'start'; toType = 'start';
         break;
       case 'SF':
-        fromX = calcEndpointX(pred, 'start', timelineRange.start, dayCount);
-        toX = calcEndpointX(succ, 'end', timelineRange.start, dayCount) + lag;
+        fromX = calcEndpointX(pred, 'start', timelineRange.start, dayCount, dayColumnWidth);
+        toX = calcEndpointX(succ, 'end', timelineRange.start, dayCount, dayColumnWidth) + lag;
         fromType = 'start'; toType = 'end';
         break;
       default:
