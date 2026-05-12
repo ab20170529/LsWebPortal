@@ -17,6 +17,7 @@ import {
   usePortalPresentation,
 } from './app/presentation/portal-presentation-provider';
 import { PortalLoginPage } from './features/auth/portal-login-page';
+import { PortalSsoPage } from './features/auth/portal-sso-page';
 import { clearAuthSession } from './features/auth/services/storage-service';
 import { BusinessDbSelectionPage } from './pages/business-db-selection-page';
 import { AccessDeniedPage, SystemAccessPage } from './pages/system-access-page';
@@ -38,6 +39,7 @@ type RouteKey =
   | 'not-found'
   | 'project'
   | 'settings'
+  | 'sso'
   | 'system-manager'
   | 'systems';
 
@@ -93,6 +95,8 @@ function resolveRoute(pathname: string): RouteKey {
   switch (normalizedPath) {
     case '/':
       return 'login';
+    case '/auth/sso':
+      return 'sso';
     case '/systems':
       return 'systems';
     case '/business-dbs':
@@ -442,6 +446,10 @@ export function PortalRouter() {
     return <PortalLoginPage />;
   }
 
+  if (route === 'sso') {
+    return <PortalSsoPage />;
+  }
+
   if (route === 'bi' && isPublicBiRoute) {
     return <BiHomePage />;
   }
@@ -513,7 +521,15 @@ export function PortalRouter() {
       );
     }
 
-    return <BiHomePage />;
+    return (
+      <BiHomePage
+        onExitSystem={() => {
+          clearAuthSession();
+          signOut();
+          navigate('/');
+        }}
+      />
+    );
   }
 
   if (route === 'bi-display') {

@@ -99,20 +99,66 @@ function redirectToLogin() {
   window.location.href = loginPath;
 }
 
-function buildUrl(baseUrl: string, path: string, query?: Record<string, QueryValue>) {
-  const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-  const url = new URL(normalizedPath, normalizedBaseUrl);
+const RELATIVE_URL_BASE = 'http://lserp.local';
 
-  if (query) {
-    for (const [key, value] of Object.entries(query)) {
-      if (value === undefined || value === null || value === '') {
-        continue;
-      }
-
-      url.searchParams.set(key, String(value));
-    }
+export function normalizeApiBaseUrl(value?: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) {
+    return '';
   }
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, '');
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      return '';
+    }
+  } catch {
+    return trimmed.replace(/\/+$/, '');
+  }
+
+  return trimmed.replace(/\/+$/, '');
+}
+
+function appendQuery(url: URL, query?: Record<string, QueryValue>) {
+  if (!query) {
+    return;
+  }
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+
+    url.searchParams.set(key, String(value));
+  }
+}
+
+function buildUrl(baseUrl: string, path: string, query?: Record<string, QueryValue>) {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    const url = new URL(path);
+    appendQuery(url, query);
+    return url.toString();
+  }
+
+  const normalizedBaseUrl = baseUrl.trim();
+  if (!normalizedBaseUrl || normalizedBaseUrl.startsWith('/')) {
+    const normalizedBasePath = normalizedBaseUrl.replace(/\/+$/, '');
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const url = new URL(`${normalizedBasePath}${normalizedPath}`, RELATIVE_URL_BASE);
+    appendQuery(url, query);
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  const absoluteBaseUrl = normalizedBaseUrl.endsWith('/')
+    ? normalizedBaseUrl
+    : `${normalizedBaseUrl}/`;
+  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
+  const url = new URL(normalizedPath, absoluteBaseUrl);
+  appendQuery(url, query);
 
   return url.toString();
 }
@@ -207,7 +253,7 @@ export function createApiClient(
         transport?: HttpTransport;
       },
 ) {
-  const baseUrl = typeof config === 'string' ? config : config.baseUrl;
+  const baseUrl = normalizeApiBaseUrl(typeof config === 'string' ? config : config.baseUrl);
   const transport = typeof config === 'string'
     ? createFetchTransport()
     : config.transport ?? createFetchTransport();

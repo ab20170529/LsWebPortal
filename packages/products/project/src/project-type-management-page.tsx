@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 
-import { createApiClient } from '@lserp/http';
 import { Button, Card, cx } from '@lserp/ui';
 
+import { createProjectApiClient } from './project-api';
 import { ProgressConfigModal } from './progress-config/progress-config-modal';
 import { useProjectToast } from './project-toast';
 import type { ProgressSchedule, ScheduleColor } from './progress-config/types';
@@ -124,11 +124,7 @@ type ProjectTypeManagementPageProps = {
   projectTypes: BasicProjectType[];
 };
 
-const apiClient = createApiClient({
-  baseUrl:
-    (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
-    'http://127.0.0.1:8080',
-});
+const apiClient = createProjectApiClient();
 
 const initialTypeForm: TypeFormState = {
   sort: '0',
@@ -926,9 +922,9 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
   const [typeDialogMode, setTypeDialogMode] = useState<DialogMode>(null);
   const [nodeDialogMode, setNodeDialogMode] = useState<DialogMode>(null);
   const [taskDialogMode, setTaskDialogMode] = useState<DialogMode>(null);
-  const [typeForm, setTypeForm] = useState<TypeFormState>(initialTypeForm);
-  const [nodeForm, setNodeForm] = useState<NodeFormState>(initialNodeForm);
-  const [taskForm, setTaskForm] = useState<TaskFormState>(initialTaskForm);
+  const [typeForm, setTypeForm] = useState<TypeFormState>(() => ({ ...initialTypeForm }));
+  const [nodeForm, setNodeForm] = useState<NodeFormState>(() => ({ ...initialNodeForm }));
+  const [taskForm, setTaskForm] = useState<TaskFormState>(() => ({ ...initialTaskForm }));
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [draftSchedule, setDraftSchedule] = useState<ProgressSchedule | null>(null);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
@@ -1145,7 +1141,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
   }, [selectedTypeId]);
 
   function openCreateTypeDialog() {
-    setTypeForm(initialTypeForm);
+    setTypeForm({ ...initialTypeForm });
     setTypeDialogMode('create');
   }
 
@@ -1200,7 +1196,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
       setFeedback({ message: '请先选择节点模板。', tone: 'danger' });
       return;
     }
-    setTaskForm(initialTaskForm);
+    setTaskForm({ ...initialTaskForm });
     setTaskDialogMode('create');
   }
 
@@ -1747,15 +1743,27 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   <span className={cx('font-mono text-[13px] font-medium', selectedTypeId === item.id ? 'text-[#1f65e8]' : 'text-[#6b7f9e]')}>
                     {item.typeCode}
                   </span>
-                  <button 
-                    className={cx('rounded p-1 transition hover:bg-[#eaf3ff]', selectedTypeId === item.id ? 'text-[#1f65e8]' : 'text-[#8da0bd]')}
-                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); void handleCopyType(item); }}
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12">
-                      <rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-                      <path d="M1 8V2a1 1 0 011-1h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                    </svg>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      className={cx('rounded p-1 transition hover:bg-[#eaf3ff]', selectedTypeId === item.id ? 'text-[#1f65e8]' : 'text-[#8da0bd]')}
+                      onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); openEditTypeDialog(item); }}
+                      title="编辑模板"
+                      type="button"
+                    >
+                      <EditIcon />
+                    </button>
+                    <button
+                      className={cx('rounded p-1 transition hover:bg-[#eaf3ff]', selectedTypeId === item.id ? 'text-[#1f65e8]' : 'text-[#8da0bd]')}
+                      onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); void handleCopyType(item); }}
+                      title="复制模板"
+                      type="button"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12">
+                        <rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+                        <path d="M1 8V2a1 1 0 011-1h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 <h3 className="truncate text-[13px] font-semibold text-[#263653]">{item.typeName}</h3>
                 <div className={cx('mt-2 flex items-center justify-between text-[13px] font-medium', selectedTypeId === item.id ? 'text-[#526681]' : 'text-[#6b7f9e]')}>
@@ -2031,7 +2039,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">模板编码</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setTypeForm((current) => ({ ...current, typeCode: event.target.value }))
                     }
@@ -2041,7 +2049,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">模板名称</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setTypeForm((current) => ({ ...current, typeName: event.target.value }))
                     }
@@ -2055,7 +2063,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">状态</label>
                   <select
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLSelectElement>) =>
                       setTypeForm((current) => ({ ...current, status: event.target.value }))
                     }
@@ -2068,7 +2076,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">排序</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setTypeForm((current) => ({ ...current, sort: event.target.value }))
                     }
@@ -2079,7 +2087,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             </FieldSection>
             <FieldSection label="备注">
               <textarea
-                className="field-textarea"
+                className="project-template-field-textarea"
                 onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                   setTypeForm((current) => ({ ...current, typeDesc: event.target.value }))
                 }
@@ -2113,7 +2121,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">父节点</label>
                   <select
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                       const parentId = event.target.value ? parseInt(event.target.value, 10) : null;
                       const parentNode = nodes.find(n => n.id === parentId);
@@ -2138,7 +2146,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">节点编码 <span className="text-[12px] font-medium text-[#1f65e8]">（自动生成）</span></label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setNodeForm((current) => ({ ...current, nodeCode: event.target.value }))
                     }
@@ -2151,7 +2159,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">节点名称</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setNodeForm((current) => ({ ...current, nodeName: event.target.value }))
                     }
@@ -2165,7 +2173,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">计划天数</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setNodeForm((current) => ({ ...current, planDay: event.target.value }))
                     }
@@ -2176,7 +2184,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">排序</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setNodeForm((current) => ({ ...current, sort: event.target.value }))
                     }
@@ -2213,7 +2221,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             </FieldSection>
             <FieldSection label="备注">
               <textarea
-                className="field-textarea"
+                className="project-template-field-textarea"
                 onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                   setNodeForm((current) => ({ ...current, remark: event.target.value }))
                 }
@@ -2247,7 +2255,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">任务编码</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setTaskForm((current) => ({ ...current, taskCode: event.target.value }))
                     }
@@ -2257,7 +2265,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">任务标题</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setTaskForm((current) => ({ ...current, taskTitle: event.target.value }))
                     }
@@ -2271,7 +2279,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">计划天数</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setTaskForm((current) => ({ ...current, planDay: event.target.value }))
                     }
@@ -2282,7 +2290,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 <div className="space-y-2">
                   <label className="block text-[12px] font-medium text-[#6b7f9e]">排序</label>
                   <input
-                    className="field-input"
+                    className="project-template-field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
                       setTaskForm((current) => ({ ...current, sort: event.target.value }))
                     }
@@ -2315,7 +2323,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             </FieldSection>
             <FieldSection label="任务内容">
               <textarea
-                className="field-textarea"
+                className="project-template-field-textarea"
                 onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                   setTaskForm((current) => ({ ...current, taskContent: event.target.value }))
                 }
@@ -2325,7 +2333,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             </FieldSection>
             <FieldSection label="备注">
               <textarea
-                className="field-textarea"
+                className="project-template-field-textarea"
                 onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                   setTaskForm((current) => ({ ...current, remark: event.target.value }))
                 }
@@ -2401,6 +2409,54 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
         schedule={draftSchedule}
         taskTitle={selectedTask?.taskTitle ?? null}
       />
+
+      <style>{`
+        .project-template-field-input {
+          display: block;
+          height: 44px;
+          width: 100%;
+          border-radius: 14px;
+          border: 1.5px solid #e2e8f0;
+          background: #f8fafc;
+          padding: 0 14px;
+          color: #1e293b;
+          font-size: 14px;
+          outline: none;
+          pointer-events: auto;
+          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+        }
+        .project-template-field-input:focus {
+          border-color: #38bdf8;
+          background: #ffffff;
+          box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+        }
+        .project-template-field-input::placeholder {
+          color: #94a3b8;
+        }
+        .project-template-field-textarea {
+          display: block;
+          min-height: 88px;
+          width: 100%;
+          resize: vertical;
+          border-radius: 14px;
+          border: 1.5px solid #e2e8f0;
+          background: #f8fafc;
+          padding: 12px 14px;
+          color: #1e293b;
+          font-size: 14px;
+          outline: none;
+          pointer-events: auto;
+          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+        }
+        .project-template-field-textarea:focus {
+          border-color: #38bdf8;
+          background: #ffffff;
+          box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+        }
+        .project-template-field-textarea::placeholder {
+          color: #94a3b8;
+        }
+      `}</style>
     </div>
   );
 }

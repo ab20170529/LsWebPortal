@@ -1,4 +1,6 @@
-import { ApiClientError, createApiClient } from '@lserp/http';
+import { ApiClientError } from '@lserp/http';
+
+import { buildProjectApiUrl, createProjectApiClient } from './project-api';
 
 type CommonResult<T> = {
   code: number;
@@ -35,13 +37,7 @@ export type UploadProjectAttachmentInput = {
 
 const AUTH_KEYS = ['lserp.portal.auth.v2', 'lserp.portal.auth.session'];
 
-export const PROJECT_API_BASE_URL =
-  (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
-  'http://127.0.0.1:8080';
-
-const attachmentApiClient = createApiClient({
-  baseUrl: PROJECT_API_BASE_URL,
-});
+const attachmentApiClient = createProjectApiClient();
 
 function trimToNull(value?: string | null) {
   if (!value) {
@@ -50,14 +46,6 @@ function trimToNull(value?: string | null) {
 
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
-}
-
-function buildProjectApiUrl(path: string) {
-  const normalizedBaseUrl = PROJECT_API_BASE_URL.endsWith('/')
-    ? PROJECT_API_BASE_URL
-    : `${PROJECT_API_BASE_URL}/`;
-  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-  return new URL(normalizedPath, normalizedBaseUrl).toString();
 }
 
 function readStoredPortalAuthorizationHeader() {

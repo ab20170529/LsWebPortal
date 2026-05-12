@@ -27,7 +27,32 @@ type DesignerSharedAuthPayload = {
 
 const DESIGNER_BASE_URL =
   (import.meta.env.VITE_DESIGNER_BASE_URL as string | undefined)?.trim() ||
-  'http://localhost:3000';
+  '/designer';
+
+function normalizeDesignerBaseUrl(value: string) {
+  if (!/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      return '/designer';
+    }
+  } catch {
+    return value;
+  }
+
+  return value;
+}
+
+function buildPortalUrl(value: string) {
+  const normalizedValue = normalizeDesignerBaseUrl(value);
+  const fallbackOrigin = typeof window === 'undefined' ? 'http://lserp.local' : window.location.origin;
+  return /^https?:\/\//i.test(normalizedValue)
+    ? new URL(normalizedValue)
+    : new URL(normalizedValue.startsWith('/') ? normalizedValue : `/${normalizedValue}`, fallbackOrigin);
+}
 
 export function navigateToDesigner(
   session: DesignerBridgeSession,
@@ -55,7 +80,7 @@ export function navigateToDesigner(
     localStorage.removeItem(sharedAuthKey);
   }, 5 * 60 * 1000);
 
-  const designerUrl = new URL(DESIGNER_BASE_URL);
+  const designerUrl = buildPortalUrl(DESIGNER_BASE_URL);
   designerUrl.searchParams.set('authKey', sharedAuthKey);
   designerUrl.searchParams.set('source', 'portal');
   designerUrl.searchParams.set('systemId', systemId);

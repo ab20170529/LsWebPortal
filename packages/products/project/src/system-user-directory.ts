@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { createApiClient } from '@lserp/http';
+
+import { createProjectApiClient } from './project-api';
 
 type CommonResult<T> = {
   code: number;
@@ -25,11 +26,7 @@ export type SystemUserOption = {
   userName: string;
 };
 
-const systemUserApiClient = createApiClient({
-  baseUrl:
-    (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
-    'http://127.0.0.1:8080',
-});
+const systemUserApiClient = createProjectApiClient();
 
 const fallbackSystemUserOptions: SystemUserOption[] = [
   {

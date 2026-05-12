@@ -1,4 +1,4 @@
-import { createApiClient } from '@lserp/http';
+import { createProjectApiClient } from './project-api';
 
 export type ProjectPermissionRole = {
   employeeCount: number;
@@ -50,11 +50,7 @@ type CommonResult<T> = {
   message: string;
 };
 
-const projectPermissionApiClient = createApiClient({
-  baseUrl:
-    (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
-    'http://127.0.0.1:8080',
-});
+const projectPermissionApiClient = createProjectApiClient();
 
 const fallbackPermissionRoles: ProjectPermissionRole[] = [
   {

@@ -19,7 +19,7 @@
 
 | 变量名 | 描述 | 默认值 | 示例 |
 |--------|------|--------|------|
-| `VITE_API_BASE_URL` | 后端API基础URL | `http://localhost:8080` | `https://api.example.com` |
+| `VITE_API_BASE_URL` | 后端API基础URL；留空表示同源 `/api`，由 Web 端转发 | 空字符串 | `/api` |
 | `VITE_AUTH_ENDPOINT` | 认证相关API端点前缀 | `/api/auth` | `/api/v1/auth` |
 | `VITE_SYSTEM_ENDPOINT` | 系统相关API端点前缀 | `/api/system` | `/api/v1/system` |
 | `VITE_APP_ENV` | 应用环境 | `development` | `production` |
@@ -29,7 +29,7 @@
 
 #### 开发环境 (`.env.development`)
 ```env
-VITE_API_BASE_URL=http://localhost:8080
+VITE_API_BASE_URL=
 VITE_AUTH_ENDPOINT=/api/auth
 VITE_SYSTEM_ENDPOINT=/api/system
 VITE_APP_ENV=development
@@ -38,7 +38,7 @@ VITE_APP_NAME=LsERPPortal (开发环境)
 
 #### 生产环境 (`.env.production`)
 ```env
-VITE_API_BASE_URL=https://api.yourdomain.com
+VITE_API_BASE_URL=
 VITE_AUTH_ENDPOINT=/api/auth
 VITE_SYSTEM_ENDPOINT=/api/system
 VITE_APP_ENV=production
@@ -53,8 +53,8 @@ VITE_APP_NAME=LsERPPortal
 import { apiConfig, appConfig } from '../config';
 
 // 使用API配置
-const loginUrl = apiConfig.auth.login; // 返回完整URL: http://localhost:8080/api/auth/login
-const employeesUrl = apiConfig.auth.employees; // 返回完整URL: http://localhost:8080/api/auth/employees
+const loginUrl = apiConfig.auth.login; // 返回同源路径: /api/auth/login
+const employeesUrl = apiConfig.auth.employees; // 返回同源路径: /api/auth/employees
 
 // 使用应用配置
 console.log(appConfig.name); // 应用名称
@@ -137,6 +137,6 @@ console.log('环境:', config.app.env);
 - 确保导入路径正确
 
 ### 3. API请求失败
-- 检查`VITE_API_BASE_URL`是否正确
-- 验证后端服务是否运行
-- 检查网络连接和CORS配置
+- 默认保持`VITE_API_BASE_URL`为空，让请求走 Web 端同源转发
+- 验证 Web 端 `/api` 反向代理是否可达后端服务
+- 检查网络连接和代理配置

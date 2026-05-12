@@ -1,4 +1,4 @@
-import { createApiClient } from '@lserp/http';
+import { createApiClient, normalizeApiBaseUrl } from '@lserp/http';
 
 import type {
   BiDataAsset,
@@ -20,10 +20,11 @@ import type {
   CommonResult,
 } from '../types';
 
+const BI_API_BASE_URL =
+  normalizeApiBaseUrl(import.meta.env.VITE_BI_API_BASE_URL as string | undefined);
+
 const biApiClient = createApiClient({
-  baseUrl:
-    (import.meta.env.VITE_BI_API_BASE_URL as string | undefined)?.trim() ||
-    'http://127.0.0.1:8080',
+  baseUrl: BI_API_BASE_URL,
 });
 
 async function unwrap<T>(promise: Promise<CommonResult<T>>) {
@@ -218,6 +219,7 @@ export type MenuSavePayload = {
 
 export type PublicRuntimePayload = {
   datasourceCode?: string | null;
+  tenantCode?: string | null;
   versionId?: number | null;
 };
 
@@ -398,6 +400,7 @@ export const biApi = {
       biApiClient.request(`/api/bi/share/public-screen/${screenCode}`, {
         query: {
           datasourceCode: payload?.datasourceCode ?? undefined,
+          tenantCode: payload?.tenantCode ?? undefined,
           versionId: payload?.versionId ?? undefined,
         },
       }),
@@ -526,6 +529,7 @@ export const biApi = {
         method: 'POST',
         query: {
           datasourceCode: payload?.datasourceCode ?? undefined,
+          tenantCode: payload?.tenantCode ?? undefined,
           versionId: payload?.versionId ?? undefined,
         },
       }),

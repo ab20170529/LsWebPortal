@@ -5,12 +5,12 @@ import {
   type ChangeEvent,
   type PropsWithChildren,
 } from 'react';
-import { createApiClient } from '@lserp/http';
 import { Badge, Button, Card } from '@lserp/ui';
 
 import {
   getFileCategoryLabel,
 } from './project-display';
+import { createProjectApiClient } from './project-api';
 import { uploadProjectAttachment } from './project-attachments';
 import { useProjectToast } from './project-toast';
 import { useSystemUserOptions } from './system-user-directory';
@@ -240,11 +240,7 @@ const initialTaskAssignmentFormState: TaskAssignmentFormState = {
   taskId: '',
 };
 
-const projectApiClient = createApiClient({
-  baseUrl:
-    (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
-    'http://127.0.0.1:8080',
-});
+const projectApiClient = createProjectApiClient();
 
 function FieldBlock({ children, label }: PropsWithChildren<{ label: string }>) {
   return (

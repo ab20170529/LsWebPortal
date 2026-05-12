@@ -21,7 +21,7 @@ interface ApiRequestOptions extends Omit<RequestInit, 'body' | 'headers'> {
 function buildUrl(path: string, query?: Record<string, string | number | boolean | null | undefined>) {
   // 使用配置的API基础URL构建完整URL
   const fullUrl = apiConfig.buildUrl(path);
-  const baseUrl = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+  const baseUrl = typeof window === 'undefined' ? 'http://lserp.local' : window.location.origin;
   const url = new URL(fullUrl, baseUrl);
 
   if (query) {

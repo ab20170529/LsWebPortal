@@ -270,6 +270,34 @@
   border-color: var(--exact-line);
 }
 
+.bi-exact-logout-button {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #ffd1d1;
+  border-radius: 5px;
+  background: #fff7f7;
+  color: var(--exact-red);
+  cursor: pointer;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.bi-exact-logout-button:hover {
+  border-color: rgba(214, 69, 69, 0.42);
+  background: var(--exact-red-soft);
+}
+
+.bi-exact-logout-button svg {
+  width: 15px;
+  height: 15px;
+}
+
 .bi-exact-top-primary {
   display: inline-flex;
   height: 32px;
@@ -295,6 +323,7 @@
 .bi-exact-primary-small,
 .bi-exact-outline-wide,
 .bi-exact-detail-actions button,
+.bi-exact-entry-form button,
 .bi-exact-node-editor button,
 .bi-exact-source-editor button,
 .bi-exact-asset-editor button,
@@ -343,6 +372,7 @@
 .bi-exact-primary-button:disabled,
 .bi-exact-primary-small:disabled,
 .bi-exact-detail-actions button:disabled,
+.bi-exact-entry-form button:disabled,
 .bi-exact-node-editor button:disabled,
 .bi-exact-source-editor button:disabled,
 .bi-exact-asset-editor button:disabled,
@@ -372,11 +402,6 @@
 
 .bi-exact-stage.is-ai {
   grid-template-columns: minmax(430px, 500px) minmax(0, 1fr);
-}
-
-.bi-exact-stage.is-menu {
-  display: block;
-  overflow: auto;
 }
 
 .bi-exact-panel {
@@ -948,13 +973,154 @@
   color: var(--exact-amber);
 }
 
+.bi-exact-node-entry {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--exact-line);
+  border-radius: 7px;
+  background: #f8fbff;
+  padding: 8px;
+}
+
+.bi-exact-entry-list {
+  display: grid;
+  gap: 6px;
+}
+
+.bi-exact-entry-list > span {
+  display: grid;
+  min-height: 32px;
+  place-items: center;
+  border: 1px dashed var(--exact-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--exact-muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.bi-exact-entry-list section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 7px;
+  border: 1px solid var(--exact-line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 7px;
+}
+
+.bi-exact-entry-list section > small {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--exact-muted);
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bi-exact-entry-list strong,
+.bi-exact-entry-list div small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bi-exact-entry-list strong {
+  color: var(--exact-text);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.bi-exact-entry-list div small {
+  margin-top: 2px;
+  color: var(--exact-muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.bi-exact-entry-list em {
+  border-radius: 999px;
+  background: var(--exact-blue-soft);
+  color: var(--exact-blue);
+  padding: 3px 6px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.bi-exact-entry-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.bi-exact-entry-mode button {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid var(--exact-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--exact-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.bi-exact-entry-mode button.is-active {
+  border-color: rgba(22, 119, 255, 0.55);
+  background: var(--exact-blue-soft);
+  color: var(--exact-blue);
+}
+
+.bi-exact-entry-form {
+  display: grid;
+  gap: 7px;
+}
+
+.bi-exact-entry-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--exact-muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.bi-exact-entry-form input,
+.bi-exact-entry-form select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--exact-line-strong);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--exact-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  outline: 0;
+  padding: 0 9px;
+}
+
+.bi-exact-entry-form input:focus,
+.bi-exact-entry-form select:focus {
+  border-color: rgba(22, 119, 255, 0.68);
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
+}
+
 .bi-exact-detail-actions {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.bi-exact-detail-actions button {
+.bi-exact-detail-actions button,
+.bi-exact-entry-form button {
   width: 100%;
   min-height: 31px;
 }
@@ -2646,6 +2812,29 @@
   .bi-exact-toolbar-button,
   .bi-exact-primary-button {
     padding: 0 10px;
+  }
+
+  .bi-exact-logout-button {
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 760px) {
+  .bi-exact-topbar {
+    gap: 8px;
+  }
+
+  .bi-exact-top-search {
+    width: 128px;
+  }
+
+  .bi-exact-logout-button {
+    width: 30px;
+    padding: 0;
+  }
+
+  .bi-exact-logout-button span {
+    display: none;
   }
 }
 

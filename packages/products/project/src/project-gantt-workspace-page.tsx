@@ -18,7 +18,6 @@ import {
   X,
 } from 'lucide-react';
 
-import { createApiClient } from '@lserp/http';
 import { Badge, Button, Card } from '@lserp/ui';
 
 import type {
@@ -83,6 +82,7 @@ import {
   parseInputDate,
 } from './gantt-utils';
 import { GanttDetailPanel } from './gantt-detail-panel';
+import { createProjectApiClient } from './project-api';
 import { ProjectTeamManager } from './project-team-manager';
 
 const GANTT_ICON_STROKE_WIDTH = 1.8;
@@ -161,11 +161,7 @@ type CommonResult<T> = {
   message?: string;
 };
 
-const projectGanttApiClient = createApiClient({
-  baseUrl:
-    (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
-    'http://127.0.0.1:8080',
-});
+const projectGanttApiClient = createProjectApiClient();
 
 function formatDemoDate(dayOffset: number, hour: number) {
   const date = new Date(2026, 3, 1 + dayOffset, hour, 0, 0);

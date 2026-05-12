@@ -57,7 +57,7 @@ export function buildSimpleProcessDesignerUrl(payload: SimpleProcessDesignerBoot
   const baseUrl = resolveSimpleProcessDesignerBaseUrl();
   const url = /^https?:\/\//i.test(baseUrl)
     ? new URL(baseUrl)
-    : new URL(baseUrl, typeof window === 'undefined' ? 'http://127.0.0.1' : window.location.origin);
+    : new URL(baseUrl, typeof window === 'undefined' ? 'http://lserp.local' : window.location.origin);
 
   Object.entries(payload).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') {

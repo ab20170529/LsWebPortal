@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { createApiClient } from '@lserp/http';
 import { Badge, Button, Card } from '@lserp/ui';
 
+import { createProjectApiClient } from '../project-api';
 import { ProgressConfigModal } from './progress-config-modal';
 import { useProjectToast } from '../project-toast';
 import { ProgressConfigSidebar } from './progress-config-sidebar';
@@ -87,11 +87,7 @@ type PagedResult<T> = {
   totalCount: number;
 };
 
-const projectApiClient = createApiClient({
-  baseUrl:
-    (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
-    'http://127.0.0.1:8080',
-});
+const projectApiClient = createProjectApiClient();
 
 type ProgressConfigPageProps = {
   projectTypes: BasicProjectType[];

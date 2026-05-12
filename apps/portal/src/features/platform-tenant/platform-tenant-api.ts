@@ -90,11 +90,7 @@ interface ApiResponse<T> {
 }
 
 function resolveApiBaseUrl() {
-  if (apiConfig.baseUrl) {
-    return apiConfig.baseUrl;
-  }
-
-  return typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+  return apiConfig.baseUrl;
 }
 
 const client = createApiClient(resolveApiBaseUrl());

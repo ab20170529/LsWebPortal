@@ -13,6 +13,9 @@ import { replaceBiDisplay, resolveBiDisplayRoute } from './utils/bi-display-rout
 import { resolveBiRoute } from './utils/bi-routes';
 
 type BiWorkspaceVersion = 'classic' | 'new';
+type BiHomePageProps = {
+  onExitSystem?: () => void;
+};
 
 const BI_WORKSPACE_VERSION_PARAM = 'workspaceVersion';
 const BI_WORKSPACE_VERSION_STORAGE_KEY = 'lserp.bi.workspaceVersion';
@@ -21,11 +24,11 @@ const BI_WORKSPACE_VERSION_OPTIONS: Array<{ label: string; value: BiWorkspaceVer
   { label: '新版', value: 'new' },
 ];
 
-export function BiHomePage() {
+export function BiHomePage({ onExitSystem }: BiHomePageProps = {}) {
   const route = resolveBiRoute(window.location.pathname);
 
   if (route.kind === 'workspace') {
-    return <BiWorkspaceVersionFrame />;
+    return <BiWorkspaceVersionFrame onExitSystem={onExitSystem} />;
   }
 
   if (
@@ -87,7 +90,7 @@ function BiDisplayRouteRedirect({ to }: { to: string }) {
   return null;
 }
 
-function BiWorkspaceVersionFrame() {
+function BiWorkspaceVersionFrame({ onExitSystem }: BiHomePageProps) {
   const [workspaceVersion, setWorkspaceVersion] = useState<BiWorkspaceVersion>(() => readBiWorkspaceVersion());
 
   useEffect(() => {
@@ -126,7 +129,7 @@ function BiWorkspaceVersionFrame() {
           </button>
         ))}
       </div>
-      {workspaceVersion === 'new' ? <BiWorkspaceExactPage /> : <BiWorkspacePage />}
+      {workspaceVersion === 'new' ? <BiWorkspaceExactPage onExitSystem={onExitSystem} /> : <BiWorkspacePage />}
     </div>
   );
 }

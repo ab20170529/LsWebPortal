@@ -2,8 +2,30 @@
  * 应用配置管理
  */
 
+function normalizeApiBaseUrl(value?: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) {
+    return '';
+  }
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, '');
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      return '';
+    }
+  } catch {
+    return trimmed.replace(/\/+$/, '');
+  }
+
+  return trimmed.replace(/\/+$/, '');
+}
+
 const env = {
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
+  apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL),
   authEndpoint: import.meta.env.VITE_AUTH_ENDPOINT || '/api/auth',
   systemEndpoint: import.meta.env.VITE_SYSTEM_ENDPOINT || '/api/system',
   appEnv: import.meta.env.VITE_APP_ENV || 'development',
@@ -23,6 +45,7 @@ export const apiConfig = {
     login: `${env.authEndpoint}/login`,
     logout: `${env.authEndpoint}/logout`,
     me: `${env.authEndpoint}/me`,
+    ssoExchange: `${env.authEndpoint}/portal/sso/exchange`,
     tenants: `${env.authEndpoint}/tenants`,
   },
   system: {

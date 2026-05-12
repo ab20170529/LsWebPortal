@@ -6,10 +6,10 @@ import type {
   DatasourceSavePayload,
   DesignMessageSendPayload,
   DesignSessionCreatePayload,
+  ScreenSavePayload,
   ScreenVersionSavePayload,
 } from '../api/bi-api';
-import { BoxIcon, BotIcon, DatabaseIcon, FolderIcon, PlusIcon, ShareIcon } from '../components/workspace/bi-icons';
-import { BiMenuManagementPanel } from '../components/workspace/bi-menu-management-panel';
+import { BoxIcon, BotIcon, DatabaseIcon, FolderIcon, LogoutIcon, PlusIcon } from '../components/workspace/bi-icons';
 import { useBiWorkspace } from '../hooks/use-bi-workspace';
 import type {
   BiDataAsset,
@@ -53,11 +53,11 @@ import {
 import { getBiGridTemplateStyle, getBiModuleGridItemStyle } from '../utils/bi-screen-layout';
 import { buildBiPublicScreenPath } from '../utils/bi-public-runtime';
 
-type ExactSection = Extract<BiWorkspaceSection, 'archives' | 'canvas' | 'menus' | 'sources'>;
+type ExactSection = Extract<BiWorkspaceSection, 'archives' | 'canvas' | 'sources'>;
 
 type StageMeta = {
   breadcrumb: string[];
-  no: '1' | '2' | '3' | '4';
+  no: '1' | '2' | '3';
   title: string;
 };
 
@@ -68,7 +68,16 @@ type NavItem = {
 };
 
 type ToastState = string | null;
+type BiWorkspaceExactPageProps = {
+  onExitSystem?: () => void;
+};
 type NodeEditorState = { id: number; nodeCode: string; nodeName: string } | null;
+type NodePortalMode = 'ARCHIVE' | 'EXTERNAL';
+type NodeExternalLinkDraft = {
+  name: string;
+  openMode: string;
+  targetUrl: string;
+};
 type AiWorkbenchTab = 'context' | 'chat' | 'background' | 'versions';
 type ChatReferenceImage = NonNullable<DesignMessageSendPayload['referenceImages']>[number];
 type PendingChatMessage = { content: string; referenceImages: ChatReferenceImage[] } | null;
@@ -101,7 +110,6 @@ const NAV_ITEMS: NavItem[] = [
   { icon: FolderIcon, label: '组织管理', section: 'canvas' },
   { icon: BoxIcon, label: '数据源', section: 'sources' },
   { icon: BotIcon, label: 'BI设计', section: 'archives' },
-  { icon: ShareIcon, label: '菜单管理', section: 'menus' },
 ];
 
 function resolveStageMeta(section: ExactSection): StageMeta {
@@ -119,13 +127,6 @@ function resolveStageMeta(section: ExactSection): StageMeta {
       title: '内置BI AI设计管理',
     };
   }
-  if (section === 'menus') {
-    return {
-      breadcrumb: ['首页', 'BI设计', '菜单管理'],
-      no: '4',
-      title: 'BI菜单管理',
-    };
-  }
   return {
     breadcrumb: ['首页', '组织管理', '组织节点管理'],
     no: '1',
@@ -134,7 +135,7 @@ function resolveStageMeta(section: ExactSection): StageMeta {
 }
 
 function asExactSection(section: BiWorkspaceSection): ExactSection {
-  return section === 'sources' || section === 'archives' || section === 'menus' ? section : 'canvas';
+  return section === 'sources' || section === 'archives' ? section : 'canvas';
 }
 
 function slugifyCode(value: string) {
@@ -143,6 +144,84 @@ function slugifyCode(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
+}
+
+const EXTERNAL_LINK_SANDBOX_POLICY = 'allow-same-origin allow-scripts allow-forms';
+
+function normalizeScreenBiType(screen: BiScreen): 'EXTERNAL' | 'INTERNAL' {
+  return screen.biType === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL';
+}
+
+function readScreenExternalConfig(screen: BiScreen | null): Record<string, unknown> {
+  return resolveVersion(screen)?.externalConfig ?? {};
+}
+
+function buildDefaultExternalLinkDraft(
+  node: BiDirectoryNode | null,
+  screen: BiScreen | null = null,
+): NodeExternalLinkDraft {
+  const externalConfig = readScreenExternalConfig(screen);
+  return {
+    name: screen?.name ?? (node ? `${node.nodeName}外链BI` : '外链BI'),
+    openMode: typeof externalConfig.openMode === 'string' ? externalConfig.openMode : 'iframe',
+    targetUrl: typeof externalConfig.targetUrl === 'string' ? externalConfig.targetUrl : '',
+  };
+}
+
+function buildArchiveNodeBindPayload(screen: BiScreen, nodeId: number): ScreenSavePayload {
+  return {
+    accessMode: screen.accessMode ?? 'LOGIN_REQUIRED',
+    biType: normalizeScreenBiType(screen),
+    designBrief: screen.designBrief ?? undefined,
+    designMeta: screen.designMeta ?? undefined,
+    latestDesignPrompt: screen.latestDesignPrompt ?? undefined,
+    name: screen.name,
+    nodeId,
+    screenCode: screen.screenCode,
+  };
+}
+
+function buildUniqueNodeExternalScreenCode(node: BiDirectoryNode, screens: BiScreen[]) {
+  const baseCode = `${slugifyCode(node.nodeCode || node.nodeName) || 'bi_node'}_external`;
+  if (!screens.some((screen) => screen.screenCode === baseCode)) {
+    return baseCode;
+  }
+  return `${baseCode}_${String(Date.now()).slice(-6)}`;
+}
+
+function buildNodeExternalLinkPayload(
+  node: BiDirectoryNode,
+  draft: NodeExternalLinkDraft,
+  screen: BiScreen | null,
+  screens: BiScreen[],
+): ScreenSavePayload {
+  const name = draft.name.trim() || `${node.nodeName}外链BI`;
+  return {
+    accessMode: screen?.accessMode ?? 'LOGIN_REQUIRED',
+    biType: 'EXTERNAL',
+    designBrief: screen?.designBrief ?? {
+      businessNote: '',
+      designNote: '组织节点外链地址',
+    },
+    designMeta: screen?.designMeta ?? {},
+    latestDesignPrompt: screen?.latestDesignPrompt ?? undefined,
+    name,
+    nodeId: node.id,
+    screenCode: screen?.screenCode ?? buildUniqueNodeExternalScreenCode(node, screens),
+    versionDraft: {
+      externalConfig: {
+        allowFullscreen: true,
+        openMode: draft.openMode.trim() || 'iframe',
+        queryParamMapping: {},
+        sandboxPolicy: EXTERNAL_LINK_SANDBOX_POLICY,
+        targetUrl: draft.targetUrl.trim(),
+        title: name,
+      },
+      filters: [],
+      publishNow: true,
+      theme: 'external',
+    },
+  };
 }
 
 function formatFileSize(size: number) {
@@ -486,7 +565,7 @@ function statusClass(tone: 'danger' | 'info' | 'muted' | 'success' | 'warning') 
   return `bi-exact-status is-${tone}`;
 }
 
-export function BiWorkspaceExactPage() {
+export function BiWorkspaceExactPage({ onExitSystem }: BiWorkspaceExactPageProps = {}) {
   const initialView = useMemo(() => readBiWorkspaceViewState(window.location.search), []);
   const [activeSection, setActiveSection] = useState<ExactSection>(asExactSection(initialView.section));
   const [activeArchiveTab, setActiveArchiveTab] = useState<BiArchiveTab>(initialView.tab);
@@ -764,6 +843,52 @@ export function BiWorkspaceExactPage() {
     openArchiveTab('design');
   }
 
+  async function handleBindArchiveToNode(screen: BiScreen) {
+    const targetNode = workspace.selectedNode;
+    if (!targetNode) {
+      setToastMessage('请先选择组织节点。');
+      return;
+    }
+    try {
+      await workspace.updateScreen(screen.id, buildArchiveNodeBindPayload(screen, targetNode.id));
+      workspace.setSelectedNodeId(targetNode.id);
+      workspace.setSelectedScreenId(screen.id);
+      setToastMessage('BI 档案已绑定到当前节点。');
+    } catch {
+      // useBiWorkspace has already surfaced the mutation error.
+    }
+  }
+
+  async function handleSaveNodeExternalLink(draft: NodeExternalLinkDraft) {
+    const targetNode = workspace.selectedNode;
+    if (!targetNode) {
+      setToastMessage('请先选择组织节点。');
+      return;
+    }
+    if (!draft.targetUrl.trim()) {
+      setToastMessage('请填写外链地址。');
+      return;
+    }
+
+    const existingExternalScreen =
+      workspace.allScreens.find((screen) => screen.nodeId === targetNode.id && screen.biType === 'EXTERNAL') ?? null;
+    const payload = buildNodeExternalLinkPayload(targetNode, draft, existingExternalScreen, workspace.allScreens);
+    try {
+      const saved = existingExternalScreen
+        ? await workspace.updateScreen(existingExternalScreen.id, payload)
+        : await workspace.createScreen(payload);
+      const nextScreenId =
+        saved && typeof saved === 'object' && 'id' in saved ? Number(saved.id) : existingExternalScreen?.id ?? null;
+      workspace.setSelectedNodeId(targetNode.id);
+      if (nextScreenId) {
+        workspace.setSelectedScreenId(nextScreenId);
+      }
+      setToastMessage('外链地址已保存到当前节点。');
+    } catch {
+      // useBiWorkspace has already surfaced the mutation error.
+    }
+  }
+
   function handleOpenPreview() {
     if (!previewState.href) {
       setToastMessage(previewState.statusText ?? '请先选择可预览内容。');
@@ -797,6 +922,7 @@ export function BiWorkspaceExactPage() {
           onDesign={() => {
             void handleDesignInternalArchive();
           }}
+          onExitSystem={onExitSystem}
         />
         {activeSection === 'canvas' ? (
           <ExactOrganizationStage
@@ -812,6 +938,9 @@ export function BiWorkspaceExactPage() {
             }}
             onAddRoot={() => {
               void createNode();
+            }}
+            onBindArchiveToNode={(screen) => {
+              void handleBindArchiveToNode(screen);
             }}
             onBindSource={() => openSection('sources')}
             onDeleteNode={() => handleDeleteNode()}
@@ -830,11 +959,15 @@ export function BiWorkspaceExactPage() {
             onSaveNodeEdit={() => {
               void saveNodeEdit();
             }}
+            onSaveNodeExternalLink={(draft) => {
+              void handleSaveNodeExternalLink(draft);
+            }}
             onSaveLayout={() => {
               void workspace.saveCanvasLayout().then(() => setToastMessage('布局已保存。')).catch(() => undefined);
             }}
             onSelectNode={workspace.setSelectedNodeId}
             selectedNodeId={workspace.selectedNodeId}
+            screens={workspace.allScreens}
           />
         ) : activeSection === 'sources' ? (
           <ExactDatasourceStage
@@ -847,10 +980,6 @@ export function BiWorkspaceExactPage() {
             onReplaceAssetFields={workspace.replaceAssetFields}
             onSaveAsset={workspace.saveAsset}
           />
-        ) : activeSection === 'menus' ? (
-          <section className="bi-exact-stage is-menu">
-            <BiMenuManagementPanel archives={workspace.allScreens} isMutating={workspace.isMutating} />
-          </section>
         ) : (
           <ExactAiStage
             boundDatasources={workspace.boundDatasources}
@@ -919,19 +1048,19 @@ function ExactTopbar({
   isMutating,
   meta,
   onDesign,
+  onExitSystem,
 }: {
   isMutating: boolean;
   meta: StageMeta;
   onDesign: () => void;
+  onExitSystem?: () => void;
 }) {
   const searchText =
     meta.no === '1'
       ? '搜索节点名称'
       : meta.no === '2'
         ? '搜索数据源/资产'
-        : meta.no === '4'
-          ? '搜索菜单名称'
-          : null;
+        : null;
 
   return (
     <header className="bi-exact-topbar">
@@ -963,6 +1092,12 @@ function ExactTopbar({
         <button className="bi-exact-icon-button" title="刷新" type="button">↻</button>
         {meta.no === '1' ? <button className="bi-exact-icon-button" title="提醒" type="button">♢</button> : null}
         <button className="bi-exact-icon-button" title="更多" type="button">⋮</button>
+        {onExitSystem ? (
+          <button className="bi-exact-logout-button" onClick={onExitSystem} title="退出登录" type="button">
+            <LogoutIcon />
+            <span>退出登录</span>
+          </button>
+        ) : null}
       </div>
     </header>
   );
@@ -976,6 +1111,7 @@ function ExactOrganizationStage({
   nodes,
   onAddChild,
   onAddRoot,
+  onBindArchiveToNode,
   onBindSource,
   onCancelNodeEdit,
   onChangeNodeCodeDraft,
@@ -985,9 +1121,11 @@ function ExactOrganizationStage({
   onEditNode,
   onPreviewNode,
   onSaveNodeEdit,
+  onSaveNodeExternalLink,
   onSaveLayout,
   onSelectNode,
   selectedNodeId,
+  screens,
 }: {
   canDeleteNode: boolean;
   isMutating: boolean;
@@ -996,6 +1134,7 @@ function ExactOrganizationStage({
   nodes: BiDirectoryNode[];
   onAddChild: () => void;
   onAddRoot: () => void;
+  onBindArchiveToNode: (screen: BiScreen) => void;
   onBindSource: () => void;
   onCancelNodeEdit: () => void;
   onChangeNodeCodeDraft: (value: string) => void;
@@ -1005,9 +1144,11 @@ function ExactOrganizationStage({
   onEditNode: () => void;
   onPreviewNode: () => void;
   onSaveNodeEdit: () => void;
+  onSaveNodeExternalLink: (draft: NodeExternalLinkDraft) => void;
   onSaveLayout: () => void;
   onSelectNode: (nodeId: number) => void;
   selectedNodeId: number | null;
+  screens: BiScreen[];
 }) {
   return (
     <section className="bi-exact-stage is-org">
@@ -1050,6 +1191,7 @@ function ExactOrganizationStage({
         node={node}
         nodeEditor={nodeEditor}
         onAddChild={onAddChild}
+        onBindArchiveToNode={onBindArchiveToNode}
         onBindSource={onBindSource}
         onCancelNodeEdit={onCancelNodeEdit}
         onChangeNodeCodeDraft={onChangeNodeCodeDraft}
@@ -1059,6 +1201,8 @@ function ExactOrganizationStage({
         onEditNode={onEditNode}
         onPreviewNode={onPreviewNode}
         onSaveNodeEdit={onSaveNodeEdit}
+        onSaveNodeExternalLink={onSaveNodeExternalLink}
+        screens={screens}
       />
     </section>
   );
@@ -1277,6 +1421,7 @@ function ExactNodeDetail({
   node,
   nodeEditor,
   onAddChild,
+  onBindArchiveToNode,
   onBindSource,
   onCancelNodeEdit,
   onChangeNodeCodeDraft,
@@ -1286,12 +1431,15 @@ function ExactNodeDetail({
   onEditNode,
   onPreviewNode,
   onSaveNodeEdit,
+  onSaveNodeExternalLink,
+  screens,
 }: {
   canDeleteNode: boolean;
   isMutating: boolean;
   node: BiDirectoryNode | null;
   nodeEditor: NodeEditorState;
   onAddChild: () => void;
+  onBindArchiveToNode: (screen: BiScreen) => void;
   onBindSource: () => void;
   onCancelNodeEdit: () => void;
   onChangeNodeCodeDraft: (value: string) => void;
@@ -1301,8 +1449,45 @@ function ExactNodeDetail({
   onEditNode: () => void;
   onPreviewNode: () => void;
   onSaveNodeEdit: () => void;
+  onSaveNodeExternalLink: (draft: NodeExternalLinkDraft) => void;
+  screens: BiScreen[];
 }) {
   const isEditing = Boolean(node && nodeEditor?.id === node.id);
+  const [archiveIdText, setArchiveIdText] = useState('');
+  const [externalDraft, setExternalDraft] = useState<NodeExternalLinkDraft>(() => buildDefaultExternalLinkDraft(null));
+  const [portalMode, setPortalMode] = useState<NodePortalMode>('ARCHIVE');
+  const nodeScreens = useMemo(
+    () => (node ? screens.filter((screen) => screen.nodeId === node.id) : []),
+    [node, screens],
+  );
+  const currentExternalScreen = useMemo(
+    () => nodeScreens.find((screen) => screen.biType === 'EXTERNAL') ?? null,
+    [nodeScreens],
+  );
+  const selectedArchive = useMemo(
+    () => screens.find((screen) => String(screen.id) === archiveIdText) ?? null,
+    [archiveIdText, screens],
+  );
+
+  useEffect(() => {
+    setPortalMode('ARCHIVE');
+  }, [node?.id]);
+
+  useEffect(() => {
+    if (!node) {
+      setArchiveIdText('');
+      setExternalDraft(buildDefaultExternalLinkDraft(null));
+      return;
+    }
+    const preferredScreen =
+      nodeScreens.find((screen) => screen.biType !== 'EXTERNAL') ??
+      nodeScreens[0] ??
+      screens.find((screen) => screen.biType !== 'EXTERNAL') ??
+      screens[0] ??
+      null;
+    setArchiveIdText(preferredScreen ? String(preferredScreen.id) : '');
+    setExternalDraft(buildDefaultExternalLinkDraft(node, currentExternalScreen));
+  }, [currentExternalScreen, node, nodeScreens, screens]);
 
   return (
     <ExactPanel className="bi-exact-node-detail" title="节点详情" toolbar={<span className="bi-exact-more">•••</span>}>
@@ -1357,6 +1542,123 @@ function ExactNodeDetail({
             <CheckLine label="基础信息完整性" passed meta={node.nodeCode} />
             <CheckLine label="数据源绑定" meta={`${node.boundAssets.length} 个分析源`} passed={node.boundAssets.length > 0} />
             <CheckLine label="字段覆盖率" meta={`${node.sourceAssetIds.length} 个资产`} passed={node.sourceAssetIds.length > 0} />
+          </div>
+          <h3 className="bi-exact-section-label">展示入口</h3>
+          <div className="bi-exact-node-entry">
+            <div className="bi-exact-entry-list">
+              {nodeScreens.length > 0 ? (
+                nodeScreens.map((screen) => {
+                  const externalUrl = String(readScreenExternalConfig(screen).targetUrl ?? '').trim();
+                  return (
+                    <section key={screen.id}>
+                      <div>
+                        <strong>{screen.name}</strong>
+                        <small>{screen.screenCode}</small>
+                      </div>
+                      <em>{screen.biType === 'EXTERNAL' ? '外链' : '内置'}</em>
+                      {externalUrl ? <small>{externalUrl}</small> : null}
+                    </section>
+                  );
+                })
+              ) : (
+                <span>暂无绑定档案</span>
+              )}
+            </div>
+            <div className="bi-exact-entry-mode" role="tablist" aria-label="展示入口类型">
+              <button
+                aria-selected={portalMode === 'ARCHIVE'}
+                className={portalMode === 'ARCHIVE' ? 'is-active' : ''}
+                onClick={() => setPortalMode('ARCHIVE')}
+                role="tab"
+                type="button"
+              >
+                绑定BI档案
+              </button>
+              <button
+                aria-selected={portalMode === 'EXTERNAL'}
+                className={portalMode === 'EXTERNAL' ? 'is-active' : ''}
+                onClick={() => setPortalMode('EXTERNAL')}
+                role="tab"
+                type="button"
+              >
+                外链地址
+              </button>
+            </div>
+            {portalMode === 'ARCHIVE' ? (
+              <div className="bi-exact-entry-form">
+                <label>
+                  <span>BI档案</span>
+                  <select
+                    aria-label="绑定BI档案"
+                    disabled={isMutating || screens.length === 0}
+                    onChange={(event) => setArchiveIdText(event.target.value)}
+                    value={archiveIdText}
+                  >
+                    <option value="">请选择BI档案</option>
+                    {screens.map((screen) => (
+                      <option key={screen.id} value={screen.id}>
+                        {screen.name} · {screen.biType === 'EXTERNAL' ? '外链' : '内置'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="bi-exact-primary-button"
+                  disabled={isMutating || !selectedArchive}
+                  onClick={() => {
+                    if (selectedArchive) {
+                      onBindArchiveToNode(selectedArchive);
+                    }
+                  }}
+                  type="button"
+                >
+                  保存档案绑定
+                </button>
+              </div>
+            ) : (
+              <div className="bi-exact-entry-form">
+                <label>
+                  <span>外链名称</span>
+                  <input
+                    aria-label="外链名称"
+                    disabled={isMutating}
+                    onChange={(event) => setExternalDraft((current) => ({ ...current, name: event.target.value }))}
+                    value={externalDraft.name}
+                  />
+                </label>
+                <label>
+                  <span>外链地址</span>
+                  <input
+                    aria-label="外链地址"
+                    disabled={isMutating}
+                    onChange={(event) => setExternalDraft((current) => ({ ...current, targetUrl: event.target.value }))}
+                    placeholder="https://"
+                    value={externalDraft.targetUrl}
+                  />
+                </label>
+                <label>
+                  <span>打开方式</span>
+                  <select
+                    aria-label="外链打开方式"
+                    disabled={isMutating}
+                    onChange={(event) => setExternalDraft((current) => ({ ...current, openMode: event.target.value }))}
+                    value={externalDraft.openMode}
+                  >
+                    <option value="iframe">内嵌打开</option>
+                    <option value="blank">新窗口</option>
+                    <option value="self">当前窗口</option>
+                  </select>
+                </label>
+                <button
+                  className="bi-exact-primary-button"
+                  disabled={isMutating || !externalDraft.targetUrl.trim()}
+                  onClick={() => onSaveNodeExternalLink(externalDraft)}
+                  type="button"
+                >
+                  保存外链地址
+                </button>
+              </div>
+            )}
           </div>
           <h3 className="bi-exact-section-label">操作</h3>
           <div className="bi-exact-detail-actions">

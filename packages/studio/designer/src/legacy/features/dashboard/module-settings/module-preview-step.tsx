@@ -7,11 +7,16 @@ type ModulePreviewStepProps = {
   title: string;
 };
 
-const ARCHIVE_PREVIEW_TEMPLATE = 'http://222.211.229.79:8888/pages/app/app.html?pms=QTYxREI1QzVBRDQxMTYzMEY5NTcyNTI0REQzQzRGMDM4NTk0MDFBQTMxNEFCMTlBNUI3MkU0MEU5QzMyNzQyQ0M0QzREQTJBNjJDRjQyNjlCREJGODE0Q0RGMTEwNUEzNDA4NTVCNzY1NUYyNzRCQkQxRTNFREVDMjU0MzY2ODU0M0FFODgyMDNDQUYwQjAyNzk4MDVDMzk4MUEwNThFNQ%3d%3d&xtype=plugins.pubmoduledetail.index&dllcoid=1000302';
-const BILL_PREVIEW_TEMPLATE = 'http://222.211.229.79:8888/pages/app/app.html?pms=QTYxREI1QzVBRDQxMTYzMEY5NTcyNTI0REQzQzRGMDM4NTk0MDFBQTMxNEFCMTlBNUI3MkU0MEU5QzMyNzQyQ0M0QzREQTJBNjJDRjQyNjlCREJGODE0Q0RGMTEwNUEzNDA4NTVCNzY1NUYyNzRCQkQxRTNFREVDMjU0MzY2ODU0M0FFODgyMDNDQUYwQjAyNzk4MDVDMzk4MUEwNThFNQ%3d%3d&xtype=plugins.pubbill.billadd&dllcoid=1100101';
+const LEGACY_PREVIEW_PATH = '/pages/app/app.html';
+const LEGACY_PREVIEW_PMS = 'QTYxREI1QzVBRDQxMTYzMEY5NTcyNTI0REQzQzRGMDM4NTk0MDFBQTMxNEFCMTlBNUI3MkU0MEU5QzMyNzQyQ0M0QzREQTJBNjJDRjQyNjlCREJGODE0Q0RGMTEwNUEzNDA4NTVCNzY1NUYyNzRCQkQxRTNFREVDMjU0MzY2ODU0M0FFODgyMDNDQUYwQjAyNzk4MDVDMzk4MUEwNThFNQ==';
+const ARCHIVE_PREVIEW_XTYPE = 'plugins.pubmoduledetail.index';
+const BILL_PREVIEW_XTYPE = 'plugins.pubbill.billadd';
 
-function buildPreviewUrl(template: string, moduleCode: string) {
-  const url = new URL(template);
+function buildPreviewUrl(xtype: string, moduleCode: string) {
+  const origin = typeof window === 'undefined' ? 'http://lserp.local' : window.location.origin;
+  const url = new URL(LEGACY_PREVIEW_PATH, origin);
+  url.searchParams.set('pms', LEGACY_PREVIEW_PMS);
+  url.searchParams.set('xtype', xtype);
   url.searchParams.set('dllcoid', moduleCode.trim());
   return url.toString();
 }
@@ -21,16 +26,14 @@ function resolvePreviewMeta(businessType: ModulePreviewStepProps['businessType']
     return {
       hint: '当前按单据模块预览，dllcoid 会自动取菜单信息里的功能模块编码。',
       label: '单据',
-      template: BILL_PREVIEW_TEMPLATE,
-      xtype: 'plugins.pubbill.billadd',
+      xtype: BILL_PREVIEW_XTYPE,
     };
   }
 
   return {
     hint: '当前按基础档案模块预览，dllcoid 会自动取菜单信息里的功能模块编码。',
     label: businessType === 'tree' ? '树形单表' : '基础档案',
-    template: ARCHIVE_PREVIEW_TEMPLATE,
-    xtype: 'plugins.pubmoduledetail.index',
+    xtype: ARCHIVE_PREVIEW_XTYPE,
   };
 }
 
@@ -43,7 +46,7 @@ export function ModulePreviewStep({
   const normalizedModuleCode = currentModuleCode.trim();
   const previewMeta = resolvePreviewMeta(businessType);
   const previewUrl = normalizedModuleCode
-    ? buildPreviewUrl(previewMeta.template, normalizedModuleCode)
+    ? buildPreviewUrl(previewMeta.xtype, normalizedModuleCode)
     : '';
 
   return (

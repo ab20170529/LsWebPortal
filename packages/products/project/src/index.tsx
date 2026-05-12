@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from 'react';
 import { usePortalAuth } from '@lserp/auth';
-import { createApiClient } from '@lserp/http';
 import { Badge, Button, Card, cx } from '@lserp/ui';
 import { ActionConsole } from './action-console';
 import {
@@ -40,6 +39,7 @@ import {
   projectWorkspaceItems,
   type WorkspaceMode,
 } from './project-workspace-config';
+import { createProjectApiClient } from './project-api';
 import { ProjectWorkspaceShell } from './project-workspace-shell';
 import { ProjectToastProvider } from './project-toast';
 import { ProjectAnalysisDashboardPage } from './workspaces/analysis-dashboard/analysis-dashboard-page';
@@ -240,11 +240,7 @@ type ProjectHomePageProps = {
   onExitSystem?: () => void;
 };
 
-const projectApiClient = createApiClient({
-  baseUrl:
-    (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
-    'http://127.0.0.1:8080',
-});
+const projectApiClient = createProjectApiClient();
 
 const fallbackProjectTypes: ProjectType[] = [
   { id: 9001, sort: 1, status: 'ACTIVE', typeCode: 'xmgl_demo', typeDesc: '项目管理平台标准实施模板', typeName: '项目管理开发' },

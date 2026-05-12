@@ -1,10 +1,34 @@
-const DEFAULT_API_BASE_URL = 'http://222.211.229.79:8888';
+const DEFAULT_API_BASE_URL = '';
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '');
 }
 
-const configuredApiBaseUrl = trimTrailingSlash(import.meta.env.VITE_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL);
+function normalizeApiBaseUrl(value?: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) {
+    return '';
+  }
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return trimTrailingSlash(trimmed);
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      return '';
+    }
+  } catch {
+    return trimTrailingSlash(trimmed);
+  }
+
+  return trimTrailingSlash(trimmed);
+}
+
+const configuredApiBaseUrl = trimTrailingSlash(
+  normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL) || DEFAULT_API_BASE_URL,
+);
 const useSameOriginApi = import.meta.env.DEV || import.meta.env.VITE_API_SAME_ORIGIN === 'true';
 
 export const API_BASE_URL = useSameOriginApi ? '' : configuredApiBaseUrl;

@@ -39,7 +39,7 @@ function buildUrl(path: string, query?: Record<string, QueryValue>) {
   const rawUrl = /^https?:\/\//i.test(path) ? path : `${API_BASE_URL}${normalizedPath}`;
   const url = /^https?:\/\//i.test(rawUrl)
     ? new URL(rawUrl)
-    : new URL(rawUrl, typeof window === 'undefined' ? 'http://127.0.0.1' : window.location.origin);
+    : new URL(rawUrl, typeof window === 'undefined' ? 'http://lserp.local' : window.location.origin);
 
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
