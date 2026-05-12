@@ -1,5 +1,22 @@
 import { useMemo } from 'react';
 import type React from 'react';
+import {
+  Bell,
+  CalendarDays,
+  ChartNoAxesColumnIncreasing,
+  ChevronRight,
+  CircleQuestionMark,
+  ClipboardList,
+  Clock3,
+  FolderKanban,
+  Grid2x2,
+  Home,
+  Menu,
+  PanelsTopLeft,
+  Settings,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { cx } from '@lserp/ui';
 
@@ -7,8 +24,6 @@ import type {
   ProjectWorkspaceGroup,
   ProjectWorkspaceItem,
 } from './project-workspace-config';
-
-type IconProps = React.SVGProps<SVGSVGElement>;
 
 type ProjectWorkspaceShellProps = {
   currentUserName: string;
@@ -77,180 +92,42 @@ const SHELL_SECTION_BLUEPRINTS: ShellSection[] = [
   },
 ];
 
-function GridIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <rect x="3" y="3" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="12" y="3" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="3" y="12" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="12" y="12" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
+const SHELL_ICON_STROKE_WIDTH = 1.8;
 
-function BellIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <path
-        d="M10 4.25a3.25 3.25 0 0 0-3.25 3.25v1.43c0 .64-.2 1.26-.57 1.79l-.95 1.34a.9.9 0 0 0 .73 1.42h8.08a.9.9 0 0 0 .73-1.42l-.95-1.34a3.11 3.11 0 0 1-.57-1.79V7.5A3.25 3.25 0 0 0 10 4.25Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path d="M8.5 15.25a1.68 1.68 0 0 0 3 0" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function MenuIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <path d="M4.5 6h11M4.5 10h11M4.5 14h11" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
-function SettingsIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <path d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M10 2.75v1.5M10 15.75v1.5M15.84 4.16l-1.06 1.06M5.22 14.78l-1.06 1.06M17.25 10h-1.5M4.25 10h-1.5M15.84 15.84l-1.06-1.06M5.22 5.22 4.16 4.16"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
-
-function TaskIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <rect x="5" y="4.5" width="10" height="12" rx="1.6" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M8 3.5h4M8 8.25h4M8 11.25h3.2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function CalendarIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <rect x="4" y="5" width="12" height="11" rx="1.8" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M7.25 3.5v3M12.75 3.5v3M4.25 8h11.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function DelayIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M10 6.5v4l2.75 1.7M14.4 5.6l1.2-1.2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function AnalysisIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <rect x="4" y="4" width="12" height="12" rx="1.8" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M7 13l2.1-2.7 1.7 1.5L13.5 8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function TemplateIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <path d="M6 4.5h3.5v3.5H6zM10.5 4.5H14v3.5h-3.5zM6 12h3.5v3.5H6zM10.5 12H14v3.5h-3.5z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.5" />
-      <path d="M7.75 8v4M12.25 8v4M9.5 6.25h1M9.5 13.75h1" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function UserIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <circle cx="10" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M5.5 15.5c.7-2 2.3-3 4.5-3s3.8 1 4.5 3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function ChevronIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <path d="m7 5 5 5-5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
-function FolderIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <path
-        d="M3.75 6.5c0-.97.78-1.75 1.75-1.75H8l1.4 1.5h5.1c.97 0 1.75.78 1.75 1.75v5.5c0 .97-.78 1.75-1.75 1.75h-9c-.97 0-1.75-.78-1.75-1.75v-7Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
-
-function StackIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <ellipse cx="10" cy="5.5" rx="5.5" ry="2.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M4.5 5.5v4c0 1.38 2.46 2.5 5.5 2.5s5.5-1.12 5.5-2.5v-4" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M4.5 9.5v4c0 1.38 2.46 2.5 5.5 2.5s5.5-1.12 5.5-2.5v-4" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function getWorkspaceIcon(itemId: string) {
+function getWorkspaceIcon(itemId: string): LucideIcon {
   if (itemId === 'task-submission') {
-    return TaskIcon;
+    return ClipboardList;
   }
 
   if (itemId === 'plan-log' || itemId === 'project-gantt-workspace') {
-    return CalendarIcon;
+    return CalendarDays;
   }
 
   if (itemId === 'delay-application') {
-    return DelayIcon;
+    return Clock3;
   }
 
   if (itemId === 'project-management') {
-    return FolderIcon;
+    return FolderKanban;
   }
 
   if (itemId === 'project-analysis-dashboard') {
-    return AnalysisIcon;
+    return ChartNoAxesColumnIncreasing;
   }
 
   if (itemId === 'milestone-template-management') {
-    return TemplateIcon;
+    return PanelsTopLeft;
   }
 
   if (itemId === 'project-user-permission-management') {
-    return UserIcon;
+    return UserRound;
   }
 
   if (itemId === 'project-role-permission-management') {
-    return SettingsIcon;
+    return Settings;
   }
 
-  return GridIcon;
-}
-
-function HelpIcon(props: IconProps) {
-  return (
-    <svg fill="none" viewBox="0 0 20 20" {...props}>
-      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M8.35 8.2a1.74 1.74 0 0 1 1.8-1.6c1.06 0 1.85.66 1.85 1.6 0 .78-.42 1.2-1.08 1.64-.55.36-.82.68-.82 1.26v.2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-      <path d="M10.08 13.55h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-    </svg>
-  );
+  return Grid2x2;
 }
 
 function buildShellSections(
@@ -324,13 +201,19 @@ export function ProjectWorkspaceShell({
     onSelectWorkspace(workspaceId);
   }
 
+  function returnToSystemPage() {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/systems';
+    }
+  }
+
   return (
     <div className="portal-project-shell flex h-screen min-h-screen w-full flex-col overflow-hidden bg-[#f5f8fc]">
       <header className="h-[60px] shrink-0 border-b border-[#e3ebf6] bg-white">
         <div className="flex h-full">
           <div className="flex w-[254px] shrink-0 items-center gap-3 border-r border-[#e3ebf6] px-5">
             <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--portal-color-brand-500)] text-white shadow-[0_10px_20px_-16px_rgba(37,99,235,0.8)]">
-              <GridIcon className="h-4 w-4" />
+              <Grid2x2 className="h-4 w-4" strokeWidth={SHELL_ICON_STROKE_WIDTH} />
             </div>
             <div className="truncate text-[18px] font-bold leading-none text-slate-900">
               项目管理平台
@@ -344,21 +227,30 @@ export function ProjectWorkspaceShell({
                 className="flex h-8 w-8 items-center justify-center rounded-md text-[#6f83a3] transition-colors hover:bg-[#f3f7fc] hover:text-[#263653]"
                 type="button"
               >
-                <MenuIcon className="h-5 w-5" />
+                <Menu className="h-4 w-4" strokeWidth={SHELL_ICON_STROKE_WIDTH} />
               </button>
               <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-[var(--portal-color-brand-600)]">
-                <CurrentWorkspaceIcon className="h-4 w-4 shrink-0" />
+                <CurrentWorkspaceIcon className="h-4 w-4 shrink-0" strokeWidth={SHELL_ICON_STROKE_WIDTH} />
                 <span className="truncate">{currentWorkspace.label}</span>
               </div>
             </div>
 
             <div className="flex shrink-0 items-center gap-5 text-[13px] font-medium">
-              <button className="inline-flex h-8 items-center gap-1.5 text-[#526681] transition-colors hover:text-[#1d2f4f]" type="button">
-                <HelpIcon className="h-4 w-4" />
+              <button
+                aria-label="返回主系统页面"
+                className="inline-flex h-8 items-center gap-1.5 text-[#526681] transition-colors hover:text-[var(--portal-color-brand-600)]"
+                onClick={returnToSystemPage}
+                type="button"
+              >
+                <Home className="h-4 w-4" strokeWidth={SHELL_ICON_STROKE_WIDTH} />
+                返回主系统
+              </button>
+              <button aria-label="帮助中心" className="inline-flex h-8 items-center gap-1.5 text-[#526681] transition-colors hover:text-[#1d2f4f]" type="button">
+                <CircleQuestionMark className="h-4 w-4" strokeWidth={SHELL_ICON_STROKE_WIDTH} />
                 帮助中心
               </button>
-              <button className="relative inline-flex h-8 items-center gap-1.5 text-[#526681] transition-colors hover:text-[#1d2f4f]" type="button">
-                <BellIcon className="h-4 w-4" />
+              <button aria-label="消息中心" className="relative inline-flex h-8 items-center gap-1.5 text-[#526681] transition-colors hover:text-[#1d2f4f]" type="button">
+                <Bell className="h-4 w-4" strokeWidth={SHELL_ICON_STROKE_WIDTH} />
                 消息中心
                 <span className="absolute -top-1 left-3.5 min-w-[20px] rounded-full bg-[#ff2d55] px-1.5 text-center text-[10px] font-bold leading-4 text-white">
                   12
@@ -373,7 +265,7 @@ export function ProjectWorkspaceShell({
                   />
                 </span>
                 <span>{normalizedUserName}</span>
-                <ChevronIcon className="h-3.5 w-3.5 rotate-90 text-[#8da0bd]" />
+                <ChevronRight className="h-3.5 w-3.5 rotate-90 text-[#8da0bd]" strokeWidth={SHELL_ICON_STROKE_WIDTH} />
               </button>
             </div>
           </div>
@@ -416,11 +308,11 @@ export function ProjectWorkspaceShell({
                         >
                           <span
                             className={cx(
-                              'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
+                              'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
                               isActive ? 'bg-[#dcecff]' : 'bg-transparent',
                             )}
                           >
-                            <ItemIcon className={cx('h-4 w-4 shrink-0', isActive ? 'text-[var(--portal-color-brand-500)]' : 'text-[#30435f]')} />
+                            <ItemIcon className={cx('h-4 w-4 shrink-0', isActive ? 'text-[var(--portal-color-brand-500)]' : 'text-[#30435f]')} strokeWidth={SHELL_ICON_STROKE_WIDTH} />
                           </span>
                           <span className="min-w-0 flex-1 truncate">{item.label}</span>
                         </button>
@@ -436,7 +328,7 @@ export function ProjectWorkspaceShell({
               className="flex h-10 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-semibold text-[#8da0bd] transition-colors hover:bg-[#f6f9fd] hover:text-[#526681]"
               type="button"
             >
-              <ChevronIcon className="h-4 w-4 rotate-180" />
+              <ChevronRight className="h-4 w-4 rotate-180" strokeWidth={SHELL_ICON_STROKE_WIDTH} />
               <span>收起菜单</span>
             </button>
           </div>

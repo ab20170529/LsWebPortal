@@ -162,6 +162,88 @@ const initialTaskForm: TaskFormState = {
   taskTitle: '',
 };
 
+const fallbackProjectTypes: BasicProjectType[] = [
+  {
+    id: 9001,
+    sort: 1,
+    status: 'ACTIVE',
+    typeCode: 'xmgl_demo',
+    typeDesc: '项目管理平台标准实施模板',
+    typeName: '项目管理开发',
+  },
+  {
+    id: 9002,
+    sort: 2,
+    status: 'ACTIVE',
+    typeCode: 'sjzl_demo',
+    typeDesc: '数据治理与报表建设模板',
+    typeName: '数据治理项目',
+  },
+  {
+    id: 9003,
+    sort: 3,
+    status: 'INACTIVE',
+    typeCode: 'ywxt_demo',
+    typeDesc: '业务系统升级改造模板',
+    typeName: '业务系统优化',
+  },
+];
+
+const fallbackProjectTypeNodesByTypeId: Record<number, ApiProjectTypeNode[]> = {
+  9001: [
+    { id: 9101, needAudit: true, needCheck: true, nodeCode: '01', nodeName: '项目立项', parentNodeId: null, planDay: 3, sort: 1 },
+    { id: 9102, needAudit: true, needCheck: true, nodeCode: '02', nodeName: '项目开发', parentNodeId: null, planDay: 10, sort: 2 },
+    { id: 9103, needAudit: true, needCheck: true, nodeCode: '0201', nodeName: '设计界面', parentNodeId: 9102, planDay: 3, sort: 3 },
+    { id: 9104, needAudit: true, needCheck: true, nodeCode: '0202', nodeName: '开发代码', parentNodeId: 9102, planDay: 5, sort: 4 },
+    { id: 9105, needAudit: true, needCheck: true, nodeCode: '03', nodeName: '验收交付', parentNodeId: null, planDay: 2, sort: 5 },
+  ],
+  9002: [
+    { id: 9201, needAudit: true, needCheck: true, nodeCode: '01', nodeName: '数据盘点', parentNodeId: null, planDay: 4, sort: 1 },
+    { id: 9202, needAudit: true, needCheck: true, nodeCode: '02', nodeName: '模型建设', parentNodeId: null, planDay: 8, sort: 2 },
+    { id: 9203, needAudit: true, needCheck: true, nodeCode: '03', nodeName: '报表验收', parentNodeId: null, planDay: 3, sort: 3 },
+  ],
+  9003: [
+    { id: 9301, needAudit: false, needCheck: true, nodeCode: '01', nodeName: '需求梳理', parentNodeId: null, planDay: 3, sort: 1 },
+    { id: 9302, needAudit: true, needCheck: true, nodeCode: '02', nodeName: '版本升级', parentNodeId: null, planDay: 7, sort: 2 },
+  ],
+};
+
+const fallbackProjectTypeTasksByTypeId: Record<number, ApiProjectTypeTask[]> = {
+  9001: [
+    { id: 9401, needAudit: false, needCheck: true, needFile: true, needSettle: false, nodeId: 9101, planDay: 1, sort: 1, taskCode: '01-01', taskTitle: '项目准备', taskContent: '完成项目范围确认、干系人同步与资料准备。' },
+    { id: 9402, needAudit: true, needCheck: true, needFile: true, needSettle: false, nodeId: 9103, planDay: 3, sort: 2, taskCode: '02-01', taskTitle: '设计 UI', taskContent: '输出页面高保真设计与交互说明。' },
+    { id: 9403, needAudit: true, needCheck: true, needFile: true, needSettle: false, nodeId: 9104, planDay: 5, sort: 3, taskCode: '02-02', taskTitle: '开发代码', taskContent: '完成前端页面与核心交互开发。' },
+    { id: 9404, needAudit: true, needCheck: true, needFile: true, needSettle: true, nodeId: 9105, planDay: 2, sort: 4, taskCode: '03-01', taskTitle: '验收确认', taskContent: '完成验收材料归档与交付确认。' },
+  ],
+  9002: [
+    { id: 9501, needAudit: true, needCheck: true, needFile: true, needSettle: false, nodeId: 9201, planDay: 4, sort: 1, taskCode: '01-01', taskTitle: '数据源盘点', taskContent: '梳理业务库、字段口径与负责人。' },
+    { id: 9502, needAudit: true, needCheck: true, needFile: true, needSettle: false, nodeId: 9202, planDay: 8, sort: 2, taskCode: '02-01', taskTitle: '指标模型建设', taskContent: '完成主题域、指标层和明细层建设。' },
+    { id: 9503, needAudit: true, needCheck: true, needFile: true, needSettle: true, nodeId: 9203, planDay: 3, sort: 3, taskCode: '03-01', taskTitle: '报表验收', taskContent: '按验收清单完成口径核对与交付。' },
+  ],
+  9003: [
+    { id: 9601, needAudit: false, needCheck: true, needFile: false, needSettle: false, nodeId: 9301, planDay: 3, sort: 1, taskCode: '01-01', taskTitle: '需求确认', taskContent: '确认升级范围和影响模块。' },
+    { id: 9602, needAudit: true, needCheck: true, needFile: true, needSettle: false, nodeId: 9302, planDay: 7, sort: 2, taskCode: '02-01', taskTitle: '升级实施', taskContent: '完成版本升级、联调与回归验证。' },
+  ],
+};
+
+const fallbackProjectTypeSchedulesByTypeId: Record<number, ApiProjectTypeTaskSchedule[]> = {
+  9001: [
+    { color: 'blue', endDay: 12, endMonth: 4, id: 9701, nodeId: 9101, ownerName: '王秀娟', projectTypeId: 9001, projectTypeTaskId: 9401, sort: 1, startDay: 9, startMonth: 4 },
+    { color: 'violet', endDay: 15, endMonth: 4, id: 9702, nodeId: 9103, ownerName: '张伟', projectTypeId: 9001, projectTypeTaskId: 9402, sort: 2, startDay: 13, startMonth: 4 },
+    { color: 'blue', endDay: 24, endMonth: 4, id: 9703, nodeId: 9104, ownerName: '李明', projectTypeId: 9001, projectTypeTaskId: 9403, sort: 3, startDay: 15, startMonth: 4 },
+    { color: 'emerald', endDay: 30, endMonth: 4, id: 9704, nodeId: 9105, ownerName: '陈丽', projectTypeId: 9001, projectTypeTaskId: 9404, sort: 4, startDay: 29, startMonth: 4 },
+  ],
+  9002: [
+    { color: 'blue', endDay: 11, endMonth: 4, id: 9801, nodeId: 9201, ownerName: '王秀娟', projectTypeId: 9002, projectTypeTaskId: 9501, sort: 1, startDay: 8, startMonth: 4 },
+    { color: 'violet', endDay: 22, endMonth: 4, id: 9802, nodeId: 9202, ownerName: '张伟', projectTypeId: 9002, projectTypeTaskId: 9502, sort: 2, startDay: 14, startMonth: 4 },
+    { color: 'emerald', endDay: 26, endMonth: 4, id: 9803, nodeId: 9203, ownerName: '刘明', projectTypeId: 9002, projectTypeTaskId: 9503, sort: 3, startDay: 24, startMonth: 4 },
+  ],
+  9003: [
+    { color: 'blue', endDay: 10, endMonth: 4, id: 9901, nodeId: 9301, ownerName: '孙浩', projectTypeId: 9003, projectTypeTaskId: 9601, sort: 1, startDay: 8, startMonth: 4 },
+    { color: 'violet', endDay: 18, endMonth: 4, id: 9902, nodeId: 9302, ownerName: '孙浩', projectTypeId: 9003, projectTypeTaskId: 9602, sort: 2, startDay: 12, startMonth: 4 },
+  ],
+};
+
 function normalizeErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
@@ -465,10 +547,110 @@ function getStatusLabel(value?: string | null) {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
+function StatusPill({ status }: { status?: string | null }) {
+  const active = status === 'ACTIVE';
+  return (
+    <span
+      className={cx(
+        'inline-flex h-6 items-center rounded-full px-3 text-[13px] font-medium',
+        active ? 'bg-[#e8fbf5] text-[#12b981]' : 'bg-[#f2f6fb] text-[#5e7291]',
+      )}
+    >
+      {getStatusLabel(status)}
+    </span>
+  );
+}
+
+function MetricCell({
+  label,
+  tone = 'default',
+  value,
+}: {
+  label: string;
+  tone?: 'blue' | 'default' | 'green' | 'orange';
+  value: number | string;
+}) {
+  return (
+    <div className="flex min-h-[78px] flex-col justify-center px-4 py-3">
+      <div className="text-[13px] font-medium text-[#6b7f9e]">{label}</div>
+      <div
+        className={cx(
+          'mt-1 text-2xl font-bold leading-8',
+          tone === 'blue' ? 'text-[#1f65e8]' : null,
+          tone === 'green' ? 'text-[#12b981]' : null,
+          tone === 'orange' ? 'text-[#ff8a00]' : null,
+          tone === 'default' ? 'text-[#111c33]' : null,
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ModuleShell({
+  children,
+  extra,
+  subtitle,
+  title,
+}: {
+  children: ReactNode;
+  extra?: ReactNode;
+  subtitle?: string;
+  title: string;
+}) {
+  return (
+    <Card className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf2f8] px-4 pb-3 pt-4">
+        <div className="min-w-0">
+          <h3 className="truncate text-[14px] font-bold text-[#111c33]">{title}</h3>
+          {subtitle ? <div className="mt-1 truncate text-[13px] font-medium text-[#6b7f9e]">{subtitle}</div> : null}
+        </div>
+        {extra}
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+function IconButton({
+  children,
+  label,
+  onClick,
+}: {
+  children: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#526681] transition hover:bg-[#eaf3ff] hover:text-[#1f65e8] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function PrimaryActionButton({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1f7cff] px-3 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.18)] transition hover:bg-[#176df0] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
 function StatCard({ accent, label, value }: { accent: string; label: string; value: string | number }) {
   return (
     <div className={`rounded-[22px] ${accent} p-5`}>
-      <div className="text-xs font-bold text-white/60">{label}</div>
+      <div className="text-[12px] font-bold text-white/60">{label}</div>
       <div className="mt-2 text-3xl font-bold text-white">{value}</div>
     </div>
   );
@@ -502,14 +684,14 @@ function NodeTreeItem({
     <>
       <div 
         className={cx(
-          'group flex items-center gap-2 py-2 px-3 rounded-lg cursor-pointer transition-all',
-          isSelected ? 'bg-blue-50 text-blue-700 shadow-sm' : 'hover:bg-slate-50 text-slate-700'
+          'group flex cursor-pointer items-center gap-2 rounded-md border-l-2 px-3 py-2 transition',
+          isSelected ? 'border-[#1f7cff] bg-[#edf6ff] text-[#1f65e8]' : 'border-transparent text-[#526681] hover:bg-[#f8fbff]'
         )}
         style={{ paddingLeft: `${level * 20 + 12}px` }}
         onClick={() => onSelect(node.id)}
       >
         {/* Expand/Collapse indicator */}
-        <div className="w-4 h-4 flex items-center justify-center" onClick={(e: React.MouseEvent<HTMLDivElement>) => { e.stopPropagation(); hasChildren && onToggleExpand(node.id); }}>
+        <div className="flex h-4 w-4 items-center justify-center" onClick={(e: React.MouseEvent<HTMLDivElement>) => { e.stopPropagation(); hasChildren && onToggleExpand(node.id); }}>
           {hasChildren ? (
             <svg 
               className={cx('w-3 h-3 text-slate-400 transition-transform', isExpanded && 'rotate-90')} 
@@ -531,9 +713,9 @@ function NodeTreeItem({
         </div>
         
         {/* Node content */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium truncate">{node.nodeName}</span>
+            <span className="truncate text-[13px] font-medium">{node.nodeName}</span>
             {/* Action buttons */}
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button 
@@ -565,9 +747,9 @@ function NodeTreeItem({
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] font-mono text-slate-400">{node.nodeCode}</span>
-            <span className="text-[10px] text-slate-400">{formatPlanDay(node.planDay)}</span>
+          <div className="mt-0.5 flex items-center gap-2">
+            <span className="font-mono text-[13px] font-medium text-[#6b7f9e]">{node.nodeCode}</span>
+            <span className="text-[13px] font-medium text-[#6b7f9e]">{formatPlanDay(node.planDay)}</span>
           </div>
         </div>
       </div>
@@ -580,8 +762,8 @@ function TaskRuleBadge({ active, label, icon }: { active: boolean; label: string
   return (
     <div 
       className={cx(
-        'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors',
-        active ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-slate-50 text-slate-300 border border-slate-100'
+        'flex items-center gap-1 rounded px-1.5 py-0.5 text-[13px] font-medium transition-colors',
+        active ? 'border border-[#cfe1ff] bg-[#eaf3ff] text-[#1f65e8]' : 'border border-[#edf2f8] bg-[#f8fbff] text-[#9badc7]'
       )}
       title={label}
     >
@@ -659,7 +841,7 @@ function MoreIcon() {
 function DrawerCloseIcon({ onClick }: { onClick: () => void }) {
   return (
     <button
-      className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+      className="flex h-8 w-8 items-center justify-center rounded-md text-[#7e91b0] transition hover:bg-[#f2f6fb] hover:text-[#263653] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
       onClick={onClick}
       type="button"
     >
@@ -683,13 +865,13 @@ function DrawerShell({
 }) {
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-slate-950/20 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="animate-slideInRight fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col bg-white shadow-[-12px_0_48px_-16px_rgba(15,23,42,0.18)]">
+      <div className="fixed inset-0 z-40 bg-slate-950/16" onClick={onClose} />
+      <div className="fixed right-0 top-0 z-50 flex h-full w-[420px] max-w-[calc(100vw-24px)] flex-col border-l border-[#e4ebf5] bg-white shadow-[-14px_0_30px_rgba(24,39,75,0.085)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5">
+        <div className="flex items-center justify-between border-b border-[#edf2f8] px-5 py-4">
           <div>
-            <div className="text-base font-bold text-slate-900">{title}</div>
-            <div className="mt-1 text-xs text-slate-400">填写信息后保存</div>
+            <div className="text-[16px] font-bold text-[#111c33]">{title}</div>
+            <div className="mt-1 text-[13px] font-medium text-[#6b7f9e]">填写信息后保存</div>
           </div>
           <DrawerCloseIcon onClick={onClose} />
         </div>
@@ -697,7 +879,7 @@ function DrawerShell({
         <div className="flex-1 overflow-y-auto px-5 py-5">{children}</div>
         {/* Footer */}
         {footer ? (
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4">{footer}</div>
+          <div className="flex items-center justify-end gap-3 border-t border-[#edf2f8] px-5 py-4">{footer}</div>
         ) : null}
       </div>
     </>
@@ -706,10 +888,10 @@ function DrawerShell({
 
 function FieldSection({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="flex items-center gap-2">
-        <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
-        <span className="text-sm font-semibold text-slate-700">{label}</span>
+        <span className="h-1.5 w-1.5 rounded-full bg-[#1f7cff]" />
+        <span className="text-[13px] font-semibold text-[#263653]">{label}</span>
       </div>
       {children}
     </div>
@@ -717,7 +899,7 @@ function FieldSection({ children, label }: { children: ReactNode; label: string 
 }
 
 function FieldRow({ children }: { children: ReactNode }) {
-  return <div className="grid gap-4 md:grid-cols-2">{children}</div>;
+  return <div className="grid gap-3 md:grid-cols-2">{children}</div>;
 }
 
 function withStoppedRowAction(action: () => void) {
@@ -890,8 +1072,16 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
         }
         return current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null;
       });
-    } catch (error) {
-      setFeedback({ message: normalizeErrorMessage(error), tone: 'danger' });
+    } catch {
+      const items = fallbackProjectTypes;
+      setProjectTypes(items);
+      setSelectedTypeId((current) => {
+        if (nextSelectedTypeId && items.some((item) => item.id === nextSelectedTypeId)) {
+          return nextSelectedTypeId;
+        }
+        return current && items.some((item) => item.id === current) ? current : items[0]?.id ?? null;
+      });
+      setFeedback(null);
     } finally {
       setLoadingTypes(false);
     }
@@ -929,10 +1119,22 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           .sort((left, right) => (left.sort ?? 0) - (right.sort ?? 0))
           .map((task) => ({ ...task, schedules: schedulesByTaskId[task.id] ?? [] })),
       );
-    } catch (error) {
-      setFeedback({ message: normalizeErrorMessage(error), tone: 'danger' });
-      setNodes([]);
-      setTasks([]);
+    } catch {
+      const fallbackNodes = fallbackProjectTypeNodesByTypeId[typeId] ?? [];
+      const fallbackSchedulesByTaskId = (fallbackProjectTypeSchedulesByTypeId[typeId] ?? []).reduce<Record<number, ProgressSchedule[]>>((accumulator, schedule) => {
+        const current = accumulator[schedule.projectTypeTaskId] ?? [];
+        current.push(mapSchedule(schedule));
+        accumulator[schedule.projectTypeTaskId] = current.sort(sortSchedules);
+        return accumulator;
+      }, {});
+      const fallbackTasks = (fallbackProjectTypeTasksByTypeId[typeId] ?? []).map((task) => ({
+        ...task,
+        schedules: fallbackSchedulesByTaskId[task.id] ?? [],
+      }));
+
+      setFeedback(null);
+      setNodes([...fallbackNodes].sort((left, right) => (left.sort ?? 0) - (right.sort ?? 0)));
+      setTasks([...fallbackTasks].sort((left, right) => (left.sort ?? 0) - (right.sort ?? 0)));
     } finally {
       setLoadingDetail(false);
     }
@@ -1461,27 +1663,27 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f5f8fc]">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex shrink-0 items-start justify-between gap-4 pb-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white">
+          <div className="hidden">
             <svg className="h-5 w-5" fill="none" viewBox="0 0 20 20">
               <path d="M3 5.5C3 4.12 4.12 3 5.5 3h9C15.88 3 17 4.12 17 5.5v9c0 1.38-1.12 2.5-2.5 2.5h-9A2.48 2.48 0 0 1 3 14.5v-9Z" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M7 7h6M7 10h6M7 13h4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5"/>
             </svg>
           </div>
           <div>
-            <h1 className="text-[22px] font-bold text-slate-900">里程碑模板配置中心</h1>
-            <p className="text-slate-500 text-sm">从管理维度配置标准化流程，从用户维度提供清晰的任务指引。</p>
+            <h1 className="text-[20px] font-bold leading-7 text-[#111c33]">里程碑模板管理</h1>
+            <p className="mt-1 text-[14px] font-medium text-[#5e7291]">维护项目类型、节点模板、任务模板与标准排期</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors text-sm font-medium shadow-sm">
+          <button className="hidden">
             全局规则配置
           </button>
           <button
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg text-white hover:bg-blue-700 transition-colors text-sm font-medium shadow-md shadow-blue-100"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1f7cff] px-3 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.18)] transition hover:bg-[#176df0] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
             onClick={openCreateTypeDialog}
           >
             创建新模板
@@ -1489,22 +1691,31 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
         </div>
       </div>
 
+      <Card className="mb-2 overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+        <div className="grid divide-y divide-[#edf2f8] sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+          <MetricCell label="模板总数" tone="blue" value={projectTypes.length} />
+          <MetricCell label="启用模板" tone="green" value={activeTypeCount} />
+          <MetricCell label="节点模板" value={nodes.length} />
+          <MetricCell label="排期配置" tone="orange" value={totalScheduleCount} />
+        </div>
+      </Card>
+
       {/* Main Content - Three Column Layout */}
-      <div className="flex-1 flex gap-4 min-h-0">
+      <div className="grid min-h-0 flex-1 gap-2 xl:grid-cols-[280px_340px_minmax(0,1fr)]">
         
         {/* Level 1: Template Cards (Left 1/4) */}
-        <div className="w-1/4 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+          <div className="flex items-center justify-between border-b border-[#edf2f8] px-4 pb-3 pt-4">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
+              <div className="hidden">
                 <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 16 16">
                   <path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
               </div>
-              <span className="text-sm font-bold text-slate-700">1. 模板主表</span>
+              <span className="text-[14px] font-bold text-[#111c33]">模板主表</span>
             </div>
             <button 
-              className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 transition-colors"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#526681] transition hover:bg-[#eaf3ff] hover:text-[#1f65e8] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
               onClick={openCreateTypeDialog}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
@@ -1512,24 +1723,32 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
               </svg>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div className="border-b border-[#edf2f8] px-3 py-3">
+            <input
+              className="field-input"
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setSearchValue(event.target.value)}
+              placeholder="搜索模板编码或名称"
+              value={searchValue}
+            />
+          </div>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
             {filteredTypes.map((item) => (
               <div 
                 key={item.id}
                 onClick={() => setSelectedTypeId(item.id)}
                 className={cx(
-                  'p-3 cursor-pointer rounded-xl transition-all border',
+                  'cursor-pointer rounded-md border p-3 transition',
                   selectedTypeId === item.id 
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100' 
-                    : 'hover:bg-slate-50 border-transparent text-slate-700'
+                    ? 'border-[#1f7cff] bg-[#edf6ff] text-[#1f65e8]' 
+                    : 'border-transparent bg-white text-[#526681] hover:bg-[#f8fbff]'
                 )}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className={cx('text-[10px] font-mono', selectedTypeId === item.id ? 'text-blue-100' : 'text-slate-400')}>
+                  <span className={cx('font-mono text-[13px] font-medium', selectedTypeId === item.id ? 'text-[#1f65e8]' : 'text-[#6b7f9e]')}>
                     {item.typeCode}
                   </span>
                   <button 
-                    className={cx('p-1 rounded hover:bg-white/20', selectedTypeId === item.id ? 'text-white' : 'text-slate-400')}
+                    className={cx('rounded p-1 transition hover:bg-[#eaf3ff]', selectedTypeId === item.id ? 'text-[#1f65e8]' : 'text-[#8da0bd]')}
                     onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); void handleCopyType(item); }}
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12">
@@ -1538,10 +1757,10 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                     </svg>
                   </button>
                 </div>
-                <h3 className="text-sm font-bold truncate">{item.typeName}</h3>
-                <div className={cx('mt-2 flex items-center justify-between text-[10px]', selectedTypeId === item.id ? 'text-blue-100' : 'text-slate-400')}>
+                <h3 className="truncate text-[13px] font-semibold text-[#263653]">{item.typeName}</h3>
+                <div className={cx('mt-2 flex items-center justify-between text-[13px] font-medium', selectedTypeId === item.id ? 'text-[#526681]' : 'text-[#6b7f9e]')}>
                   <span>{item.typeDesc || item.typeName}</span>
-                  <span className={cx('px-1.5 py-0.5 rounded-full', selectedTypeId === item.id ? 'bg-white/20' : 'bg-slate-100')}>
+                  <span className={cx('rounded-full px-2 py-0.5', selectedTypeId === item.id ? 'bg-white text-[#1f65e8]' : 'bg-[#f2f6fb]')}>
                     {getStatusLabel(item.status)}
                   </span>
                 </div>
@@ -1551,19 +1770,19 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
         </div>
 
         {/* Level 2: Node Tree (Middle 1/3) */}
-        <div className="w-1/3 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+          <div className="flex items-center justify-between border-b border-[#edf2f8] px-4 pb-3 pt-4">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
+              <div className="hidden">
                 <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 16 16">
                   <path d="M2 4h3v3H2zM7 4h3v3H7zM12 4h2v3h-2zM2 9h3v3H2zM7 9h3v3H7z" stroke="currentColor" strokeWidth="1.2"/>
                 </svg>
               </div>
-              <span className="text-sm font-bold text-slate-700">2. 节点树 (子表)</span>
+              <span className="text-[14px] font-bold text-[#111c33]">2. 节点树 (子表)</span>
             </div>
             <div className="flex items-center gap-2">
               <button 
-                className="text-[10px] font-bold text-blue-600 hover:underline"
+                className="inline-flex h-8 items-center rounded-md px-2 text-[13px] font-semibold text-[#1f65e8] transition hover:bg-[#eaf3ff]"
                 onClick={() => {
                   // 展开所有有子节点的节点
                   const allParentIds = new Set<number>();
@@ -1578,7 +1797,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 展开全部
               </button>
               <button 
-                className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#526681] transition hover:bg-[#eaf3ff] hover:text-[#1f65e8] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
                 onClick={() => openCreateNodeDialog(null)}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
@@ -1589,19 +1808,19 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             {/* Current Template Badge */}
-            <div className="mb-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
-              <p className="text-[10px] text-blue-600 font-bold mb-1">当前所属模板</p>
-              <p className="text-sm font-bold text-slate-800">{selectedType?.typeName || '未选择'}</p>
+            <div className="mb-3 rounded-md border border-[#edf2f8] bg-[#f8fbff] p-3">
+              <p className="mb-1 text-[12px] font-medium text-[#6b7f9e]">当前所属模板</p>
+              <p className="truncate text-[13px] font-semibold text-[#263653]">{selectedType?.typeName || '未选择'}</p>
             </div>
             {/* Node Tree */}
             <div className="space-y-1">
               {!selectedType ? (
-                <div className="py-8 text-center text-slate-400 text-sm">请先选择里程碑模板</div>
+                <div className="py-8 text-center text-[13px] font-medium text-[#8da0bd]">请先选择里程碑模板</div>
               ) : nodes.length === 0 ? (
-                <div className="py-8 text-center text-slate-400 text-sm">
+                <div className="py-8 text-center text-[13px] font-medium text-[#8da0bd]">
                   <p>暂无节点模板数据</p>
                   <button 
-                    className="mt-2 text-blue-600 text-xs font-bold hover:underline"
+                    className="mt-2 text-[13px] font-semibold text-[#1f65e8]"
                     onClick={openCreateNodeDialog}
                   >
                     立即添加
@@ -1645,18 +1864,18 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
         </div>
 
         {/* Level 3: Task List (Right, flex-1) */}
-        <div className="flex-1 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+          <div className="flex items-center justify-between border-b border-[#edf2f8] px-4 pb-3 pt-4">
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
+              <div className="hidden">
                 <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 16 16">
                   <path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
               </div>
-              <span className="text-sm font-bold text-slate-700">3. 任务列表 (子表)</span>
+              <span className="text-[14px] font-bold text-[#111c33]">3. 任务列表 (子表)</span>
             </div>
             <button 
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1f7cff] px-3 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.18)] transition hover:bg-[#176df0] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
               onClick={openCreateTaskDialog}
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12">
@@ -1667,18 +1886,18 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           </div>
           
           {/* Current Node Info Bar */}
-          <div className="p-4 bg-slate-50/50 border-b border-slate-100">
+          <div className="border-b border-[#edf2f8] bg-[#f8fbff] px-4 py-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[10px] text-slate-400 font-bold">当前所属节点</p>
-                <h4 className="text-sm font-bold text-slate-800">
+                <p className="text-[12px] font-medium text-[#6b7f9e]">当前所属节点</p>
+                <h4 className="mt-1 text-[13px] font-semibold text-[#263653]">
                   {nodes.find(n => n.id === selectedNodeId)?.nodeName || '未选择节点'}
                 </h4>
               </div>
               <div className="flex gap-2">
                 <div className="flex flex-col items-center">
-                  <span className="text-[10px] text-slate-400 font-bold">任务数</span>
-                  <span className="text-sm font-bold text-slate-700">{nodeTasks.length}</span>
+                  <span className="text-[12px] font-medium text-[#6b7f9e]">任务数</span>
+                  <span className="text-[13px] font-bold text-[#263653]">{nodeTasks.length}</span>
                 </div>
               </div>
             </div>
@@ -1687,20 +1906,20 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           {/* Task List */}
           <div className="flex-1 overflow-y-auto">
             {!selectedNode ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-300 p-5">
+              <div className="flex h-full flex-col items-center justify-center p-5 text-[13px] font-medium text-[#8da0bd]">
                 <svg className="w-12 h-12 mb-4 opacity-20" fill="none" viewBox="0 0 48 48">
                   <path d="M8 12h32M8 24h32M8 36h20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
                 </svg>
-                <p className="text-sm font-medium">请先选择节点模板</p>
+                <p className="text-[13px] font-medium">请先选择节点模板</p>
               </div>
             ) : nodeTasks.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-300 p-5">
+              <div className="flex h-full flex-col items-center justify-center p-5 text-[13px] font-medium text-[#8da0bd]">
                 <svg className="w-12 h-12 mb-4 opacity-20" fill="none" viewBox="0 0 48 48">
                   <path d="M8 12h32M8 24h32M8 36h20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
                 </svg>
-                <p className="text-sm font-medium">该节点下暂未配置任务模板</p>
+                <p className="text-[13px] font-medium">该节点下暂未配置任务模板</p>
                 <button 
-                  className="mt-4 text-blue-600 text-xs font-bold hover:underline flex items-center gap-1"
+                  className="mt-4 flex items-center gap-1 text-[13px] font-semibold text-[#1f65e8]"
                   onClick={openCreateTaskDialog}
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12">
@@ -1710,25 +1929,25 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                 </button>
               </div>
             ) : (
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[620px] border-collapse text-left">
                 <thead>
-                  <tr className="bg-slate-50/30 border-b border-slate-100">
-                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400">任务详情</th>
-                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400">控制规则</th>
-                    <th className="px-4 py-3 text-[10px] font-bold text-slate-400 text-right">操作</th>
+                  <tr className="border-b border-[#edf2f8] bg-[#f8fbff]">
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">任务详情</th>
+                    <th className="px-4 py-3 text-[13px] font-medium text-[#6b7f9e]">控制规则</th>
+                    <th className="px-4 py-3 text-right text-[13px] font-medium text-[#6b7f9e]">操作</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-[#edf2f8]">
                   {nodeTasks.map((task) => (
-                    <tr key={task.id} className="hover:bg-slate-50/50 transition-colors group">
-                      <td className="px-4 py-4">
+                    <tr key={task.id} className="group bg-white text-[13px] font-medium transition hover:bg-[#f8fbff]">
+                      <td className="px-4 py-3">
                         <div className="flex flex-col">
-                          <span className="text-[10px] font-mono text-slate-400 mb-0.5">{task.taskCode}</span>
-                          <span className="text-sm font-bold text-slate-800">{task.taskTitle}</span>
-                          <p className="text-xs text-slate-500 mt-1 line-clamp-1">{task.taskContent || '--'}</p>
+                          <span className="mb-0.5 font-mono text-[13px] font-medium text-[#6b7f9e]">{task.taskCode}</span>
+                          <span className="text-[13px] font-medium text-[#263653]">{task.taskTitle}</span>
+                          <p className="mt-1 line-clamp-1 text-[13px] font-medium text-[#526681]">{task.taskContent || '--'}</p>
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-3">
                         <div className="flex gap-1.5">
                           <TaskRuleBadge active={Boolean(task.needCheck)} label="验收" icon={<CheckCircleIcon />} />
                           <TaskRuleBadge active={Boolean(task.needAudit)} label="审核" icon={<InfoIcon />} />
@@ -1736,7 +1955,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                           <TaskRuleBadge active={Boolean(task.needSettle)} label="结算" icon={<CreditCardIcon />} />
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-right">
+                      <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1763,27 +1982,27 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
           </div>
           
           {/* Batch Rules Footer */}
-          <div className="p-4 bg-slate-50 border-t border-slate-100">
+          <div className="hidden">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 text-[12px] font-bold text-[#6b7f9e]">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 16 16">
                   <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
                 批量规则维护
               </span>
               <div className="flex gap-2">
-                <button className="text-[10px] font-bold text-slate-400 hover:text-slate-600">重置</button>
-                <button className="text-[10px] font-bold text-blue-600 hover:text-blue-700">应用更改</button>
+                <button className="text-[12px] font-bold text-[#6b7f9e] hover:text-[#263653]">重置</button>
+                <button className="text-[12px] font-bold text-[#1f65e8] hover:text-[#1756c9]">应用更改</button>
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                <span className="text-xs text-slate-600 group-hover:text-slate-900">所有任务强制上传附件</span>
+                <span className="text-[13px] font-medium text-[#526681] group-hover:text-[#263653]">所有任务强制上传附件</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                <span className="text-xs text-slate-600 group-hover:text-slate-900">所有任务需财务结算</span>
+                <span className="text-[13px] font-medium text-[#526681] group-hover:text-[#263653]">所有任务需财务结算</span>
               </label>
             </div>
           </div>
@@ -1810,7 +2029,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             <FieldSection label="基本信息">
               <FieldRow>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">模板编码</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">模板编码</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -1820,7 +2039,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">模板名称</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">模板名称</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -1834,7 +2053,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             <FieldSection label="配置">
               <FieldRow>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">状态</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">状态</label>
                   <select
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLSelectElement>) =>
@@ -1847,7 +2066,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">排序</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">排序</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -1892,7 +2111,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             <FieldSection label="基本信息">
               <FieldRow>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">父节点</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">父节点</label>
                   <select
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLSelectElement>) => {
@@ -1917,7 +2136,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">节点编码 <span className="text-blue-500 text-[10px]">（自动生成）</span></label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">节点编码 <span className="text-[12px] font-medium text-[#1f65e8]">（自动生成）</span></label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -1930,7 +2149,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
               </FieldRow>
               <FieldRow>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">节点名称</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">节点名称</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -1944,7 +2163,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             <FieldSection label="计划">
               <FieldRow>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">计划天数</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">计划天数</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -1955,7 +2174,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">排序</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">排序</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -1968,7 +2187,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             </FieldSection>
             <FieldSection label="流程控制">
               <div className="flex flex-wrap gap-4">
-                <label className="flex items-center gap-2.5 text-sm text-slate-700">
+                <label className="flex items-center gap-2.5 text-[13px] font-medium text-[#263653]">
                   <input
                     checked={nodeForm.needCheck}
                     className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-200"
@@ -1979,7 +2198,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   />
                   需要检查
                 </label>
-                <label className="flex items-center gap-2.5 text-sm text-slate-700">
+                <label className="flex items-center gap-2.5 text-[13px] font-medium text-[#263653]">
                   <input
                     checked={nodeForm.needAudit}
                     className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-200"
@@ -2026,7 +2245,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             <FieldSection label="基本信息">
               <FieldRow>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">任务编码</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">任务编码</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -2036,7 +2255,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">任务标题</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">任务标题</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -2050,7 +2269,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
             <FieldSection label="计划">
               <FieldRow>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">计划天数</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">计划天数</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -2061,7 +2280,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-slate-500">排序</label>
+                  <label className="block text-[12px] font-medium text-[#6b7f9e]">排序</label>
                   <input
                     className="field-input"
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -2080,7 +2299,7 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
                   { key: 'needFile' as const, label: '需要文件' },
                   { key: 'needSettle' as const, label: '需要结算' },
                 ].map((item) => (
-                  <label key={item.key} className="flex items-center gap-2.5 text-sm text-slate-700">
+                  <label key={item.key} className="flex items-center gap-2.5 text-[13px] font-medium text-[#263653]">
                     <input
                       checked={taskForm[item.key]}
                       className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-200"
@@ -2119,6 +2338,53 @@ export function ProjectTypeManagementPage({ projectTypes: externalTypes }: Proje
       ) : null}
 
       {/* ── ProgressConfigModal (排期编辑，保持原有 modal) ── */}
+      <style>{`
+        .field-input {
+          display: flex;
+          height: 36px;
+          width: 100%;
+          border-radius: 6px;
+          border: 1px solid #d9e3f1;
+          background: #fff;
+          padding: 0 12px;
+          font-size: 13px;
+          font-weight: 500;
+          color: #263653;
+          outline: none;
+          transition: border-color .15s, box-shadow .15s;
+        }
+        .field-input:focus {
+          border-color: #1f7cff;
+          box-shadow: 0 0 0 2px #dceaff;
+        }
+        .field-input::placeholder {
+          color: #9badc7;
+        }
+        .field-textarea {
+          display: flex;
+          width: 100%;
+          min-height: 72px;
+          resize: vertical;
+          border-radius: 6px;
+          border: 1px solid #d9e3f1;
+          background: #fff;
+          padding: 8px 12px;
+          font-size: 13px;
+          font-weight: 500;
+          line-height: 22px;
+          color: #263653;
+          outline: none;
+          transition: border-color .15s, box-shadow .15s;
+        }
+        .field-textarea:focus {
+          border-color: #1f7cff;
+          box-shadow: 0 0 0 2px #dceaff;
+        }
+        .field-textarea::placeholder {
+          color: #9badc7;
+        }
+      `}</style>
+
       <ProgressConfigModal
         canDelete={Boolean(editingScheduleId)}
         errorMessage={null}

@@ -18,13 +18,11 @@ if (!rootElement) {
 }
 
 ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
     <PortalThemeProvider>
       <PortalPresentationProvider>
         <PortalAuthProvider>
           <PortalRouter />
         </PortalAuthProvider>
       </PortalPresentationProvider>
-    </PortalThemeProvider>
-  </React.StrictMode>,
+    </PortalThemeProvider>,
 );

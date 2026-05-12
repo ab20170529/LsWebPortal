@@ -1,5 +1,13 @@
 import React, { useState, type ChangeEvent } from 'react';
-import { Plus, X } from 'lucide-react';
+import {
+  Check,
+  ClipboardList,
+  FileText,
+  FolderKanban,
+  LoaderCircle,
+  Plus,
+  X,
+} from 'lucide-react';
 
 import { downloadProjectAttachment } from './project-attachments';
 import { getFileCategoryLabel } from './project-display';
@@ -53,6 +61,7 @@ type GanttDetailPanelProps = {
   budgets: BudgetItem[];
   detailEditState: DetailEditState | null;
   detailPanel: DetailPanelState;
+  hasUnsavedChanges?: boolean;
   members: MemberItem[];
   readOnly?: boolean;
   row: TimelineRow | null;
@@ -101,6 +110,15 @@ const DEP_TYPE_COLOR: Record<string, string> = {
   SF: 'bg-purple-100 text-purple-600',
 };
 
+const DETAIL_ICON_STROKE_WIDTH = 1.8;
+const DETAIL_INPUT_CLASS =
+  'h-9 w-full rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#263653] outline-none transition focus:border-[#1f7cff] focus:ring-2 focus:ring-[#dceaff]';
+const DETAIL_TEXTAREA_CLASS =
+  'min-h-[92px] w-full rounded-md border border-[#d9e3f1] bg-white px-3 py-2 text-[13px] font-medium leading-6 text-[#263653] outline-none transition focus:border-[#1f7cff] focus:ring-2 focus:ring-[#dceaff]';
+const DETAIL_FIELD_LABEL_CLASS = 'mb-1.5 block text-[12px] font-medium text-[#6b7f9e]';
+const DETAIL_ICON_BUTTON_CLASS =
+  'flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-[#8da0bd] transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus:ring-2 focus:ring-[#dceaff]';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 主组件
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,6 +131,7 @@ export function GanttDetailPanel({
   budgets,
   detailEditState,
   detailPanel,
+  hasUnsavedChanges = false,
   members,
   readOnly = false,
   row,
@@ -146,46 +165,47 @@ export function GanttDetailPanel({
 
   return (
     <div
-      className="fixed right-0 top-0 z-50 h-full w-[420px] shadow-[-20px_0_60px_rgba(0,0,0,0.15)]"
+      className="fixed right-6 top-[80px] z-50 h-[calc(100vh-104px)] w-[420px] max-w-[calc(100vw-32px)] overflow-hidden rounded-lg border border-[#d9e4f5] bg-white text-[13px] font-medium leading-[1.5] text-[#526681] shadow-[-12px_16px_36px_rgba(24,39,75,0.18)]"
       style={{ animation: 'slideInRight 0.3s ease-out' }}
     >
       <div className="flex h-full flex-col bg-white">
-        {/* ── 标题栏 ── */}
-        <div className="relative border-b border-slate-100 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-5 py-5">
-          {/* 背景纹理 */}
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30" />
-          <div className="relative flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 shadow-lg backdrop-blur-sm">
+        <div className="border-b border-[#edf2f8] px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#edf6ff] text-[var(--portal-color-brand-600)]">
                 {isTask ? (
-                  <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  <ClipboardList className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
                 ) : (
-                  <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  <FolderKanban className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
                 )}
               </div>
               <div>
-                <div className="text-xs font-semibold text-white/80">
+                <div className="text-xs font-medium text-[#8da0bd]">
                   {isTask ? '任务详情' : '节点详情'}
                 </div>
-                <h2 className="mt-1 max-w-[240px] truncate text-lg font-bold text-white">{row.title}</h2>
+                <div className="mt-1 flex max-w-[240px] items-center gap-2">
+                  <h2 className="min-w-0 truncate text-base font-bold text-[#111c33]">{row.title}</h2>
+                  {hasUnsavedChanges ? (
+                    <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[12px] font-medium text-amber-600">
+                      未保存
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
             <button
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-all hover:bg-white/20 hover:text-white"
+              aria-label="关闭详情面板"
+              className="portal-project-shell__icon-button"
               onClick={onClose}
+              title="关闭详情面板"
               type="button"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
             </button>
           </div>
         </div>
 
-        {/* ── Tab 导航 ── */}
-        <div className="flex border-b border-slate-100 bg-slate-50/50 px-4">
+        <div className="flex border-b border-[#edf2f8] bg-white px-4">
           {[
             { key: 'info',        label: '基本信息' },
             { key: 'members',     label: '项目团队' },
@@ -194,22 +214,22 @@ export function GanttDetailPanel({
           ].map((tab) => (
             <button
               key={tab.key}
-              className={`relative px-4 py-3 text-sm font-medium transition-colors ${
-                detailPanel.activeTab === tab.key ? 'text-violet-600' : 'text-slate-500 hover:text-slate-700'
+              className={`relative px-3 py-3 text-[13px] font-medium transition-colors ${
+                detailPanel.activeTab === tab.key ? 'text-[var(--portal-color-brand-600)]' : 'text-[#6b7f9e] hover:text-[#263653]'
               }`}
               onClick={() => onTabChange(tab.key as DetailPanelState['activeTab'])}
               type="button"
             >
               {tab.label}
               {detailPanel.activeTab === tab.key && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-violet-500 to-indigo-500" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--portal-color-brand-500)]" />
               )}
             </button>
           ))}
         </div>
 
         {/* ── 内容区 ── */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto px-5 py-4">
           {/* 基本信息 */}
           {detailPanel.activeTab === 'info' && detailEditState && (
             <InfoTab
@@ -260,10 +280,10 @@ export function GanttDetailPanel({
         </div>
 
         {/* ── 底部操作栏 ── */}
-        <div className="border-t border-slate-100 bg-slate-50/50 p-4">
-          <div className="flex items-center gap-3">
+        <div className="border-t border-[#edf2f8] bg-white p-4">
+          <div className="flex items-center gap-2">
             <button
-              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-100 hover:text-rose-700"
+              className="portal-project-shell__secondary-button border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
               disabled={actionLoading || readOnly}
               onClick={() => onDelete(row)}
               type="button"
@@ -271,34 +291,28 @@ export function GanttDetailPanel({
               删除
             </button>
             <button
-              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-700"
+              className="portal-project-shell__secondary-button flex-1"
               onClick={onClose}
               type="button"
             >
               取消
             </button>
             <button
-              className="group relative flex h-11 flex-1 items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-sm font-semibold text-white shadow-lg shadow-violet-200 transition-all hover:shadow-xl hover:shadow-violet-300 disabled:cursor-not-allowed disabled:opacity-50"
+              className="portal-project-shell__primary-button flex-1"
               disabled={actionLoading || readOnly}
               onClick={onSave}
               type="button"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-purple-600 opacity-0 transition-opacity group-hover:opacity-100" />
-              <span className="relative flex items-center gap-2">
+              <span className="flex items-center gap-2">
                 {actionLoading ? (
                   <>
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
+                    <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
                     保存中...
                   </>
                 ) : (
                   <>
+                    <Check className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
                     保存修改
-                    <svg className="h-4 w-4 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
                   </>
                 )}
               </span>
@@ -331,7 +345,7 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
       {/* 标题 */}
       <FormField label="标题" icon="edit">
         <input
-          className="h-11 w-full rounded-xl border-2 border-slate-100 bg-slate-50 px-4 text-sm transition-all focus:border-violet-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-100"
+          className={DETAIL_INPUT_CLASS}
           value={editState.taskTitle}
           onChange={(e: ChangeEvent<HTMLInputElement>) => onChange((p) => p ? { ...p, taskTitle: e.target.value } : p)}
         />
@@ -340,7 +354,7 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
       {/* 内容/描述 */}
       <FormField label={isTask ? '任务内容' : '节点描述'} icon="text">
         <textarea
-          className="min-h-[100px] w-full rounded-xl border-2 border-slate-100 bg-slate-50 px-4 py-3 text-sm transition-all focus:border-violet-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-100"
+          className={DETAIL_TEXTAREA_CLASS}
           placeholder="请输入内容描述..."
           value={editState.taskContent}
           onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange((p) => p ? { ...p, taskContent: e.target.value } : p)}
@@ -351,7 +365,7 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
       {isTask ? (
         <FormField label="责任人" icon="user">
           <select
-            className="h-11 w-full rounded-xl border-2 border-slate-100 bg-slate-50 px-4 text-sm transition-all focus:border-violet-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-100"
+            className={DETAIL_INPUT_CLASS}
             value={editState.responsibleUserId ?? ''}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => {
               const uid = e.target.value;
@@ -373,19 +387,19 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
           </select>
           {editState.responsibleName ? (
             <div className="mt-2 flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 text-[10px] font-bold text-white">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#edf6ff] text-xs font-semibold text-[var(--portal-color-brand-600)]">
                 {editState.responsibleName.charAt(0)}
               </div>
-              <span className="text-xs font-medium text-violet-600">{editState.responsibleName}</span>
+              <span className="text-xs font-medium text-[var(--portal-color-brand-600)]">{editState.responsibleName}</span>
             </div>
           ) : (
-            <div className="mt-2 text-xs text-slate-400">请从项目成员中选择负责人</div>
+            <div className="mt-2 text-xs font-medium text-[#8da0bd]">请从项目成员中选择负责人</div>
           )}
         </FormField>
       ) : (
         <FormField label="负责人" icon="user">
-          <div className="flex items-center gap-2 rounded-xl border-2 border-slate-100 bg-slate-50 px-4 py-2.5 text-sm text-slate-500">
-            <svg className="h-4 w-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <div className="flex h-9 items-center gap-2 rounded-md border border-[#d9e3f1] bg-[#f8fbff] px-3 text-[13px] font-medium text-[#526681]">
+            <svg className="h-4 w-4 shrink-0 text-[#8da0bd]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={DETAIL_ICON_STROKE_WIDTH}>
               <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>{row.owner || '未分配'}</span>
@@ -396,8 +410,8 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
       {isTask ? (
         <FormField label="参与人" icon="users">
           {members.length ? (
-            <div className="space-y-2 rounded-xl border-2 border-slate-100 bg-slate-50 p-3">
-              <div className="text-xs text-slate-400">任务参与人仅可从项目团队中选择</div>
+            <div className="space-y-2 rounded-lg border border-[#e4ebf5] bg-[#f8fbff] p-3">
+              <div className="text-xs font-medium text-[#8da0bd]">任务参与人仅可从项目团队中选择</div>
               <div className="max-h-40 space-y-2 overflow-auto pr-1">
                 {members
                   .filter((member) => member.userId !== editState.responsibleUserId)
@@ -406,19 +420,19 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
                     return (
                       <label
                         key={member.userId}
-                        className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                        className={`flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2 text-[13px] font-medium transition-colors ${
                           checked
-                            ? 'border-violet-200 bg-violet-50 text-violet-700'
-                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                            ? 'border-[#b9d4ff] bg-[#edf6ff] text-[var(--portal-color-brand-700)]'
+                            : 'border-[#d9e3f1] bg-white text-[#526681] hover:border-[#b9d4ff]'
                         }`}
                       >
                         <div className="min-w-0">
                           <div className="truncate font-medium">{member.userName}</div>
-                          <div className="truncate text-xs text-slate-400">{member.roleName ?? member.dutyContent ?? '项目成员'}</div>
+                          <div className="truncate text-xs font-medium text-[#8da0bd]">{member.roleName ?? member.dutyContent ?? '项目成员'}</div>
                         </div>
                         <input
                           checked={checked}
-                          className="h-4 w-4 rounded border-slate-300 text-violet-500 focus:ring-violet-300"
+                          className="h-4 w-4 rounded border-[#d9e3f1] text-[var(--portal-color-brand-600)] focus:ring-[#dceaff]"
                           onChange={(e: ChangeEvent<HTMLInputElement>) => {
                             onChange((current) => {
                               if (!current) {
@@ -441,7 +455,7 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
               </div>
             </div>
           ) : (
-            <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
+            <div className="rounded-lg border border-dashed border-[#d9e3f1] bg-[#f8fbff] px-4 py-3 text-[13px] font-medium text-[#8da0bd]">
               请先在“项目团队”中添加成员，再分配任务人员。
             </div>
           )}
@@ -450,14 +464,14 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
               {editState.participantMembers.map((member: TaskParticipantItem) => (
                 <span
                   key={member.userId}
-                  className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700"
+                  className="inline-flex items-center rounded-md bg-[#edf6ff] px-2 py-1 text-xs font-medium text-[var(--portal-color-brand-700)]"
                 >
                   {member.userName}
                 </span>
               ))}
             </div>
           ) : (
-            <div className="text-xs text-slate-400">当前未设置参与人</div>
+            <div className="text-xs font-medium text-[#8da0bd]">当前未设置参与人</div>
           )}
         </FormField>
       ) : null}
@@ -468,10 +482,10 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
           {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
             <button
               key={key}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${
+              className={`h-8 rounded-md border px-3 text-[13px] font-medium transition-colors ${
                 editState.status === key
                   ? `${cfg.color} ${cfg.bg}`
-                  : 'border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-500'
+                  : 'border-[#d9e3f1] bg-white text-[#8da0bd] hover:border-[#b9d4ff] hover:text-[#526681]'
               }`}
               onClick={() => onChange((p) => p ? { ...p, status: key } : p)}
               type="button"
@@ -486,18 +500,18 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
       <FormField label="进度" icon="bar">
         <div className="flex items-center gap-4">
           <input
-            className="flex-1 accent-violet-500"
+            className="flex-1 accent-[var(--portal-color-brand-600)]"
             max={100} min={0} type="range"
             value={editState.progressRate}
             onChange={(e: ChangeEvent<HTMLInputElement>) => onChange((p) => p ? { ...p, progressRate: parseInt(e.target.value) } : p)}
           />
-          <span className="min-w-[48px] rounded-lg bg-violet-50 px-2 py-1 text-center text-sm font-bold text-violet-600">
+          <span className="min-w-[48px] rounded-md bg-[#edf6ff] px-2 py-1 text-center text-[13px] font-semibold text-[var(--portal-color-brand-600)]">
             {editState.progressRate}%
           </span>
         </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#edf2f8]">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-violet-400 to-indigo-500 transition-all"
+            className="h-full rounded-full bg-[var(--portal-color-brand-500)] transition-all"
             style={{ width: `${editState.progressRate}%` }}
           />
         </div>
@@ -506,7 +520,7 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
       {/* 备注 */}
       <FormField label="备注" icon="comment">
         <textarea
-          className="min-h-[80px] w-full rounded-xl border-2 border-slate-100 bg-slate-50 px-4 py-3 text-sm transition-all focus:border-violet-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-100"
+          className={DETAIL_TEXTAREA_CLASS}
           placeholder="添加备注信息..."
           value={editState.taskRemark}
           onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange((p) => p ? { ...p, taskRemark: e.target.value } : p)}
@@ -517,18 +531,18 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
       <FormField label="时间范围" icon="calendar">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <label className="text-xs text-slate-400">计划开始</label>
+            <label className="text-xs font-medium text-[#6b7f9e]">计划开始</label>
             <input
-              className="h-10 w-full rounded-lg border-2 border-slate-100 bg-slate-50 px-3 text-sm transition-all focus:border-violet-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-100"
+              className={DETAIL_INPUT_CLASS}
               type="date"
               value={editState.planStartTime ?? ''}
               onChange={(e: ChangeEvent<HTMLInputElement>) => onChange((p) => p ? { ...p, planStartTime: e.target.value || null } : p)}
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs text-slate-400">计划结束</label>
+            <label className="text-xs font-medium text-[#6b7f9e]">计划结束</label>
             <input
-              className="h-10 w-full rounded-lg border-2 border-slate-100 bg-slate-50 px-3 text-sm transition-all focus:border-violet-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-100"
+              className={DETAIL_INPUT_CLASS}
               type="date"
               value={editState.planEndTime ?? ''}
               onChange={(e: ChangeEvent<HTMLInputElement>) => onChange((p) => p ? { ...p, planEndTime: e.target.value || null } : p)}
@@ -539,21 +553,21 @@ function InfoTab({ row, editState, members, taskDependencies, onChange }: InfoTa
 
       {/* 依赖信息 */}
       {isTask && taskDependencies.length > 0 && (
-        <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50/50 p-4">
-          <div className="mb-3 text-xs font-semibold text-amber-600">依赖关系</div>
+        <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
+          <div className="mb-3 text-xs font-medium text-amber-700">依赖关系</div>
           <div className="space-y-2">
             {taskDependencies.slice(0, 3).map((dep) => (
-              <div key={dep.id} className="flex items-center gap-2 text-xs">
-                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${DEP_TYPE_COLOR[dep.dependencyType] ?? ''}`}>
+              <div key={dep.id} className="flex items-center gap-2 text-xs font-medium">
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${DEP_TYPE_COLOR[dep.dependencyType] ?? ''}`}>
                   {dep.dependencyType}
                 </span>
-                <span className="text-slate-500">
+                <span className="text-[#526681]">
                   {dep.predecessorTaskId === row.entityId ? dep.successorTaskTitle : dep.predecessorTaskTitle}
                 </span>
               </div>
             ))}
             {taskDependencies.length > 3 && (
-              <div className="text-xs text-amber-600">还有 {taskDependencies.length - 3} 个依赖关系</div>
+              <div className="text-xs font-medium text-amber-700">还有 {taskDependencies.length - 3} 个依赖关系</div>
             )}
           </div>
         </div>
@@ -618,31 +632,32 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-slate-600">项目团队</div>
+        <div className="text-[13px] font-semibold text-[#263653]">项目团队</div>
         <button
-          className="flex items-center gap-1 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-600 transition-colors hover:bg-violet-100"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[var(--portal-color-brand-600)] transition hover:border-[#b9d4ff] hover:bg-[#edf6ff]"
           type="button"
           onClick={() => setShowAddModal(true)}
         >
-          <Plus className="h-3 w-3" /> 添加成员
+          <Plus className="h-3.5 w-3.5" strokeWidth={DETAIL_ICON_STROKE_WIDTH} /> 添加成员
         </button>
       </div>
       {members.length > 0 ? (
         <div className="space-y-2">
           {members.map((m) => (
-            <div key={m.id} className="group flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-colors hover:bg-slate-50">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 text-sm font-bold text-white">
+            <div key={m.id} className="group flex items-center gap-3 rounded-lg border border-[#e4ebf5] bg-white p-3 transition-colors hover:bg-[#f8fbff]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#edf6ff] text-[13px] font-semibold text-[var(--portal-color-brand-600)]">
                 {m.userName.charAt(0)}
               </div>
               <div className="flex-1">
-                <div className="text-sm font-medium text-slate-700">{m.userName}</div>
-                <div className="text-xs text-slate-400">{m.roleName || '成员'}</div>
+                <div className="text-[13px] font-medium text-[#263653]">{m.userName}</div>
+                <div className="text-xs font-medium text-[#8da0bd]">{m.roleName || '成员'}</div>
               </div>
               {m.isManager && (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-600">负责人</span>
+                <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">负责人</span>
               )}
               <button
-                className="invisible flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-500 group-hover:visible"
+                aria-label={`移除成员 ${m.userName}`}
+                className={`invisible group-hover:visible ${DETAIL_ICON_BUTTON_CLASS}`}
                 onClick={() => {
                   if (window.confirm(`确认移除成员"${m.userName}"吗？`)) {
                     onDeleteMember(projectId, m.id);
@@ -651,7 +666,7 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
                 title="移除成员"
                 type="button"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
               </button>
             </div>
           ))}
@@ -663,16 +678,16 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
       {/* 添加成员弹窗 */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-[420px] rounded-2xl bg-white p-5 shadow-xl">
+          <div className="w-[420px] rounded-lg border border-[#e4ebf5] bg-white p-5 shadow-[0_16px_40px_rgba(24,39,75,0.16)]">
             <div className="mb-4 flex items-center justify-between">
-              <div className="text-base font-bold text-slate-800">添加成员</div>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600" type="button">
-                <X className="h-5 w-5" />
+              <div className="text-base font-bold text-[#111c33]">添加成员</div>
+              <button aria-label="关闭添加成员" onClick={() => setShowAddModal(false)} className="portal-project-shell__icon-button" type="button">
+                <X className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-slate-500">选择成员 *（可多选）</label>
+                <label className={DETAIL_FIELD_LABEL_CLASS}>选择成员 *（可多选）</label>
                 <SystemUserPicker
                   disabled={userLoading}
                   mode="multiple"
@@ -685,32 +700,32 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">角色名称</label>
+                <label className={DETAIL_FIELD_LABEL_CLASS}>角色名称</label>
                 <input
                   type="text"
                   value={form.roleName}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, roleName: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  className={DETAIL_INPUT_CLASS}
                   placeholder="如：开发工程师"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">职责内容</label>
+                <label className={DETAIL_FIELD_LABEL_CLASS}>职责内容</label>
                 <textarea
                   value={form.dutyContent}
                   onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setForm((f) => ({ ...f, dutyContent: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  className={DETAIL_TEXTAREA_CLASS}
                   placeholder="描述该成员的职责"
                   rows={2}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">备注</label>
+                <label className={DETAIL_FIELD_LABEL_CLASS}>备注</label>
                 <input
                   type="text"
                   value={form.remark}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, remark: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  className={DETAIL_INPUT_CLASS}
                   placeholder="备注信息"
                 />
               </div>
@@ -720,22 +735,22 @@ function MembersTab({ members, projectId, onDeleteMember, onAddMember }: Members
                   id="isManager"
                   checked={form.isManager}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, isManager: e.target.checked }))}
-                  className="h-4 w-4 rounded border-slate-300 text-violet-500 focus:ring-violet-300"
+                  className="h-4 w-4 rounded border-[#d9e3f1] text-[var(--portal-color-brand-600)] focus:ring-[#dceaff]"
                 />
-                <label htmlFor="isManager" className="text-sm text-slate-600">设为项目负责人</label>
+                <label htmlFor="isManager" className="text-[13px] font-medium text-[#526681]">设为项目负责人</label>
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                className="portal-project-shell__secondary-button"
                 type="button"
               >
                 取消
               </button>
               <button
                 onClick={handleAdd}
-                className="rounded-lg bg-violet-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-600"
+                className="portal-project-shell__primary-button"
                 type="button"
               >
                 确认添加
@@ -800,52 +815,53 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-slate-600">预算概览</div>
+        <div className="text-[13px] font-semibold text-[#263653]">预算概览</div>
         <button
-          className="flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[var(--portal-color-brand-600)] transition hover:border-[#b9d4ff] hover:bg-[#edf6ff]"
           type="button"
           onClick={() => setShowAddModal(true)}
         >
-          <Plus className="h-3 w-3" /> 添加预算
+          <Plus className="h-3.5 w-3.5" strokeWidth={DETAIL_ICON_STROKE_WIDTH} /> 添加预算
         </button>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-50 p-4">
-          <div className="text-xs text-emerald-600">计划预算</div>
-          <div className="mt-1 text-[18px] font-bold text-emerald-700">
+        <div className="rounded-lg border border-[#e4ebf5] bg-white p-3">
+          <div className="text-xs font-medium text-[#6b7f9e]">计划预算</div>
+          <div className="mt-1 text-lg font-semibold text-[#111c33]">
             ¥{(budgetAmount ?? 0).toLocaleString()}
           </div>
         </div>
-        <div className="rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 p-4">
-          <div className="text-xs text-amber-600">实际费用</div>
-          <div className="mt-1 text-[18px] font-bold text-amber-700">¥{totalActual.toLocaleString()}</div>
+        <div className="rounded-lg border border-[#e4ebf5] bg-white p-3">
+          <div className="text-xs font-medium text-[#6b7f9e]">实际费用</div>
+          <div className="mt-1 text-lg font-semibold text-[#111c33]">¥{totalActual.toLocaleString()}</div>
         </div>
       </div>
-      <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
-        <div className="mb-2 flex items-center justify-between text-xs">
-          <span className="text-slate-500">预算使用</span>
-          <span className="font-semibold text-slate-600">{usageRate}%</span>
+      <div className="rounded-lg border border-[#e4ebf5] bg-[#f8fbff] p-3">
+        <div className="mb-2 flex items-center justify-between text-xs font-medium">
+          <span className="text-[#6b7f9e]">预算使用</span>
+          <span className="text-[#263653]">{usageRate}%</span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+        <div className="h-2 overflow-hidden rounded-full bg-[#edf2f8]">
           <div
-            className={`h-full rounded-full transition-all ${overrun ? 'bg-rose-500' : 'bg-gradient-to-r from-emerald-400 to-teal-500'}`}
+            className={`h-full rounded-full transition-all ${overrun ? 'bg-rose-500' : 'bg-emerald-500'}`}
             style={{ width: `${Math.min(100, usageRate)}%` }}
           />
         </div>
       </div>
       {budgets.length > 0 ? (
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-500">费用明细</div>
+          <div className="text-xs font-medium text-[#6b7f9e]">费用明细</div>
           {budgets.slice(0, 5).map((b) => (
-            <div key={b.id} className="group flex items-center justify-between rounded-lg border border-slate-100 bg-white px-3 py-2 transition-colors hover:bg-slate-50">
+            <div key={b.id} className="group flex items-center justify-between rounded-md border border-[#e4ebf5] bg-white px-3 py-2 transition-colors hover:bg-[#f8fbff]">
               <div>
-                <div className="text-sm text-slate-600">{b.feeItem}</div>
-                <div className="text-xs text-slate-400">{b.feeType || '其他'}</div>
+                <div className="text-[13px] font-medium text-[#263653]">{b.feeItem}</div>
+                <div className="text-xs font-medium text-[#8da0bd]">{b.feeType || '其他'}</div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="text-sm font-semibold text-slate-700">¥{(b.actualAmount ?? 0).toLocaleString()}</div>
+                <div className="text-[13px] font-semibold text-[#263653]">¥{(b.actualAmount ?? 0).toLocaleString()}</div>
                 <button
-                  className="invisible flex h-6 w-6 items-center justify-center rounded-lg text-slate-400 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-500 group-hover:visible"
+                  aria-label={`删除费用 ${b.feeItem}`}
+                  className={`invisible group-hover:visible ${DETAIL_ICON_BUTTON_CLASS}`}
                   onClick={() => {
                     if (window.confirm(`确认删除费用项"${b.feeItem}"吗？`)) {
                       onDeleteBudget(projectId, b.id);
@@ -854,13 +870,13 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
                   title="删除"
                   type="button"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
                 </button>
               </div>
             </div>
           ))}
           {budgets.length > 5 && (
-            <div className="text-center text-xs text-slate-400">还有 {budgets.length - 5} 项费用</div>
+            <div className="text-center text-xs font-medium text-[#8da0bd]">还有 {budgets.length - 5} 项费用</div>
           )}
         </div>
       ) : (
@@ -870,97 +886,97 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
       {/* 添加预算弹窗 */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-[480px] rounded-2xl bg-white p-5 shadow-xl">
+          <div className="w-[480px] rounded-lg border border-[#e4ebf5] bg-white p-5 shadow-[0_16px_40px_rgba(24,39,75,0.16)]">
             <div className="mb-4 flex items-center justify-between">
-              <div className="text-base font-bold text-slate-800">添加预算</div>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600" type="button">
-                <X className="h-5 w-5" />
+              <div className="text-base font-bold text-[#111c33]">添加预算</div>
+              <button aria-label="关闭添加预算" onClick={() => setShowAddModal(false)} className="portal-project-shell__icon-button" type="button">
+                <X className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
               </button>
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-500">费用项 *</label>
+                  <label className={DETAIL_FIELD_LABEL_CLASS}>费用项 *</label>
                   <input
                     type="text"
                     value={form.feeItem}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, feeItem: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                    className={DETAIL_INPUT_CLASS}
                     placeholder="如：设备采购"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-500">费用类型</label>
+                  <label className={DETAIL_FIELD_LABEL_CLASS}>费用类型</label>
                   <input
                     type="text"
                     value={form.feeType}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, feeType: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                    className={DETAIL_INPUT_CLASS}
                     placeholder="如：采购"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-500">计划金额</label>
+                  <label className={DETAIL_FIELD_LABEL_CLASS}>计划金额</label>
                   <input
                     type="number"
                     value={form.planAmount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, planAmount: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                    className={DETAIL_INPUT_CLASS}
                     placeholder="0.00"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-500">实际金额</label>
+                  <label className={DETAIL_FIELD_LABEL_CLASS}>实际金额</label>
                   <input
                     type="number"
                     value={form.actualAmount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, actualAmount: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                    className={DETAIL_INPUT_CLASS}
                     placeholder="0.00"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-500">操作人</label>
+                  <label className={DETAIL_FIELD_LABEL_CLASS}>操作人</label>
                   <input
                     type="text"
                     value={form.operatorName}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, operatorName: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                    className={DETAIL_INPUT_CLASS}
                     placeholder="操作人姓名"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-500">超标比率 (%)</label>
+                  <label className={DETAIL_FIELD_LABEL_CLASS}>超标比率 (%)</label>
                   <input
                     type="number"
                     value={form.overRate}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, overRate: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                    className={DETAIL_INPUT_CLASS}
                     placeholder="0"
                   />
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">费用说明</label>
+                <label className={DETAIL_FIELD_LABEL_CLASS}>费用说明</label>
                 <textarea
                   value={form.feeDesc}
                   onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setForm((f) => ({ ...f, feeDesc: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                  className={DETAIL_TEXTAREA_CLASS}
                   placeholder="费用详细说明"
                   rows={2}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">备注</label>
+                <label className={DETAIL_FIELD_LABEL_CLASS}>备注</label>
                 <input
                   type="text"
                   value={form.remark}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, remark: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                  className={DETAIL_INPUT_CLASS}
                   placeholder="备注信息"
                 />
               </div>
@@ -968,14 +984,14 @@ function BudgetTab({ budgets, budgetAmount, projectId, totalActual, usageRate, o
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                className="portal-project-shell__secondary-button"
                 type="button"
               >
                 取消
               </button>
               <button
                 onClick={handleAdd}
-                className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600"
+                className="portal-project-shell__primary-button"
                 type="button"
               >
                 确认添加
@@ -1082,15 +1098,15 @@ function AttachmentsTab({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+      <div className="rounded-lg border border-[#e4ebf5] bg-[#f8fbff] p-3">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <div className="text-sm font-semibold text-slate-700">{scopeLabel}</div>
-              <div className="mt-1 text-xs leading-6 text-slate-500">{scopeDescription}</div>
+              <div className="text-[13px] font-semibold text-[#263653]">{scopeLabel}</div>
+              <div className="mt-1 text-xs font-medium leading-6 text-[#6b7f9e]">{scopeDescription}</div>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-50 px-1.5 text-blue-600">
+            <div className="inline-flex items-center gap-2 rounded-md border border-[#d9e3f1] bg-white px-3 py-1 text-xs font-medium text-[#6b7f9e]">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-[#edf6ff] px-1.5 text-[var(--portal-color-brand-600)]">
                 {filteredAttachments.length}
               </span>
               已上传附件
@@ -1099,9 +1115,9 @@ function AttachmentsTab({
 
           <div className="grid gap-3 xl:grid-cols-[180px_minmax(0,1fr)_150px]">
             <label className="block">
-              <div className="text-xs font-semibold text-slate-500">附件分类</div>
+              <div className={DETAIL_FIELD_LABEL_CLASS}>附件分类</div>
               <select
-                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                className={`${DETAIL_INPUT_CLASS} mt-2`}
                 onChange={(event: ChangeEvent<HTMLSelectElement>) => setFileCategory(event.target.value)}
                 value={fileCategory}
               >
@@ -1114,9 +1130,9 @@ function AttachmentsTab({
             </label>
 
             <label className="block">
-              <div className="text-xs font-semibold text-slate-500">备注说明</div>
+              <div className={DETAIL_FIELD_LABEL_CLASS}>备注说明</div>
               <textarea
-                className="mt-2 min-h-[92px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                className={`${DETAIL_TEXTAREA_CLASS} mt-2`}
                 onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setAttachmentRemark(event.target.value)}
                 placeholder="补充说明附件用途、版本或交付背景"
                 rows={3}
@@ -1133,15 +1149,15 @@ function AttachmentsTab({
                 accept="*/*"
               />
               <button
-                className="flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="portal-project-shell__primary-button justify-center disabled:cursor-not-allowed disabled:bg-slate-300"
                 disabled={!canUpload}
                 onClick={() => fileInputRef.current?.click()}
                 type="button"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
                 上传附件
               </button>
-              <div className="rounded-xl bg-white px-3 py-2 text-xs leading-5 text-slate-500">
+              <div className="rounded-md border border-[#e4ebf5] bg-white px-3 py-2 text-xs font-medium leading-5 text-[#6b7f9e]">
                 {canUpload ? `上传人：${currentUserName}` : '当前登录人信息不完整，暂时无法上传附件。'}
               </div>
             </div>
@@ -1152,30 +1168,28 @@ function AttachmentsTab({
       {filteredAttachments.length > 0 ? (
         <div className="space-y-2">
           {filteredAttachments.map((a) => (
-            <div key={a.id} className="group rounded-xl border border-slate-100 bg-slate-50/50 p-3 transition-colors hover:bg-slate-50">
+            <div key={a.id} className="group rounded-lg border border-[#e4ebf5] bg-white p-3 transition-colors hover:bg-[#f8fbff]">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#edf6ff] text-[var(--portal-color-brand-600)]">
+                  <FileText className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="truncate text-sm font-medium text-slate-700">{a.fileName}</div>
-                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                    <div className="truncate text-[13px] font-medium text-[#263653]">{a.fileName}</div>
+                    <span className="rounded-md bg-[#edf2f8] px-2 py-0.5 text-[11px] font-medium text-[#6b7f9e]">
                       {getFileCategoryLabel(a.fileCategory)}
                     </span>
                   </div>
-                  <div className="mt-1 text-xs leading-5 text-slate-400">
+                  <div className="mt-1 text-xs font-medium leading-5 text-[#8da0bd]">
                     {a.uploaderName || '未知上传人'}
                     {a.uploadTime ? ` / ${formatAttachmentTime(a.uploadTime)}` : ''}
                     {a.fileSize ? ` / ${formatAttachmentSize(a.fileSize)}` : ''}
                   </div>
-                  {a.remark ? <div className="mt-2 text-xs leading-5 text-slate-500">{a.remark}</div> : null}
+                  {a.remark ? <div className="mt-2 text-xs font-medium leading-5 text-[#6b7f9e]">{a.remark}</div> : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-white hover:text-slate-800"
+                    className="h-7 rounded-md border border-[#d9e3f1] bg-white px-3 text-xs font-medium text-[#526681] transition hover:border-[#b9d4ff] hover:text-[var(--portal-color-brand-600)]"
                     onClick={() => {
                       void downloadProjectAttachment(a, projectId).catch((error: unknown) => {
                         pushToast({
@@ -1189,7 +1203,8 @@ function AttachmentsTab({
                     下载
                   </button>
                   <button
-                    className="invisible flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-500 group-hover:visible"
+                    aria-label={`删除附件 ${a.fileName}`}
+                    className={`invisible group-hover:visible ${DETAIL_ICON_BUTTON_CLASS}`}
                     onClick={() => {
                       if (window.confirm(`确认删除附件“${a.fileName}”吗？`)) {
                         onDeleteAttachment(projectId, a.id);
@@ -1198,7 +1213,7 @@ function AttachmentsTab({
                     title="删除"
                     type="button"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-4 w-4" strokeWidth={DETAIL_ICON_STROKE_WIDTH} />
                   </button>
                 </div>
               </div>
@@ -1260,8 +1275,8 @@ const FIELD_ICONS: Record<string, string> = {
 function FormField({ label, icon, children }: { label: string; icon: string; children: React.ReactNode }) {
   return (
     <div className="group">
-      <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-400">
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <label className="mb-2 flex items-center gap-2 text-xs font-medium text-[#6b7f9e]">
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={DETAIL_ICON_STROKE_WIDTH}>
           <path d={FIELD_ICONS[icon] ?? ''} strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         {label}
@@ -1273,8 +1288,8 @@ function FormField({ label, icon, children }: { label: string; icon: string; chi
 
 function EmptyPlaceholder({ label }: { label: string }) {
   return (
-    <div className="rounded-xl border-2 border-dashed border-slate-200 py-8 text-center">
-      <div className="text-sm text-slate-400">{label}</div>
+    <div className="rounded-lg border border-dashed border-[#d9e3f1] bg-[#f8fbff] py-8 text-center">
+      <div className="text-[13px] font-medium text-[#8da0bd]">{label}</div>
     </div>
   );
 }

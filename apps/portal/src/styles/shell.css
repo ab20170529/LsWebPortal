@@ -1,10 +1,23 @@
+/* 强制提高优先级，确保菜单栏与内容间距为 8px */
+.portal-shell__grid,
+body .portal-shell__grid,
+.portal-shell .portal-shell__grid {
+    gap: 8px !important;
+}
+
+.portal-shell__content,
+body .portal-shell__content {
+    gap: 8px !important;
+}
+
+/* 保留其他原有样式 */
 @layer components {
   .portal-shell__grid {
     display: grid;
     min-height: 100vh;
     max-width: 1600px;
     margin: 0 auto;
-    gap: 0.5rem;
+    gap: 8px;
     padding: 1rem;
   }
 
@@ -50,7 +63,7 @@
     display: flex;
     min-height: 0;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 8px;
   }
 }
 

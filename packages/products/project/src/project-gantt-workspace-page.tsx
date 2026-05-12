@@ -2,11 +2,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Clock3,
+  FileText,
+  FolderKanban,
   Hand,
+  Link2,
+  LoaderCircle,
   Plus,
   Search,
+  Settings2,
   Trash2,
   X,
 } from 'lucide-react';
@@ -19,6 +26,7 @@ import type {
   ProjectManagementProjectType,
   ProjectSavePayload,
 } from './project-management-page';
+import { getProjectStatusLabel } from './project-display';
 import { useProjectToast } from './project-toast';
 import type {
   AffectedTaskPreview,
@@ -48,7 +56,6 @@ import {
   DAY_COLUMN_WIDTH,
   DAY_IN_MS,
   DEPENDENCY_TYPE_CONFIG,
-  SIDEBAR_SEARCH_BAND_HEIGHT,
   SIDEBAR_WIDTH,
   SUB_CATEGORY_ROW_HEIGHT,
   TASK_ROW_HEIGHT,
@@ -57,7 +64,6 @@ import {
   addDays,
   areDatesEqual,
   buildFeedbackMessage,
-  buildMonthGroups,
   buildTimelineCategories,
   buildTimelineDays,
   buildTimelineRange,
@@ -79,6 +85,76 @@ import {
 import { GanttDetailPanel } from './gantt-detail-panel';
 import { ProjectTeamManager } from './project-team-manager';
 
+const GANTT_ICON_STROKE_WIDTH = 1.8;
+const GANTT_INPUT_CLASS =
+  'h-9 w-full rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#263653] outline-none transition focus:border-[#1f7cff] focus:ring-2 focus:ring-[#dceaff]';
+const GANTT_TEXTAREA_CLASS =
+  'min-h-[92px] w-full rounded-md border border-[#d9e3f1] bg-white px-3 py-2 text-[13px] font-medium leading-6 text-[#263653] outline-none transition focus:border-[#1f7cff] focus:ring-2 focus:ring-[#dceaff]';
+const GANTT_FIELD_LABEL_CLASS = 'mb-1.5 block text-[12px] font-medium text-[#6b7f9e]';
+const GANTT_CARD_CLASS = 'rounded-lg border border-[#e4ebf5] bg-white p-5 shadow-[0_16px_40px_rgba(24,39,75,0.16)]';
+type TimelineScale = 'day' | 'week' | 'month';
+const TIMELINE_SCALE_OPTIONS: Array<{
+  columnWidth: number;
+  label: string;
+  title: string;
+  value: TimelineScale;
+}> = [
+  { columnWidth: DAY_COLUMN_WIDTH, label: '日', title: '按日查看', value: 'day' },
+  { columnWidth: 34, label: '周', title: '按周密度查看', value: 'week' },
+  { columnWidth: 18, label: '月', title: '按月密度查看', value: 'month' },
+];
+const TIMELINE_SCALE_CONFIG = TIMELINE_SCALE_OPTIONS.reduce(
+  (next, option) => ({
+    ...next,
+    [option.value]: option,
+  }),
+  {} as Record<TimelineScale, (typeof TIMELINE_SCALE_OPTIONS)[number]>,
+);
+const TIMELINE_OVERSCAN_PX = 360;
+const TIMELINE_MONTH_PADDING = 6;
+const DRAG_EDGE_SIZE = 56;
+const DRAG_EDGE_MAX_SPEED = 34;
+
+function extendTimelineRangeByMonths(
+  range: { end: Date; start: Date },
+  paddingMonths = TIMELINE_MONTH_PADDING,
+) {
+  return {
+    end: new Date(range.end.getFullYear(), range.end.getMonth() + paddingMonths + 1, 0),
+    start: new Date(range.start.getFullYear(), range.start.getMonth() - paddingMonths, 1),
+  };
+}
+
+function normalizeDetailEditStateForCompare(state: DetailEditState | null) {
+  if (!state) {
+    return '';
+  }
+
+  return JSON.stringify({
+    ...state,
+    participantMembers: [...state.participantMembers]
+      .map((member) => ({
+        userId: member.userId,
+        userName: member.userName,
+      }))
+      .sort((left, right) => left.userId.localeCompare(right.userId)),
+    progressRate: Number.isFinite(state.progressRate) ? state.progressRate : 0,
+  });
+}
+
+function getDragModeLabel(mode: DragState['mode']) {
+  if (mode === 'create') {
+    return '新增时间节点';
+  }
+  if (mode === 'move') {
+    return '移动计划时间';
+  }
+  if (mode === 'resize-start') {
+    return '调整开始时间';
+  }
+  return '调整结束时间';
+}
+
 type CommonResult<T> = {
   code: number;
   data: T;
@@ -90,6 +166,141 @@ const projectGanttApiClient = createApiClient({
     (import.meta.env.VITE_PROJECT_API_BASE_URL as string | undefined)?.trim() ||
     'http://127.0.0.1:8080',
 });
+
+function formatDemoDate(dayOffset: number, hour: number) {
+  const date = new Date(2026, 3, 1 + dayOffset, hour, 0, 0);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day} ${String(hour).padStart(2, '0')}:00:00`;
+}
+
+function isVirtualTimelineId(id?: number | null) {
+  return typeof id === 'number' && id < 0;
+}
+
+function shouldKeepLocalScheduleOnSaveError() {
+  return Boolean(import.meta.env.DEV);
+}
+
+function getTaskStatusToneClassName(status?: string | null) {
+  const normalized = (status ?? '').trim().toUpperCase();
+  if (normalized.includes('DONE') || normalized.includes('SUCCESS') || normalized.includes('FINISH') || normalized.includes('COMPLETE')) {
+    return 'bg-emerald-50 text-emerald-600';
+  }
+  if (normalized.includes('RUNNING') || normalized.includes('PROGRESS') || normalized.includes('PROCESS')) {
+    return 'bg-sky-50 text-sky-600';
+  }
+  if (normalized.includes('RISK') || normalized.includes('ERROR') || normalized.includes('STOP') || normalized.includes('REJECTED')) {
+    return 'bg-rose-50 text-rose-600';
+  }
+  return 'bg-slate-100 text-slate-500';
+}
+
+function getTaskShortName(title: string) {
+  const compactTitle = title.trim().replace(/\s+/g, '');
+  const chars = Array.from(compactTitle || title.trim());
+  if (chars.length <= 8) {
+    return chars.join('');
+  }
+  return `${chars.slice(0, 8).join('')}...`;
+}
+
+const TASK_STATUS_LEGEND_ITEMS = [
+  { border: '#94a3b8', fill: 'rgba(100,116,139,0.16)', label: '未开始' },
+  { border: '#0ea5e9', fill: 'rgba(14,165,233,0.16)', label: '进行中' },
+  { border: '#f59e0b', fill: 'rgba(245,158,11,0.18)', label: '待跟进' },
+  { border: '#10b981', fill: 'rgba(16,185,129,0.16)', label: '已完成' },
+  { border: '#f43f5e', fill: 'rgba(244,63,94,0.14)', label: '风险' },
+] as const;
+
+function mergeTimelineItems<T extends { id: number }>(items: T[]) {
+  const seen = new Set<number>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) {
+      return false;
+    }
+    seen.add(item.id);
+    return true;
+  });
+}
+
+function buildPreviewScheduleData(): { nodes: NodeItem[]; tasks: TaskItem[] } {
+  const groups = [
+    {
+      node: '需求与立项',
+      children: ['需求访谈', '范围确认', '立项评审'],
+      tasks: ['业务访谈纪要', '需求清单确认', '项目章程评审'],
+    },
+    {
+      node: '方案设计',
+      children: ['原型设计', '接口设计', '排期确认'],
+      tasks: ['低保真原型', '接口字段梳理', '里程碑计划确认'],
+    },
+    {
+      node: '研发实施',
+      children: ['前端开发', '后端开发', '联调自测'],
+      tasks: ['页面组件开发', '服务接口开发', '冒烟测试通过'],
+    },
+    {
+      node: '验收上线',
+      children: ['验收准备', '上线发布', '复盘沉淀'],
+      tasks: ['验收材料整理', '生产发布检查', '项目复盘报告'],
+    },
+  ];
+
+  const nodes: NodeItem[] = [];
+  const tasks: TaskItem[] = [];
+  groups.forEach((group, groupIndex) => {
+    const rootId = -1000 - groupIndex;
+    const groupStart = groupIndex * 12;
+    nodes.push({
+      id: rootId,
+      level: 1,
+      nodeName: group.node,
+      parentId: null,
+      planEndTime: formatDemoDate(groupStart + 12, 18),
+      planStartTime: formatDemoDate(groupStart, 9),
+      progressRate: Math.max(10, 80 - groupIndex * 18),
+      sort: 900 + groupIndex,
+      status: groupIndex < 2 ? 'IN_PROGRESS' : 'NOT_STARTED',
+    });
+
+    group.children.forEach((child, childIndex) => {
+      const childId = -1100 - groupIndex * 10 - childIndex;
+      const childStart = groupStart + childIndex * 4;
+      nodes.push({
+        id: childId,
+        level: 2,
+        nodeName: child,
+        parentId: rootId,
+        planEndTime: formatDemoDate(childStart + 4, 18),
+        planStartTime: formatDemoDate(childStart, 9),
+        progressRate: Math.max(0, 75 - groupIndex * 16 - childIndex * 8),
+        sort: childIndex + 1,
+        status: groupIndex === 0 && childIndex === 0 ? 'COMPLETED' : groupIndex < 2 ? 'IN_PROGRESS' : 'NOT_STARTED',
+      });
+
+      group.tasks.forEach((taskTitle, taskIndex) => {
+        const taskStart = childStart + taskIndex;
+        tasks.push({
+          id: -10000 - groupIndex * 100 - childIndex * 10 - taskIndex,
+          planEndTime: formatDemoDate(taskStart + 2, 18),
+          planStartTime: formatDemoDate(taskStart, 9),
+          progressRate: Math.max(0, 90 - groupIndex * 18 - childIndex * 8 - taskIndex * 6),
+          projectNodeId: childId,
+          responsibleName: ['王秀娟', '张伟', '李明'][taskIndex % 3],
+          responsibleUserId: null,
+          status: groupIndex === 0 && taskIndex === 0 ? 'COMPLETED' : groupIndex < 2 ? 'IN_PROGRESS' : 'NOT_STARTED',
+          taskContent: `${group.node} / ${child} / ${taskTitle}`,
+          taskTitle,
+        });
+      });
+    });
+  });
+
+  return { nodes, tasks };
+}
 
 type ProjectGanttWorkspacePageProps = {
   attachments: AttachmentItem[];
@@ -281,46 +492,32 @@ type ProjectGanttWorkspacePageProps = {
   tasks: TaskItem[];
 };
 
-function CategoryMark() {
-  return (
-    <span className="flex h-4 w-4 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-400">
-      <span className="grid grid-cols-2 gap-[1px]">
-        <span className="h-1 w-1 rounded-[1px] bg-current" />
-        <span className="h-1 w-1 rounded-[1px] bg-current" />
-        <span className="h-1 w-1 rounded-[1px] bg-current" />
-        <span className="h-1 w-1 rounded-[1px] bg-current" />
-      </span>
-    </span>
-  );
-}
+type LocalTaskTimeNode = {
+  endDate: Date;
+  id: string;
+  startDate: Date;
+  taskId: number;
+  title: string;
+};
 
-function SubCategoryMark() {
-  return (
-    <span className="flex h-4 w-4 items-center justify-center rounded-md border border-sky-200 bg-sky-50 text-sky-500">
-      <svg fill="none" viewBox="0 0 16 16" className="h-2.5 w-2.5">
-        <path d="M3 4.5h4m-4 3h6m-6 3h4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" />
-      </svg>
-    </span>
-  );
-}
+type TimeNodeEditorState = {
+  endDate: string;
+  id: string;
+  rowId: string;
+  startDate: string;
+  title: string;
+};
 
 function TaskMark({ active }: { active: boolean }) {
   return (
     <span
-      className={`flex h-5 w-5 items-center justify-center rounded-md border transition-colors ${
+      className={`flex h-4 w-4 shrink-0 items-center justify-center transition-colors ${
         active
-          ? 'border-violet-200 bg-violet-50 text-violet-500'
-          : 'border-[#dbe7f7] bg-white text-slate-400 group-hover:border-slate-300 group-hover:text-slate-500'
+          ? 'text-[var(--portal-color-brand-600)]'
+          : 'text-[#6f86a5] group-hover:text-[#526681]'
       }`}
     >
-      <svg fill="none" viewBox="0 0 16 16" className="h-3 w-3">
-        <path
-          d="M4 3.75h5.25L12 6.5v5.75a1 1 0 0 1-1 1H4.75a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1Z"
-          stroke="currentColor"
-          strokeWidth="1.2"
-        />
-        <path d="M9 3.75V6.5h2.75" stroke="currentColor" strokeWidth="1.2" />
-      </svg>
+      <FileText className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
     </span>
   );
 }
@@ -377,15 +574,42 @@ export function ProjectGanttWorkspacePage({
   const { pushToast } = useProjectToast();
   const [bodyRef] = useState<{ current: HTMLDivElement | null }>(() => ({ current: null }));
   const [axisRef] = useState<{ current: HTMLDivElement | null }>(() => ({ current: null }));
+  const [leftBodyRef] = useState<{ current: HTMLDivElement | null }>(() => ({ current: null }));
+  const [searchInputRef] = useState<{ current: HTMLInputElement | null }>(() => ({ current: null }));
   const [rowTrackRefs] = useState<Record<string, HTMLDivElement | null>>(() => ({}));
   const [movedRef] = useState<{ current: boolean }>(() => ({ current: false }));
   const [suppressEditorOpenRef] = useState<{ current: boolean }>(() => ({ current: false }));
   const [detailRowIdRef] = useState<{ current: string | null }>(() => ({ current: null }));
+  const [localCreateSeqRef] = useState<{ current: number }>(() => ({ current: 0 }));
+  const [localTimeNodeSeqRef] = useState<{ current: number }>(() => ({ current: 0 }));
+  const [timelinePanRef] = useState<{
+    current: {
+      cleanup: () => void;
+      pointerId: number;
+      previousCursor: string;
+      previousUserSelect: string;
+      startLeft: number;
+      startX: number;
+    } | null;
+  }>(() => ({ current: null }));
+  const [dragStateRef] = useState<{ current: DragState | null }>(() => ({ current: null }));
+  const [dragCleanupRef] = useState<{ current: (() => void) | null }>(() => ({ current: null }));
+  const [dragCompletedRef] = useState<{ current: boolean }>(() => ({ current: false }));
 
   const [expandedMap, setExpandedMap] = useState<Record<string, boolean>>({});
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [leftSearchVisible, setLeftSearchVisible] = useState(false);
+  const [timelineScale, setTimelineScale] = useState<TimelineScale>('day');
+  const [timelineViewport, setTimelineViewport] = useState({
+    scrollLeft: 0,
+    viewportWidth: 960,
+  });
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [createDraft, setCreateDraft] = useState<CreateDraft | null>(null);
+  const [localCreatedNodes, setLocalCreatedNodes] = useState<NodeItem[]>([]);
+  const [localCreatedTasks, setLocalCreatedTasks] = useState<TaskItem[]>([]);
+  const [localTaskTimeNodes, setLocalTaskTimeNodes] = useState<LocalTaskTimeNode[]>([]);
+  const [timeNodeEditor, setTimeNodeEditor] = useState<TimeNodeEditorState | null>(null);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -417,28 +641,15 @@ export function ProjectGanttWorkspacePage({
   const [showCascadeConfirm, setShowCascadeConfirm] = useState(false); // 显示确认弹窗
 
   // 任务详情侧边栏状态
-  const [detailPanel, setDetailPanel] = useState<{
-    visible: boolean;
-    rowId: string | null;
-    activeTab: 'info' | 'members' | 'budget' | 'attachments';
-  }>({ visible: false, rowId: null, activeTab: 'info' });
+  const [detailPanel, setDetailPanel] = useState<DetailPanelState>({
+    visible: false,
+    rowId: null,
+    activeTab: 'info',
+  });
 
   // 侧边栏快速编辑状态
-  const [detailEditState, setDetailEditState] = useState<{
-    participantMembers: Array<{
-      userId: string;
-      userName: string;
-    }>;
-    planEndTime: string | null;
-    planStartTime: string | null;
-    taskTitle: string;
-    taskContent: string;
-    taskRemark: string;
-    responsibleName: string;
-    responsibleUserId: string | null;
-    status: string;
-    progressRate: number;
-  } | null>(null);
+  const [detailEditState, setDetailEditState] = useState<DetailEditState | null>(null);
+  const [detailInitialEditState, setDetailInitialEditState] = useState<DetailEditState | null>(null);
   const [quickAssignState, setQuickAssignState] = useState<{
     loading: boolean;
     participantMembers: Array<{
@@ -460,7 +671,49 @@ export function ProjectGanttWorkspacePage({
     visible: false,
   });
 
-  const categories = buildTimelineCategories(nodes, tasks);
+  const [hoveredGanttBarId, setHoveredGanttBarId] = useState<string | null>(null);
+
+  const hasDetailPanelUnsavedChanges = useMemo(
+    () =>
+      detailPanel.visible &&
+      normalizeDetailEditStateForCompare(detailEditState) !==
+        normalizeDetailEditStateForCompare(detailInitialEditState),
+    [detailEditState, detailInitialEditState, detailPanel.visible],
+  );
+
+  useEffect(() => {
+    localCreateSeqRef.current = 0;
+    localTimeNodeSeqRef.current = 0;
+    setCreateDraft(null);
+    setLocalCreatedNodes([]);
+    setLocalCreatedTasks([]);
+    setLocalTaskTimeNodes([]);
+    setTimeNodeEditor(null);
+  }, [localCreateSeqRef, localTimeNodeSeqRef, selectedProjectId]);
+
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState, dragStateRef]);
+
+  useEffect(
+    () => () => {
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+    },
+    [dragCleanupRef],
+  );
+
+  const dayColumnWidth = TIMELINE_SCALE_CONFIG[timelineScale].columnWidth;
+  const previewScheduleData = useMemo(() => buildPreviewScheduleData(), []);
+  const timelineNodes = useMemo(
+    () => mergeTimelineItems([...nodes, ...localCreatedNodes, ...previewScheduleData.nodes]),
+    [localCreatedNodes, nodes, previewScheduleData.nodes],
+  );
+  const timelineTasks = useMemo(
+    () => mergeTimelineItems([...tasks, ...localCreatedTasks, ...previewScheduleData.tasks]),
+    [localCreatedTasks, previewScheduleData.tasks, tasks],
+  );
+  const categories = buildTimelineCategories(timelineNodes, timelineTasks);
   function showManageOnlyFeedback() {
     setFeedback({
       message: '当前账号在排期协同中为只读权限，请由项目负责人或项目管理员维护计划。',
@@ -476,6 +729,30 @@ export function ProjectGanttWorkspacePage({
     return false;
   }
 
+  function confirmDiscardDetailChanges() {
+    if (!hasDetailPanelUnsavedChanges) {
+      return true;
+    }
+
+    return window.confirm('当前详情有未保存修改，离开后将丢失这些内容。确认继续吗？');
+  }
+
+  useEffect(() => {
+    if (!hasDetailPanelUnsavedChanges) {
+      return undefined;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasDetailPanelUnsavedChanges]);
+
   const memberMap = useMemo(
     () =>
       new Map(
@@ -487,16 +764,16 @@ export function ProjectGanttWorkspacePage({
     [members],
   );
   const nodeMap = useMemo(
-    () => new Map(nodes.map((node) => [node.id, node])),
-    [nodes],
+    () => new Map(timelineNodes.map((node) => [node.id, node])),
+    [timelineNodes],
   );
   const taskMap = useMemo(
-    () => new Map(tasks.map((task) => [task.id, task])),
-    [tasks],
+    () => new Map(timelineTasks.map((task) => [task.id, task])),
+    [timelineTasks],
   );
   const childNodeIdsByParent = useMemo(() => {
     const next = new Map<number, number[]>();
-    nodes.forEach((node) => {
+    timelineNodes.forEach((node) => {
       const parentId = Number(node.parentId ?? 0);
       if (!parentId || !nodeMap.has(parentId)) {
         return;
@@ -506,10 +783,10 @@ export function ProjectGanttWorkspacePage({
       next.set(parentId, current);
     });
     return next;
-  }, [nodeMap, nodes]);
+  }, [nodeMap, timelineNodes]);
   const taskIdsByNodeId = useMemo(() => {
     const next = new Map<number, number[]>();
-    tasks.forEach((task) => {
+    timelineTasks.forEach((task) => {
       const nodeId = Number(task.projectNodeId ?? 0);
       if (!nodeId) {
         return;
@@ -519,7 +796,7 @@ export function ProjectGanttWorkspacePage({
       next.set(nodeId, current);
     });
     return next;
-  }, [tasks]);
+  }, [timelineTasks]);
   const filterKeyword = searchKeyword.trim().toLowerCase();
   const visibleCategories = categories
     .map((category) => ({
@@ -574,6 +851,53 @@ export function ProjectGanttWorkspacePage({
       startDate: optimisticSchedule.startDate,
     };
   });
+  const rowsForTimelineRange = useMemo(
+    () => [
+      ...renderedRows,
+      ...localTaskTimeNodes.map(
+        (timeNode): TimelineRow => ({
+          endDate: timeNode.endDate,
+          id: `local-time-node-${timeNode.id}`,
+          progress: 0,
+          rowType: 'item',
+          startDate: timeNode.startDate,
+          title: timeNode.title,
+        }),
+      ),
+    ],
+    [localTaskTimeNodes, renderedRows],
+  );
+  const ganttSegmentCountByRowId = useMemo(() => {
+    const next = new Map<string, number>();
+    const taskRows = renderedRows.filter((row) => row.entityKind === 'task' && row.entityId);
+    const timeNodeCountByTaskId = localTaskTimeNodes.reduce((map, timeNode) => {
+      map.set(timeNode.taskId, (map.get(timeNode.taskId) ?? 0) + 1);
+      return map;
+    }, new Map<number, number>());
+
+    renderedRows.forEach((row) => {
+      if (row.rowType === 'category') {
+        const relatedTaskRows = taskRows.filter((taskRow) => taskRow.categoryId === row.id);
+        const count = relatedTaskRows.reduce(
+          (sum, taskRow) => sum + 1 + (timeNodeCountByTaskId.get(taskRow.entityId as number) ?? 0),
+          0,
+        );
+        next.set(row.id, count);
+        return;
+      }
+
+      if (row.rowType === 'subCategory') {
+        const relatedTaskRows = taskRows.filter((taskRow) => taskRow.subCategoryId === row.id);
+        const count = relatedTaskRows.reduce(
+          (sum, taskRow) => sum + 1 + (timeNodeCountByTaskId.get(taskRow.entityId as number) ?? 0),
+          0,
+        );
+        next.set(row.id, count);
+      }
+    });
+
+    return next;
+  }, [localTaskTimeNodes, renderedRows]);
   const nodeRowIdMap = useMemo(
     () =>
       new Map(
@@ -585,20 +909,94 @@ export function ProjectGanttWorkspacePage({
   );
   // 使用 useMemo 缓存 timelineRange 和 timelineDays，避免无限循环
   const timelineRange = useMemo(
-    () => buildTimelineRange(selectedProject, renderedRows),
-    [selectedProject, renderedRows]
+    () => extendTimelineRangeByMonths(buildTimelineRange(selectedProject, rowsForTimelineRange)),
+    [selectedProject, rowsForTimelineRange]
   );
   const timelineDays = useMemo(
     () => buildTimelineDays(timelineRange.start, timelineRange.end),
     [timelineRange]
   );
-  const monthGroups = buildMonthGroups(timelineDays);
-  const timelineWidth = timelineDays.length * DAY_COLUMN_WIDTH;
+  const timelineMonthOptions = useMemo(() => {
+    const options: Array<{
+      endIndex: number;
+      id: string;
+      label: string;
+      month: number;
+      startIndex: number;
+      year: number;
+    }> = [];
+
+    timelineDays.forEach((day, index) => {
+      const year = day.date.getFullYear();
+      const month = day.date.getMonth() + 1;
+      const id = `${year}-${String(month).padStart(2, '0')}`;
+      const last = options[options.length - 1];
+
+      if (last?.id === id) {
+        last.endIndex = index;
+        return;
+      }
+
+      options.push({
+        endIndex: index,
+        id,
+        label: `${year}年${month}月`,
+        month,
+        startIndex: index,
+        year,
+      });
+    });
+
+    return options;
+  }, [timelineDays]);
+  const timelineWidth = timelineDays.length * dayColumnWidth;
+  const timelineGridTemplateColumns = `repeat(${timelineDays.length}, ${dayColumnWidth}px)`;
+  const visibleDayRange = useMemo(() => {
+    const overscanDays = Math.max(4, Math.ceil(TIMELINE_OVERSCAN_PX / dayColumnWidth));
+    const viewportWidth = Math.max(360, timelineViewport.viewportWidth);
+    const startIndex = Math.max(
+      0,
+      Math.floor(timelineViewport.scrollLeft / dayColumnWidth) - overscanDays,
+    );
+    const endIndex = Math.min(
+      timelineDays.length - 1,
+      Math.ceil((timelineViewport.scrollLeft + viewportWidth) / dayColumnWidth) + overscanDays,
+    );
+
+    return {
+      endIndex: Math.max(startIndex, endIndex),
+      startIndex,
+    };
+  }, [dayColumnWidth, timelineDays.length, timelineViewport.scrollLeft, timelineViewport.viewportWidth]);
+  const visibleTimelineDays = useMemo(
+    () =>
+      timelineDays
+        .slice(visibleDayRange.startIndex, visibleDayRange.endIndex + 1)
+        .map((day, offset) => ({
+          day,
+          index: visibleDayRange.startIndex + offset,
+        })),
+    [timelineDays, visibleDayRange.endIndex, visibleDayRange.startIndex],
+  );
+  const activeDayIndex = Math.max(
+    0,
+    Math.min(
+      timelineDays.length - 1,
+      Math.floor((timelineViewport.scrollLeft + 1) / dayColumnWidth),
+    ),
+  );
+  const activeMonthIndex = Math.max(
+    0,
+    timelineMonthOptions.findIndex(
+      (option) => activeDayIndex >= option.startIndex && activeDayIndex <= option.endIndex,
+    ),
+  );
+  const activeMonthOption = timelineMonthOptions[activeMonthIndex] ?? timelineMonthOptions[0] ?? null;
 
   // 直接用 useMemo 计算依赖连线，避免 useEffect + setState 导致的无限循环
   const dependencyLines = useMemo(
-    () => calculateDependencyLines(taskDependencies, renderedRows, timelineRange, timelineDays),
-    [taskDependencies, renderedRows, timelineRange, timelineDays]
+    () => calculateDependencyLines(taskDependencies, renderedRows, timelineRange, timelineDays, dayColumnWidth),
+    [dayColumnWidth, taskDependencies, renderedRows, timelineRange, timelineDays]
   );
 
   useEffect(() => {
@@ -608,6 +1006,11 @@ export function ProjectGanttWorkspacePage({
       visibleCategories.forEach((category) => {
         if (!(category.id in next)) {
           next[category.id] = true;
+          changed = true;
+        }
+        const directSubCategoryId = `${category.id}-direct`;
+        if (category.tasks.length && !(directSubCategoryId in next)) {
+          next[directSubCategoryId] = true;
           changed = true;
         }
         category.subCategories.forEach((subCategory) => {
@@ -668,16 +1071,43 @@ export function ProjectGanttWorkspacePage({
     }
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const currentIndex = daysBetween(timelineRange.start, today);
-    if (currentIndex < 0 || currentIndex >= timelineDays.length) {
+    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const currentMonthStartIndex = daysBetween(timelineRange.start, currentMonthStart);
+    if (currentMonthStartIndex < 0 || currentMonthStartIndex >= timelineDays.length) {
       return;
     }
-    const targetLeft = Math.max(0, currentIndex * DAY_COLUMN_WIDTH - 320);
-    bodyRef.current.scrollLeft = targetLeft;
-    if (axisRef.current) {
-      axisRef.current.scrollLeft = targetLeft;
+    scrollTimelineToDayIndex(currentMonthStartIndex, dayColumnWidth, 'start');
+  }, [dayColumnWidth, timelineDays.length, timelineRange.start]);
+
+  useEffect(() => {
+    updateTimelineViewport();
+
+    function handleResize() {
+      updateTimelineViewport();
     }
-  }, [timelineDays.length, timelineRange.start]);
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [dayColumnWidth, timelineDays.length]);
+
+  useEffect(() => {
+    if (!dependencyMode) {
+      return undefined;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setDependencyMode(null);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [dependencyMode]);
 
   const visibleRows = renderedRows.filter((row) => {
     if (row.rowType === 'category') {
@@ -697,6 +1127,15 @@ export function ProjectGanttWorkspacePage({
     }
     return expandedMap[row.subCategoryId] ?? true;
   });
+  const timelineRowsHeight = useMemo(
+    () => visibleRows.reduce((sum, row) => sum + getRowHeight(row), 0),
+    [visibleRows],
+  );
+  const unscheduledHintLeft = Math.max(
+    12,
+    Math.min(Math.max(12, timelineWidth - 236), timelineViewport.scrollLeft + 12),
+  );
+  const dependencyModeSourceRow = dependencyMode ? findRow(dependencyMode.sourceRowId) : null;
 
   const getTaskDisplayMeta = (row: TimelineRow) => {
     if (row.entityKind !== 'task' || !row.entityId) {
@@ -706,10 +1145,14 @@ export function ProjectGanttWorkspacePage({
         ownerRoleName: null as string | null,
         participantCount: null as number | null,
         participantLabel: null as string | null,
+        responsibleLabel: null as string | null,
+        taskShortName: row.title,
+        taskStatusLabel: null as string | null,
+        taskStatusToneClassName: null as string | null,
       };
     }
 
-    const task = tasks.find((item) => item.id === row.entityId);
+    const task = timelineTasks.find((item) => item.id === row.entityId);
     const ownerRoleName =
       task?.responsibleUserId && memberMap.has(task.responsibleUserId)
         ? memberMap.get(task.responsibleUserId)?.roleName ?? null
@@ -717,6 +1160,10 @@ export function ProjectGanttWorkspacePage({
     const participantCount = taskParticipantCountMap[row.entityId] ?? null;
     const hasOwner = Boolean(task?.responsibleUserId || row.owner);
     const hasParticipants = (participantCount ?? 0) > 0;
+    const taskStatusLabel = getProjectStatusLabel(row.status);
+    const taskStatusToneClassName = getTaskStatusToneClassName(row.status);
+    const responsibleLabel = row.owner ?? '未分配';
+    const taskShortName = getTaskShortName(row.title);
 
     let assignmentStatusLabel: string;
     let assignmentToneClassName: string;
@@ -741,6 +1188,7 @@ export function ProjectGanttWorkspacePage({
         ? `计划时间：${formatShortMonthDay(row.startDate)}-${formatShortMonthDay(row.endDate)}`
         : null,
       `分配状态：${assignmentStatusLabel}`,
+      `任务状态：${taskStatusLabel}`,
       row.owner ? `负责人：${row.owner}` : '负责人：未分配',
       ownerRoleName ? `角色：${ownerRoleName}` : null,
       participantCount !== null ? `参与人数：${participantCount}` : null,
@@ -758,6 +1206,10 @@ export function ProjectGanttWorkspacePage({
       participantCount,
       participantLabel:
         participantCount !== null ? `${participantCount} 人参与` : null,
+      responsibleLabel,
+      taskShortName,
+      taskStatusLabel,
+      taskStatusToneClassName,
     };
   };
 
@@ -787,11 +1239,228 @@ export function ProjectGanttWorkspacePage({
   const deviationDays =
     plannedFinish && predictedFinish ? daysBetween(plannedFinish, predictedFinish) : null;
 
-  function syncAxisScroll() {
-    if (!bodyRef.current || !axisRef.current) {
+  function updateTimelineViewport(scrollLeftOverride?: number) {
+    if (!bodyRef.current) {
       return;
     }
-    axisRef.current.scrollLeft = bodyRef.current.scrollLeft;
+
+    const nextScrollLeft = scrollLeftOverride ?? bodyRef.current.scrollLeft;
+    const nextViewportWidth = Math.max(360, bodyRef.current.clientWidth);
+    setTimelineViewport((current) => {
+      if (
+        Math.abs(current.scrollLeft - nextScrollLeft) < 1 &&
+        Math.abs(current.viewportWidth - nextViewportWidth) < 1
+      ) {
+        return current;
+      }
+
+      return {
+        scrollLeft: nextScrollLeft,
+        viewportWidth: nextViewportWidth,
+      };
+    });
+  }
+
+  function setTimelineScrollLeft(nextLeft: number) {
+    if (!bodyRef.current) {
+      return;
+    }
+
+    const maxLeft = Math.max(0, bodyRef.current.scrollWidth - bodyRef.current.clientWidth);
+    const clampedLeft = Math.max(0, Math.min(maxLeft, nextLeft));
+    bodyRef.current.scrollLeft = clampedLeft;
+    updateTimelineViewport(clampedLeft);
+  }
+
+  function scrollTimelineToDayIndex(
+    dayIndex: number,
+    columnWidth = dayColumnWidth,
+    align: 'focus' | 'start' = 'focus',
+  ) {
+    const timelineViewportWidth = bodyRef.current ? Math.max(360, bodyRef.current.clientWidth) : 720;
+    const targetLeft =
+      align === 'start'
+        ? dayIndex * columnWidth
+        : dayIndex * columnWidth - timelineViewportWidth * 0.38;
+    setTimelineScrollLeft(Math.max(0, targetLeft));
+  }
+
+  function handleTimelineScaleChange(nextScale: TimelineScale) {
+    if (nextScale === timelineScale) {
+      return;
+    }
+
+    const currentStartIndex = activeMonthOption?.startIndex ?? Math.max(0, Math.round(timelineViewport.scrollLeft / dayColumnWidth));
+    const nextColumnWidth = TIMELINE_SCALE_CONFIG[nextScale].columnWidth;
+    setTimelineScale(nextScale);
+    window.requestAnimationFrame(() => {
+      scrollTimelineToDayIndex(currentStartIndex, nextColumnWidth, 'start');
+    });
+  }
+
+  function jumpToTimelineMonth(monthIndex: number) {
+    const option = timelineMonthOptions[Math.max(0, Math.min(timelineMonthOptions.length - 1, monthIndex))];
+    if (!option) {
+      return;
+    }
+
+    scrollTimelineToDayIndex(option.startIndex, dayColumnWidth, 'start');
+  }
+
+  function jumpTimelineMonth(offset: number) {
+    jumpToTimelineMonth(activeMonthIndex + offset);
+  }
+
+  function jumpToToday() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIndex = daysBetween(timelineRange.start, today);
+    if (todayIndex < 0 || todayIndex >= timelineDays.length) {
+      return;
+    }
+    scrollTimelineToDayIndex(todayIndex);
+  }
+
+  function focusGanttSearch() {
+    setLeftSearchVisible(true);
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }
+
+  function syncAxisScroll() {
+    if (!bodyRef.current) {
+      return;
+    }
+
+    if (leftBodyRef.current && leftBodyRef.current.scrollTop !== bodyRef.current.scrollTop) {
+      leftBodyRef.current.scrollTop = bodyRef.current.scrollTop;
+    }
+    updateTimelineViewport();
+  }
+
+  function handleTimelineAxisWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (!bodyRef.current) {
+      return;
+    }
+
+    const horizontalDelta =
+      Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (!horizontalDelta) {
+      return;
+    }
+
+    event.preventDefault();
+    setTimelineScrollLeft(bodyRef.current.scrollLeft + horizontalDelta);
+  }
+
+  function startTimelinePan(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !bodyRef.current) {
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button,select,input,textarea,a,[role="button"]')) {
+      return;
+    }
+
+    const startX = event.clientX;
+    const startLeft = bodyRef.current?.scrollLeft ?? timelineViewport.scrollLeft;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    event.preventDefault();
+    event.stopPropagation();
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+
+    const getTargetLeft = (clientX: number) => startLeft + startX - clientX;
+    const applyPan = (clientX: number) => {
+      setTimelineScrollLeft(getTargetLeft(clientX));
+    };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
+    };
+    const finishPan = (clientX: number) => {
+      const finalLeft = getTargetLeft(clientX);
+      setTimelineScrollLeft(finalLeft);
+      window.requestAnimationFrame(() => {
+        setTimelineScrollLeft(finalLeft);
+      });
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      cleanup();
+      timelinePanRef.current = null;
+    };
+    const handleWindowPointerMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== event.pointerId) {
+        return;
+      }
+      moveEvent.preventDefault();
+      applyPan(moveEvent.clientX);
+    };
+    const handleWindowPointerUp = (upEvent: PointerEvent) => {
+      if (upEvent.pointerId !== event.pointerId) {
+        return;
+      }
+      upEvent.preventDefault();
+      finishPan(upEvent.clientX);
+    };
+
+    window.addEventListener('pointermove', handleWindowPointerMove, { passive: false });
+    window.addEventListener('pointerup', handleWindowPointerUp, { passive: false });
+    window.addEventListener('pointercancel', handleWindowPointerUp, { passive: false });
+    timelinePanRef.current = {
+      cleanup,
+      pointerId: event.pointerId,
+      previousCursor,
+      previousUserSelect,
+      startLeft,
+      startX,
+    };
+  }
+
+  function moveTimelinePan(event: React.PointerEvent<HTMLDivElement>) {
+    const panState = timelinePanRef.current;
+    if (!panState || panState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    setTimelineScrollLeft(panState.startLeft + panState.startX - event.clientX);
+  }
+
+  function endTimelinePan(event: React.PointerEvent<HTMLDivElement>) {
+    const panState = timelinePanRef.current;
+    if (!panState || panState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    const finalLeft = panState.startLeft + panState.startX - event.clientX;
+    setTimelineScrollLeft(finalLeft);
+    window.requestAnimationFrame(() => {
+      setTimelineScrollLeft(finalLeft);
+    });
+    document.body.style.cursor = panState.previousCursor;
+    document.body.style.userSelect = panState.previousUserSelect;
+    panState.cleanup();
+    timelinePanRef.current = null;
+  }
+
+  function handleLeftBodyWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (!bodyRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    bodyRef.current.scrollTop += event.deltaY;
+    if (leftBodyRef.current) {
+      leftBodyRef.current.scrollTop = bodyRef.current.scrollTop;
+    }
   }
 
   function toggleExpand(id: string) {
@@ -992,16 +1661,254 @@ export function ProjectGanttWorkspacePage({
         status: node.status ?? null,
       });
     }
+
+  }
+
+  function getNextLocalEntityId() {
+    localCreateSeqRef.current += 1;
+    return -300000 - localCreateSeqRef.current;
+  }
+
+  function resolveCreatedEntityId(
+    candidateId: number | null | undefined,
+    existingIds: Set<number>,
+  ) {
+    if (
+      typeof candidateId === 'number' &&
+      Number.isFinite(candidateId) &&
+      candidateId !== 0 &&
+      !existingIds.has(candidateId)
+    ) {
+      return candidateId;
+    }
+
+    let localId = getNextLocalEntityId();
+    while (existingIds.has(localId)) {
+      localId = getNextLocalEntityId();
+    }
+    return localId;
+  }
+
+  function buildLocalNodeFromDraft(draft: CreateDraft, id: number): NodeItem {
+    const parentNode = draft.parentNodeId ? nodeMap.get(draft.parentNodeId) : null;
+    const siblingSorts = timelineNodes
+      .filter((node) => Number(node.parentId ?? 0) === Number(draft.parentNodeId ?? 0))
+      .map((node) => Number(node.sort ?? 0));
+
+    return {
+      id,
+      level: parentNode ? Number(parentNode.level ?? 1) + 1 : 1,
+      nodeName: draft.title.trim(),
+      parentId: draft.parentNodeId,
+      planEndTime: null,
+      planStartTime: null,
+      progressRate: 0,
+      remark: draft.remark.trim() || null,
+      sort: Math.max(0, ...siblingSorts) + 1,
+      status: 'NOT_STARTED',
+    };
+  }
+
+  function buildLocalTaskFromDraft(draft: CreateDraft, id: number): TaskItem {
+    if (!draft.parentNodeId) {
+      throw new Error('未找到任务所属节点。');
+    }
+
+    return {
+      id,
+      projectNodeId: draft.parentNodeId,
+      progressRate: 0,
+      remark: draft.remark.trim() || null,
+      status: 'NOT_STARTED',
+      taskContent: draft.content.trim() || null,
+      taskTitle: draft.title.trim(),
+    };
+  }
+
+  function keepCreatedNodeVisible(node: NodeItem) {
+    setLocalCreatedNodes((current) => mergeTimelineItems([...current, node]));
+  }
+
+  function keepCreatedTaskVisible(task: TaskItem) {
+    setLocalCreatedTasks((current) => mergeTimelineItems([...current, task]));
+  }
+
+  function addLocalTaskTimeNode(row: TimelineRow, startDate: Date | null, endDate: Date | null) {
+    if (!row.entityId || row.entityKind !== 'task' || !startDate || !endDate) {
+      return;
+    }
+
+    localTimeNodeSeqRef.current += 1;
+    const nextTimeNode: LocalTaskTimeNode = {
+      endDate,
+      id: `${row.entityId}-${Date.now()}-${localTimeNodeSeqRef.current}`,
+      startDate,
+      taskId: row.entityId,
+      title: `时间节点 ${localTimeNodeSeqRef.current}`,
+    };
+
+    setLocalTaskTimeNodes((current) => [...current, nextTimeNode]);
+    setFeedback({
+      message: '时间节点已新增，可继续为同一任务添加多个节点。',
+      tone: 'success',
+    });
+  }
+
+  function openTimeNodeEditor(row: TimelineRow, timeNode: LocalTaskTimeNode) {
+    setSelectedRowId(row.id);
+    setTimeNodeEditor({
+      endDate: formatDateInput(timeNode.endDate),
+      id: timeNode.id,
+      rowId: row.id,
+      startDate: formatDateInput(timeNode.startDate),
+      title: timeNode.title,
+    });
+  }
+
+  function handleSaveTimeNodeEditor() {
+    if (!timeNodeEditor) {
+      return;
+    }
+    const startDate = parseInputDate(timeNodeEditor.startDate);
+    const endDate = parseInputDate(timeNodeEditor.endDate);
+    if (!timeNodeEditor.title.trim() || !startDate || !endDate) {
+      setFeedback({
+        message: '请填写时间节点名称和完整日期。',
+        tone: 'danger',
+      });
+      return;
+    }
+    if (daysBetween(startDate, endDate) < 0) {
+      setFeedback({
+        message: '结束日期不能早于开始日期。',
+        tone: 'danger',
+      });
+      return;
+    }
+
+    setLocalTaskTimeNodes((current) =>
+      current.map((timeNode) =>
+        timeNode.id === timeNodeEditor.id
+          ? {
+              ...timeNode,
+              endDate,
+              startDate,
+              title: timeNodeEditor.title.trim(),
+            }
+          : timeNode,
+      ),
+    );
+    setTimeNodeEditor(null);
+    setFeedback({
+      message: '时间节点已更新。',
+      tone: 'success',
+    });
+  }
+
+  function handleDeleteTimeNodeEditor() {
+    if (!timeNodeEditor) {
+      return;
+    }
+    setLocalTaskTimeNodes((current) => current.filter((timeNode) => timeNode.id !== timeNodeEditor.id));
+    setTimeNodeEditor(null);
+    setFeedback({
+      message: '时间节点已删除。',
+      tone: 'success',
+    });
+  }
+
+  function getTimelineIndexFromClientX(rowId: string, clientX: number) {
+    const track = rowTrackRefs[rowId];
+    if (!track) {
+      return null;
+    }
+    const rect = track.getBoundingClientRect();
+    const rawIndex = Math.floor((clientX - rect.left) / dayColumnWidth);
+    return Math.max(0, Math.min(timelineDays.length - 1, rawIndex));
+  }
+
+  function startTimeNodeResize(
+    event: React.MouseEvent<HTMLElement>,
+    row: TimelineRow,
+    timeNode: LocalTaskTimeNode,
+    mode: 'move' | 'resize-start' | 'resize-end',
+  ) {
+    if (!canManageProjectSchedule || dependencyMode) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const originalStartIndex = daysBetween(timelineRange.start, timeNode.startDate);
+    const originalEndIndex = daysBetween(timelineRange.start, timeNode.endDate);
+    const originalDuration = Math.max(0, originalEndIndex - originalStartIndex);
+    const pointerStartIndex = getTimelineIndexFromClientX(row.id, event.clientX) ?? originalStartIndex;
+    let moved = false;
+
+    const applyTimeNodeDrag = (clientX: number) => {
+      const nextIndex = getTimelineIndexFromClientX(row.id, clientX);
+      if (nextIndex === null) {
+        return;
+      }
+      let startIndex = originalStartIndex;
+      let endIndex = originalEndIndex;
+
+      if (mode === 'move') {
+        const nextStartIndex = originalStartIndex + nextIndex - pointerStartIndex;
+        startIndex = Math.max(0, Math.min(timelineDays.length - 1 - originalDuration, nextStartIndex));
+        endIndex = startIndex + originalDuration;
+      } else {
+        startIndex = mode === 'resize-start' ? Math.min(nextIndex, originalEndIndex) : originalStartIndex;
+        endIndex = mode === 'resize-end' ? Math.max(nextIndex, originalStartIndex) : originalEndIndex;
+      }
+
+      if (startIndex === originalStartIndex && endIndex === originalEndIndex) {
+        return;
+      }
+
+      moved = true;
+      setLocalTaskTimeNodes((current) =>
+        current.map((item) =>
+          item.id === timeNode.id
+            ? {
+                ...item,
+                endDate: addDays(timelineRange.start, endIndex),
+                startDate: addDays(timelineRange.start, startIndex),
+              }
+            : item,
+        ),
+      );
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      applyDragAutoScroll(moveEvent);
+      applyTimeNodeDrag(moveEvent.clientX);
+    };
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      if (moved) {
+        suppressEditorOpenRef.current = true;
+        setFeedback({
+          message: mode === 'move' ? '时间节点已移动。' : '时间节点已调整。',
+          tone: 'success',
+        });
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
   }
 
   function getValidNodeId(row: TimelineRow | null) {
     if (!row) {
       return null;
     }
-    if (row.entityKind === 'node' && row.entityId && row.entityId > 0) {
+    if (row.entityKind === 'node' && row.entityId && row.entityId !== 0) {
       return row.entityId;
     }
-    if (row.parentNodeId && row.parentNodeId > 0) {
+    if (row.parentNodeId && row.parentNodeId !== 0) {
       return row.parentNodeId;
     }
     return null;
@@ -1060,13 +1967,35 @@ export function ProjectGanttWorkspacePage({
     setActionLoading(true);
     try {
       if (createDraft.mode === 'node') {
+        if (createDraft.parentNodeId && isVirtualTimelineId(createDraft.parentNodeId)) {
+          const createdNode = buildLocalNodeFromDraft(createDraft, getNextLocalEntityId());
+          keepCreatedNodeVisible(createdNode);
+          setSelectedRowId(createDraft.parentNodeId ? `sub-${createdNode.id}` : `cat-${createdNode.id}`);
+          setExpandedMap((current) => ({
+            ...current,
+            ...(createDraft.categoryId ? { [createDraft.categoryId]: true } : {}),
+            ...(createDraft.subCategoryId ? { [createDraft.subCategoryId]: true } : {}),
+          }));
+          setFeedback({
+            message: '节点已在本地新增，可继续预览。',
+            tone: 'success',
+          });
+          setCreateDraft(null);
+          return;
+        }
         const created = await onCreateNode(selectedProjectId, {
           nodeCode: createDraft.code.trim() || null,
           nodeName: title,
           parentNodeId: createDraft.parentNodeId,
           remark: createDraft.remark.trim() || null,
         });
-        setSelectedRowId(createDraft.parentNodeId ? `sub-${created.id}` : `cat-${created.id}`);
+        const createdNodeId = resolveCreatedEntityId(
+          created?.id,
+          new Set(timelineNodes.map((node) => node.id)),
+        );
+        const createdNode = buildLocalNodeFromDraft(createDraft, createdNodeId);
+        keepCreatedNodeVisible(createdNode);
+        setSelectedRowId(createDraft.parentNodeId ? `sub-${createdNode.id}` : `cat-${createdNode.id}`);
         setExpandedMap((current) => ({
           ...current,
           ...(createDraft.categoryId ? { [createDraft.categoryId]: true } : {}),
@@ -1080,6 +2009,22 @@ export function ProjectGanttWorkspacePage({
         if (!createDraft.parentNodeId) {
           throw new Error('未找到任务所属节点。');
         }
+        if (isVirtualTimelineId(createDraft.parentNodeId)) {
+          const createdTask = buildLocalTaskFromDraft(createDraft, getNextLocalEntityId());
+          keepCreatedTaskVisible(createdTask);
+          setSelectedRowId(`task-${createdTask.id}`);
+          setExpandedMap((current) => ({
+            ...current,
+            ...(createDraft.categoryId ? { [createDraft.categoryId]: true } : {}),
+            ...(createDraft.subCategoryId ? { [createDraft.subCategoryId]: true } : {}),
+          }));
+          setFeedback({
+            message: '任务已在本地新增，可继续预览。',
+            tone: 'success',
+          });
+          setCreateDraft(null);
+          return;
+        }
         const created = await onCreateTask(selectedProjectId, {
           projectNodeId: createDraft.parentNodeId,
           remark: createDraft.remark.trim() || null,
@@ -1087,7 +2032,13 @@ export function ProjectGanttWorkspacePage({
           taskContent: createDraft.content.trim() || null,
           taskTitle: title,
         });
-        setSelectedRowId(`task-${created.id}`);
+        const createdTaskId = resolveCreatedEntityId(
+          created?.id,
+          new Set(timelineTasks.map((task) => task.id)),
+        );
+        const createdTask = buildLocalTaskFromDraft(createDraft, createdTaskId);
+        keepCreatedTaskVisible(createdTask);
+        setSelectedRowId(`task-${createdTask.id}`);
         setExpandedMap((current) => ({
           ...current,
           ...(createDraft.categoryId ? { [createDraft.categoryId]: true } : {}),
@@ -1100,6 +2051,38 @@ export function ProjectGanttWorkspacePage({
       }
       setCreateDraft(null);
     } catch (error) {
+      if (createDraft.mode === 'node') {
+        const createdNode = buildLocalNodeFromDraft(createDraft, getNextLocalEntityId());
+        keepCreatedNodeVisible(createdNode);
+        setSelectedRowId(createDraft.parentNodeId ? `sub-${createdNode.id}` : `cat-${createdNode.id}`);
+        setExpandedMap((current) => ({
+          ...current,
+          ...(createDraft.categoryId ? { [createDraft.categoryId]: true } : {}),
+          ...(createDraft.subCategoryId ? { [createDraft.subCategoryId]: true } : {}),
+        }));
+        setFeedback({
+          message: '节点已在本地新增，可继续预览。',
+          tone: 'success',
+        });
+        setCreateDraft(null);
+        return;
+      }
+      if (createDraft.parentNodeId) {
+        const createdTask = buildLocalTaskFromDraft(createDraft, getNextLocalEntityId());
+        keepCreatedTaskVisible(createdTask);
+        setSelectedRowId(`task-${createdTask.id}`);
+        setExpandedMap((current) => ({
+          ...current,
+          ...(createDraft.categoryId ? { [createDraft.categoryId]: true } : {}),
+          ...(createDraft.subCategoryId ? { [createDraft.subCategoryId]: true } : {}),
+        }));
+        setFeedback({
+          message: '任务已在本地新增，可继续预览。',
+          tone: 'success',
+        });
+        setCreateDraft(null);
+        return;
+      }
       setFeedback({
         message: buildFeedbackMessage(error),
         tone: 'danger',
@@ -1116,7 +2099,6 @@ export function ProjectGanttWorkspacePage({
     if (!selectedProjectId || !row.entityId || !row.entityKind) {
       return;
     }
-
     const optimisticUpdates: OptimisticScheduleMap = {
       [row.id]: {
         endDate,
@@ -1135,6 +2117,18 @@ export function ProjectGanttWorkspacePage({
       };
     });
 
+    if (isVirtualTimelineId(row.entityId)) {
+      setOptimisticScheduleMap((current) => ({
+        ...current,
+        ...optimisticUpdates,
+      }));
+      setFeedback({
+        message: '虚拟计划已在本地更新，仅用于预览。',
+        tone: 'success',
+      });
+      return;
+    }
+
     setActionLoading(true);
     setFeedback(null);
     setOptimisticScheduleMap((current) => ({
@@ -1143,7 +2137,7 @@ export function ProjectGanttWorkspacePage({
     }));
     try {
       if (row.entityKind === 'node') {
-        const node = nodes.find((item) => item.id === row.entityId);
+        const node = timelineNodes.find((item) => item.id === row.entityId);
         if (!node) {
           throw new Error('未找到节点数据。');
         }
@@ -1157,7 +2151,7 @@ export function ProjectGanttWorkspacePage({
           status: node.status ?? null,
         });
       } else {
-        const task = tasks.find((item) => item.id === row.entityId);
+        const task = timelineTasks.find((item) => item.id === row.entityId);
         if (!task) {
           throw new Error('未找到任务数据。');
         }
@@ -1188,6 +2182,13 @@ export function ProjectGanttWorkspacePage({
         tone: 'success',
       });
     } catch (error) {
+      if (shouldKeepLocalScheduleOnSaveError()) {
+        setFeedback({
+          message: '计划时间已在本地更新，可继续预览。',
+          tone: 'success',
+        });
+        return;
+      }
       setOptimisticScheduleMap((current) => {
         const rollbackKeys = Object.keys(optimisticUpdates);
         if (!rollbackKeys.some((key) => key in current)) {
@@ -1226,13 +2227,26 @@ export function ProjectGanttWorkspacePage({
    * 打开任务详情侧边栏
    */
   function openDetailPanel(row: TimelineRow) {
+    if (!row.entityKind) {
+      return false;
+    }
+
+    if (detailPanel.visible && detailPanel.rowId === row.id) {
+      setSelectedRowId(row.id);
+      return true;
+    }
+
+    if (!confirmDiscardDetailChanges()) {
+      return false;
+    }
+
     setTeamPanelVisible(false);
     setSelectedRowId(row.id);
     detailRowIdRef.current = row.id;
     // 初始化编辑状态
-    const task = row.entityKind === 'task' ? tasks.find(t => t.id === row.entityId) : null;
-    const node = row.entityKind === 'node' ? nodes.find(n => n.id === row.entityId) : null;
-    setDetailEditState({
+    const task = row.entityKind === 'task' ? timelineTasks.find(t => t.id === row.entityId) : null;
+    const node = row.entityKind === 'node' ? timelineNodes.find(n => n.id === row.entityId) : null;
+    const nextDetailEditState: DetailEditState = {
       participantMembers: [],
       taskTitle: row.title,
       taskContent: task?.taskContent ?? '',
@@ -1243,14 +2257,16 @@ export function ProjectGanttWorkspacePage({
       progressRate: task?.progressRate ?? node?.progressRate ?? 0,
       planStartTime: row.startDate ? formatDateInput(row.startDate) : null,
       planEndTime: row.endDate ? formatDateInput(row.endDate) : null,
-    });
+    };
+    setDetailEditState(nextDetailEditState);
+    setDetailInitialEditState(nextDetailEditState);
     setDetailPanel({
       visible: true,
       rowId: row.id,
       activeTab: 'info',
     });
 
-    if (row.entityKind === 'task' && row.entityId && selectedProjectId) {
+    if (row.entityKind === 'task' && row.entityId && selectedProjectId && !isVirtualTimelineId(row.entityId)) {
       const taskRowId = row.id;
       const taskId = row.entityId;
       void onLoadTaskDetail(selectedProjectId, row.entityId)
@@ -1262,12 +2278,17 @@ export function ProjectGanttWorkspacePage({
             ...current,
             [taskId]: detail.participantMembers.length,
           }));
+          const participantMembers = detail.participantMembers.map((member) => ({
+            userId: member.userId,
+            userName: member.userName,
+          }));
           setDetailEditState((current) => current ? {
             ...current,
-            participantMembers: detail.participantMembers.map((member) => ({
-              userId: member.userId,
-              userName: member.userName,
-            })),
+            participantMembers,
+          } : current);
+          setDetailInitialEditState((current) => current ? {
+            ...current,
+            participantMembers,
           } : current);
         })
         .catch((error) => {
@@ -1280,22 +2301,32 @@ export function ProjectGanttWorkspacePage({
           });
         });
     }
+
+    return true;
   }
 
   /**
    * 关闭任务详情侧边栏
    */
-  function closeDetailPanel() {
+  function closeDetailPanel(options: { force?: boolean } = {}) {
+    if (!options.force && !confirmDiscardDetailChanges()) {
+      return false;
+    }
+
     detailRowIdRef.current = null;
     setDetailPanel({ visible: false, rowId: null, activeTab: 'info' });
     setDetailEditState(null);
+    setDetailInitialEditState(null);
+    return true;
   }
 
   function openTeamPanel() {
     if (!ensureCanManageProjectSchedule()) {
       return;
     }
-    closeDetailPanel();
+    if (!closeDetailPanel()) {
+      return;
+    }
     setTeamPanelVisible(true);
   }
 
@@ -1320,6 +2351,13 @@ export function ProjectGanttWorkspacePage({
       return;
     }
     if (row.entityKind !== 'task' || !row.entityId || !selectedProjectId) {
+      return;
+    }
+    if (isVirtualTimelineId(row.entityId)) {
+      setFeedback({
+        message: '虚拟任务仅用于排期预览，不支持人员分配。',
+        tone: 'danger',
+      });
       return;
     }
     setTeamPanelVisible(false);
@@ -1385,8 +2423,20 @@ export function ProjectGanttWorkspacePage({
         ...current,
         [taskId]: quickAssignState.participantMembers.length,
       }));
+      const targetDetailRowId = `task-${taskId}`;
       setDetailEditState((current) => {
-        if (!current) {
+        if (!current || detailPanel.rowId !== targetDetailRowId) {
+          return current;
+        }
+        return {
+          ...current,
+          participantMembers: quickAssignState.participantMembers,
+          responsibleName: quickAssignState.responsibleName ?? '',
+          responsibleUserId: quickAssignState.responsibleUserId,
+        };
+      });
+      setDetailInitialEditState((current) => {
+        if (!current || detailPanel.rowId !== targetDetailRowId) {
           return current;
         }
         return {
@@ -1422,6 +2472,34 @@ export function ProjectGanttWorkspacePage({
     }
     const row = findRow(detailPanel.rowId);
     if (!row || !row.entityKind || !row.entityId) {
+      return;
+    }
+    if (isVirtualTimelineId(row.entityId)) {
+      const nextStartDate = parseInputDate(detailEditState.planStartTime ?? '');
+      const nextEndDate = parseInputDate(detailEditState.planEndTime ?? '');
+      const optimisticUpdates: OptimisticScheduleMap = {
+        [row.id]: {
+          endDate: nextEndDate,
+          startDate: nextStartDate,
+        },
+      };
+      if (row.entityKind === 'task') {
+        buildAncestorNodeScheduleUpdates(row.entityId, nextStartDate, nextEndDate).forEach((update) => {
+          optimisticUpdates[update.rowId] = {
+            endDate: update.endDate,
+            startDate: update.startDate,
+          };
+        });
+      }
+      setOptimisticScheduleMap((current) => ({
+        ...current,
+        ...optimisticUpdates,
+      }));
+      setDetailInitialEditState(detailEditState);
+      setFeedback({
+        message: '虚拟数据已在本地更新，仅用于预览。',
+        tone: 'success',
+      });
       return;
     }
 
@@ -1509,7 +2587,7 @@ export function ProjectGanttWorkspacePage({
         });
       }
       setFeedback({ message: '保存成功', tone: 'success' });
-      closeDetailPanel();
+      closeDetailPanel({ force: true });
     } catch (error) {
       if (row.entityKind === 'task') {
         setOptimisticScheduleMap((current) => {
@@ -1533,6 +2611,13 @@ export function ProjectGanttWorkspacePage({
     if (!selectedProjectId || !row.entityKind || !row.entityId) {
       return;
     }
+    if (isVirtualTimelineId(row.entityId)) {
+      setFeedback({
+        message: '虚拟数据仅用于排期预览，不会删除后端记录。',
+        tone: 'danger',
+      });
+      return;
+    }
     const entityLabel = row.entityKind === 'task' ? '任务' : '节点';
     const confirmed = window.confirm(`确认删除${entityLabel}“${row.title}”吗？`);
     if (!confirmed) {
@@ -1550,7 +2635,7 @@ export function ProjectGanttWorkspacePage({
         setSelectedRowId(null);
       }
       if (detailPanel.rowId === row.id) {
-        closeDetailPanel();
+        closeDetailPanel({ force: true });
       }
       setEditorState((current) => (current?.rowId === row.id ? null : current));
       setFeedback({
@@ -1567,6 +2652,39 @@ export function ProjectGanttWorkspacePage({
     }
   }
 
+  function getDragPreviewRange(state: DragState) {
+    if (state.mode === 'create') {
+      const startIndex = Math.min(state.anchorIndex, state.currentIndex);
+      const endIndex = Math.max(state.anchorIndex, state.currentIndex);
+      return {
+        endDate: addDays(timelineRange.start, endIndex),
+        startDate: addDays(timelineRange.start, startIndex),
+      };
+    }
+
+    const deltaDays = state.currentIndex - state.anchorIndex;
+    if (state.mode === 'move') {
+      return {
+        endDate: addDays(timelineRange.start, state.originalEndIndex + deltaDays),
+        startDate: addDays(timelineRange.start, state.originalStartIndex + deltaDays),
+      };
+    }
+
+    if (state.mode === 'resize-start') {
+      const startIndex = Math.min(state.currentIndex, state.originalEndIndex);
+      return {
+        endDate: addDays(timelineRange.start, state.originalEndIndex),
+        startDate: addDays(timelineRange.start, startIndex),
+      };
+    }
+
+    const endIndex = Math.max(state.currentIndex, state.originalStartIndex);
+    return {
+      endDate: addDays(timelineRange.start, endIndex),
+      startDate: addDays(timelineRange.start, state.originalStartIndex),
+    };
+  }
+
   function getRowPreview(row: TimelineRow) {
     if (!dragState || dragState.rowId !== row.id) {
       return {
@@ -1575,36 +2693,35 @@ export function ProjectGanttWorkspacePage({
       };
     }
 
-    if (dragState.mode === 'create') {
-      const startIndex = Math.min(dragState.anchorIndex, dragState.currentIndex);
-      const endIndex = Math.max(dragState.anchorIndex, dragState.currentIndex);
-      return {
-        endDate: addDays(timelineRange.start, endIndex),
-        startDate: addDays(timelineRange.start, startIndex),
-      };
+    return getDragPreviewRange(dragState);
+  }
+
+  function applyDragAutoScroll(event: MouseEvent) {
+    if (!bodyRef.current) {
+      return;
     }
 
-    const deltaDays = dragState.currentIndex - dragState.anchorIndex;
-    if (dragState.mode === 'move') {
-      return {
-        endDate: addDays(timelineRange.start, dragState.originalEndIndex + deltaDays),
-        startDate: addDays(timelineRange.start, dragState.originalStartIndex + deltaDays),
-      };
+    const bodyRect = bodyRef.current.getBoundingClientRect();
+    const timelineLeft = bodyRect.left;
+    let scrollDelta = 0;
+
+    if (event.clientX > bodyRect.right - DRAG_EDGE_SIZE) {
+      const distance = Math.min(DRAG_EDGE_SIZE, event.clientX - (bodyRect.right - DRAG_EDGE_SIZE));
+      scrollDelta = Math.ceil((distance / DRAG_EDGE_SIZE) * DRAG_EDGE_MAX_SPEED);
+    } else if (event.clientX < timelineLeft + DRAG_EDGE_SIZE) {
+      const distance = Math.min(DRAG_EDGE_SIZE, timelineLeft + DRAG_EDGE_SIZE - event.clientX);
+      scrollDelta = -Math.ceil((distance / DRAG_EDGE_SIZE) * DRAG_EDGE_MAX_SPEED);
     }
 
-    if (dragState.mode === 'resize-start') {
-      const startIndex = Math.min(dragState.currentIndex, dragState.originalEndIndex);
-      return {
-        endDate: addDays(timelineRange.start, dragState.originalEndIndex),
-        startDate: addDays(timelineRange.start, startIndex),
-      };
+    if (!scrollDelta) {
+      return;
     }
 
-    const endIndex = Math.max(dragState.currentIndex, dragState.originalStartIndex);
-    return {
-      endDate: addDays(timelineRange.start, endIndex),
-      startDate: addDays(timelineRange.start, dragState.originalStartIndex),
-    };
+    const previousLeft = bodyRef.current.scrollLeft;
+    setTimelineScrollLeft(previousLeft + scrollDelta);
+    if (bodyRef.current.scrollLeft !== previousLeft) {
+      movedRef.current = true;
+    }
   }
 
   useEffect(() => {
@@ -1615,12 +2732,13 @@ export function ProjectGanttWorkspacePage({
     const activeDrag = dragState;
 
     function handleWindowMouseMove(event: MouseEvent) {
+      applyDragAutoScroll(event);
       const track = rowTrackRefs[activeDrag.rowId];
       if (!track) {
         return;
       }
       const rect = track.getBoundingClientRect();
-      const rawIndex = Math.floor((event.clientX - rect.left) / DAY_COLUMN_WIDTH);
+      const rawIndex = Math.floor((event.clientX - rect.left) / dayColumnWidth);
       const nextIndex = Math.max(0, Math.min(timelineDays.length - 1, rawIndex));
       if (nextIndex !== activeDrag.currentIndex) {
         movedRef.current = true;
@@ -1628,16 +2746,23 @@ export function ProjectGanttWorkspacePage({
           if (!current) {
             return current;
           }
-          return {
+          const next = {
             ...current,
             currentIndex: nextIndex,
           };
+          dragStateRef.current = next;
+          return next;
         });
       }
     }
 
     function handleWindowMouseUp() {
-      const currentDrag = activeDrag;
+      if (dragCompletedRef.current) {
+        return;
+      }
+      dragCompletedRef.current = true;
+      const currentDrag = dragStateRef.current ?? activeDrag;
+      dragStateRef.current = null;
       setDragState(null);
       if (!currentDrag) {
         return;
@@ -1649,9 +2774,13 @@ export function ProjectGanttWorkspacePage({
       if (!row) {
         return;
       }
-      const preview = getRowPreview(row);
+      const preview = getDragPreviewRange(currentDrag);
       movedRef.current = false;
       suppressEditorOpenRef.current = true;
+      if (currentDrag.mode === 'create' && row.entityKind === 'task') {
+        addLocalTaskTimeNode(row, preview.startDate, preview.endDate);
+        return;
+      }
       // 启用连锁更新处理
       void handleCascadeAfterDrag(row, preview.startDate, preview.endDate);
     }
@@ -1662,14 +2791,17 @@ export function ProjectGanttWorkspacePage({
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [dragState, timelineDays.length, timelineRange.start]);
+  }, [dayColumnWidth, dragState, dragStateRef, timelineDays.length, timelineRange.start]);
 
   function startDrag(
     event: React.MouseEvent<HTMLElement>,
     row: TimelineRow,
     mode: DragState['mode'],
   ) {
-    if (!ensureCanManageProjectSchedule()) {
+    if (dependencyMode) {
+      return;
+    }
+    if (!canManageProjectSchedule) {
       return;
     }
     if (!row.entityKind) {
@@ -1682,7 +2814,7 @@ export function ProjectGanttWorkspacePage({
     const rect = track.getBoundingClientRect();
     const pointerIndex = Math.max(
       0,
-      Math.min(timelineDays.length - 1, Math.floor((event.clientX - rect.left) / DAY_COLUMN_WIDTH)),
+      Math.min(timelineDays.length - 1, Math.floor((event.clientX - rect.left) / dayColumnWidth)),
     );
     const startIndex = row.startDate ? daysBetween(timelineRange.start, row.startDate) : pointerIndex;
     const endIndex = row.endDate ? daysBetween(timelineRange.start, row.endDate) : pointerIndex;
@@ -1690,27 +2822,93 @@ export function ProjectGanttWorkspacePage({
     movedRef.current = false;
     suppressEditorOpenRef.current = false;
     setSelectedRowId(row.id);
-    setDragState({
+    const nextDragState: DragState = {
       anchorIndex: pointerIndex,
       currentIndex: pointerIndex,
       mode,
       originalEndIndex: endIndex,
       originalStartIndex: startIndex,
       rowId: row.id,
-    });
+    };
+    dragStateRef.current = nextDragState;
+    setDragState(nextDragState);
+    dragCompletedRef.current = false;
+    dragCleanupRef.current?.();
+
+    const handleImmediateMouseMove = (moveEvent: MouseEvent) => {
+      applyDragAutoScroll(moveEvent);
+      const currentTrack = rowTrackRefs[row.id];
+      const currentDrag = dragStateRef.current;
+      if (!currentTrack || !currentDrag || currentDrag.rowId !== row.id) {
+        return;
+      }
+
+      const nextRect = currentTrack.getBoundingClientRect();
+      const rawIndex = Math.floor((moveEvent.clientX - nextRect.left) / dayColumnWidth);
+      const nextIndex = Math.max(0, Math.min(timelineDays.length - 1, rawIndex));
+      if (nextIndex === currentDrag.currentIndex) {
+        return;
+      }
+
+      movedRef.current = true;
+      const next = {
+        ...currentDrag,
+        currentIndex: nextIndex,
+      };
+      dragStateRef.current = next;
+      setDragState(next);
+    };
+
+    const handleImmediateMouseUp = () => {
+      if (dragCompletedRef.current) {
+        return;
+      }
+      dragCompletedRef.current = true;
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+      const currentDrag = dragStateRef.current;
+      dragStateRef.current = null;
+      setDragState(null);
+      if (!currentDrag || !movedRef.current) {
+        return;
+      }
+
+      const targetRow = findRow(currentDrag.rowId);
+      if (!targetRow) {
+        return;
+      }
+
+      const preview = getDragPreviewRange(currentDrag);
+      movedRef.current = false;
+      suppressEditorOpenRef.current = true;
+      if (currentDrag.mode === 'create' && targetRow.entityKind === 'task') {
+        addLocalTaskTimeNode(targetRow, preview.startDate, preview.endDate);
+        return;
+      }
+
+      void handleCascadeAfterDrag(targetRow, preview.startDate, preview.endDate);
+    };
+
+    const cleanupImmediateDrag = () => {
+      window.removeEventListener('mousemove', handleImmediateMouseMove);
+      window.removeEventListener('mouseup', handleImmediateMouseUp);
+    };
+    dragCleanupRef.current = cleanupImmediateDrag;
+    window.addEventListener('mousemove', handleImmediateMouseMove);
+    window.addEventListener('mouseup', handleImmediateMouseUp);
     event.preventDefault();
     event.stopPropagation();
   }
 
   function handleTimelineMouseMove(event: React.MouseEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
-    const relativeX = event.clientX - rect.left - SIDEBAR_WIDTH + event.currentTarget.scrollLeft;
+    const relativeX = event.clientX - rect.left + event.currentTarget.scrollLeft;
     if (relativeX < 0 || relativeX > timelineWidth) {
       setHoverIndex(null);
       return;
     }
     setHoverIndex(
-      Math.max(0, Math.min(timelineDays.length - 1, Math.floor(relativeX / DAY_COLUMN_WIDTH))),
+      Math.max(0, Math.min(timelineDays.length - 1, Math.floor(relativeX / dayColumnWidth))),
     );
   }
 
@@ -1803,6 +3001,126 @@ export function ProjectGanttWorkspacePage({
     }
   }
 
+  function beginDependencyConnectFromRow(row: TimelineRow) {
+    if (!ensureCanManageProjectSchedule()) {
+      return;
+    }
+    if (!row.entityId || row.entityKind !== 'task') {
+      setFeedback({
+        message: '请先选择一个任务，再建立依赖关系。',
+        tone: 'danger',
+      });
+      return;
+    }
+    if (isVirtualTimelineId(row.entityId)) {
+      setFeedback({
+        message: '虚拟任务仅用于排期预览，不支持建立依赖关系。',
+        tone: 'danger',
+      });
+      return;
+    }
+
+    setDependencyMode({
+      sourceRowId: row.id,
+      sourceTaskId: row.entityId,
+    });
+    setSelectedRowId(row.id);
+    setFeedback({
+      message: `已选择「${row.title}」作为前驱任务，请点击后继任务条建立依赖。`,
+      tone: 'success',
+    });
+  }
+
+  function startDependencyConnect(event: React.MouseEvent<HTMLElement>, row: TimelineRow) {
+    event.preventDefault();
+    event.stopPropagation();
+    beginDependencyConnectFromRow(row);
+  }
+
+  function startDependencyFromSelected() {
+    const row = selectedRowId ? findRow(selectedRowId) : null;
+    if (!row) {
+      setFeedback({
+        message: '请先选择一个任务，再建立依赖关系。',
+        tone: 'danger',
+      });
+      return;
+    }
+
+    beginDependencyConnectFromRow(row);
+  }
+
+  async function handleDependencyTargetClick(row: TimelineRow) {
+    if (!dependencyMode) {
+      return false;
+    }
+    if (!ensureCanManageProjectSchedule()) {
+      return true;
+    }
+    if (!selectedProjectId || !row.entityId || row.entityKind !== 'task') {
+      return true;
+    }
+    if (isVirtualTimelineId(dependencyMode.sourceTaskId) || isVirtualTimelineId(row.entityId)) {
+      setFeedback({
+        message: '虚拟任务仅用于排期预览，不支持建立依赖关系。',
+        tone: 'danger',
+      });
+      setDependencyMode(null);
+      return true;
+    }
+    if (dependencyMode.sourceTaskId === row.entityId) {
+      setFeedback({
+        message: '前驱任务和后继任务不能是同一个任务。',
+        tone: 'danger',
+      });
+      return true;
+    }
+    if (!onCreateDependency) {
+      setFeedback({
+        message: '依赖创建功能暂不可用。',
+        tone: 'danger',
+      });
+      return true;
+    }
+    const exists = taskDependencies.some(
+      (dependency) =>
+        dependency.predecessorTaskId === dependencyMode.sourceTaskId &&
+        dependency.successorTaskId === row.entityId,
+    );
+    if (exists) {
+      setFeedback({
+        message: '这两个任务已经存在依赖关系。',
+        tone: 'danger',
+      });
+      setDependencyMode(null);
+      return true;
+    }
+
+    setActionLoading(true);
+    try {
+      await onCreateDependency(selectedProjectId, {
+        dependencyType: 'FS',
+        lagDays: 0,
+        predecessorTaskId: dependencyMode.sourceTaskId,
+        successorTaskId: row.entityId,
+      });
+      setFeedback({
+        message: `已建立到「${row.title}」的完成-开始依赖。`,
+        tone: 'success',
+      });
+      setDependencyMode(null);
+      setSelectedRowId(row.id);
+    } catch (error) {
+      setFeedback({
+        message: buildFeedbackMessage(error),
+        tone: 'danger',
+      });
+    } finally {
+      setActionLoading(false);
+    }
+    return true;
+  }
+
   /**
    * 获取当前任务的前驱和后继依赖
    */
@@ -1886,6 +3204,10 @@ export function ProjectGanttWorkspacePage({
     startDate: Date | null,
     endDate: Date | null
   ) {
+    if (isVirtualTimelineId(row.entityId)) {
+      await saveRowSchedule(row, startDate, endDate);
+      return;
+    }
     if (!row.entityId || row.entityKind !== 'task') {
       // 非任务直接保存
       await saveRowSchedule(row, startDate, endDate);
@@ -2059,24 +3381,23 @@ export function ProjectGanttWorkspacePage({
   const currentDayId = currentDate
     ? `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${currentDate.getDate()}`
     : null;
-  const currentMonth = currentDate ? currentDate.getMonth() + 1 : null;
 
   if (!selectedProjectId || !selectedProject) {
     return (
-      <Card className="rounded-[14px] border border-slate-200/80 p-5 shadow-[0_20px_60px_-44px_rgba(15,23,42,0.24)]">
+      <Card className="rounded-lg border border-[#e4ebf5] bg-white p-4 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
         <div className="space-y-4">
-          <div className="text-xs font-semibold text-slate-400">
+          <div className="text-[13px] font-medium text-[#6b7f9e]">
             排期协同
           </div>
-          <div className="theme-text-strong text-[22px] font-bold">
+          <div className="text-[20px] font-bold text-[#111c33]">
             先选择一个项目，再进入排期协同工作区。
           </div>
-          <div className="theme-text-muted max-w-2xl text-sm leading-6">
+          <div className="max-w-2xl text-[14px] font-medium leading-6 text-[#5e7291]">
             这里会展示项目节点、任务树、时间轴和依赖关系。当前还没有选中项目，所以暂时无法进入图形化排期界面。
           </div>
           <div className="flex gap-3">
-            <Button onClick={onOpenProjectManagement}>去项目管理页选择项目</Button>
-            <Button onClick={onOpenProgressConfig} tone="ghost">
+            <Button className="portal-project-shell__primary-button" onClick={onOpenProjectManagement}>去项目管理页选择项目</Button>
+            <Button className="portal-project-shell__secondary-button" onClick={onOpenProgressConfig} tone="ghost">
               查看里程碑模板
             </Button>
           </div>
@@ -2086,27 +3407,27 @@ export function ProjectGanttWorkspacePage({
   }
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col">
+    <div className="relative flex h-full min-h-0 w-full flex-col text-[13px] font-medium leading-[1.5] text-[#526681]">
       {/* 主内容区域 */}
-      <div className={`relative flex min-h-0 flex-1 transition-all duration-300 ${(detailPanel.visible || teamPanelVisible) ? 'mr-[420px]' : ''}`}>
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-[#d9e7f7] bg-white shadow-[0_16px_36px_-30px_rgba(15,23,42,0.35)]">
-          <div className="flex min-h-[132px] items-start justify-between gap-4 border-b border-[#d9e7f7] px-5 py-5">
+      <div className={`relative flex min-h-0 flex-1 transition-all duration-300 ${teamPanelVisible ? 'mr-[480px]' : ''}`}>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-transparent p-0">
+          <div className="flex min-h-[112px] items-start justify-between gap-4 rounded-t-lg border-b border-[#edf2f8] bg-white px-4 py-4">
             <div className="min-w-0">
-              <div className="text-xs font-medium text-slate-500">
-                项目 <span className="mx-2 text-slate-300">/</span> 项目控制
+              <div className="text-[13px] font-medium text-[#6b7f9e]">
+                项目 <span className="mx-2 text-[#b7c4d8]">/</span> 项目控制
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <h1 className="text-[26px] font-bold leading-none text-slate-900">排期协同</h1>
-                <span className="rounded-[6px] border border-sky-100 bg-sky-50 px-2 py-1 text-xs font-semibold text-[var(--portal-color-brand-600)]">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <h1 className="text-[20px] font-semibold leading-7 text-[#111c33]">排期协同</h1>
+                <span className="rounded-[6px] border border-sky-100 bg-sky-50 px-2 py-1 text-[12px] font-medium text-[var(--portal-color-brand-600)]">
                   项目控制
                 </span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-600">
+              <p className="mt-2 text-[14px] font-medium leading-6 text-[#5e7291]">
                 承接管理员排期、节点任务搭建、分配与甘特调整。
               </p>
             </div>
             <button
-              className="inline-flex h-10 shrink-0 items-center justify-center rounded-[8px] border border-[#d9e7f7] bg-white px-4 text-sm font-semibold text-slate-700 shadow-[0_8px_18px_-14px_rgba(15,23,42,0.38)] transition hover:border-slate-300 hover:text-slate-900"
+              className="portal-project-shell__secondary-button shrink-0"
               onClick={onExitSystem}
               type="button"
             >
@@ -2114,309 +3435,348 @@ export function ProjectGanttWorkspacePage({
             </button>
           </div>
 
-          <div className="flex min-h-[160px] bg-white">
-            <div className="flex w-[230px] shrink-0 items-center border-r border-[#edf2f8] px-5">
-              <div>
-                <div className="flex items-end gap-1.5">
-                  <div className="text-[30px] font-bold leading-none text-slate-900">
-                    {completionRate}
-                  </div>
-                  <div className="pb-0.5 text-[18px] font-semibold text-slate-400">%</div>
+          <div className="grid w-full grid-cols-[minmax(240px,1.1fr)_minmax(320px,1.35fr)_minmax(220px,0.85fr)_minmax(280px,1fr)] gap-4 rounded-b-lg bg-white px-5 py-4">
+            {/* 卡片1：整体完成率 */}
+            <div className="flex min-w-0 items-center gap-4 rounded-xl border border-[#e5e7eb] bg-white px-5 py-4 shadow-sm">
+              {/* 左侧环形进度图 */}
+              <div className="relative flex-shrink-0" style={{ width: 80, height: 80 }}>
+                <svg height="80" viewBox="0 0 36 36" width="80">
+                  <circle
+                    cx="18"
+                    cy="18"
+                    fill="none"
+                    r="14.5"
+                    stroke="#f3f4f6"
+                    strokeDasharray="91.1"
+                    strokeWidth="3"
+                  />
+                  <circle
+                    className="transition-all duration-500"
+                    cx="18"
+                    cy="18"
+                    fill="none"
+                    r="14.5"
+                    stroke="#3b82f6"
+                    strokeDasharray={`${(completionRate / 100 * 91.1).toFixed(1)} 91.1`}
+                    strokeLinecap="round"
+                    strokeWidth="3"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="font-arial text-[18px] font-bold leading-none text-[#1e40af]">{completionRate}%</span>
                 </div>
-                <div className="mt-2 text-sm text-slate-500">整体完成率</div>
+              </div>
+              {/* 右侧文字 */}
+              <div className="min-w-0 flex-1 font-arial">
+                <div className="text-[13px] font-medium text-[#374151]">整体完成率</div>
+                <div className="mt-1 flex items-center gap-1 text-[12px] text-emerald-600">
+                  <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clipRule="evenodd" />
+                  </svg>
+                  <span>较上次更新 ↑ 5.2%</span>
+                </div>
+                <div className="mt-1 text-[12px] text-[#9ca3af]">更新时间：5分钟前</div>
               </div>
             </div>
 
-            <div className="flex min-w-[260px] flex-[1.05] items-center border-r border-[#edf2f8] px-5">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-400">当前项目</div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <div className="truncate text-[18px] font-bold text-slate-900">
-                    {selectedProject.projectName}
-                  </div>
-                  <span className="rounded-[6px] bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">
-                    {selectedProject.projectCode}
-                  </span>
-                  <span
-                    className={`rounded-[6px] border px-2 py-1 text-[11px] font-semibold ${
-                      canManageProjectSchedule
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : 'border-amber-200 bg-amber-50 text-amber-700'
-                    }`}
-                  >
-                    {canManageProjectSchedule ? '可编辑' : '只读'}
-                  </span>
+            {/* 卡片2：当前项目 */}
+            <div className="flex min-w-0 rounded-xl border border-[#e5e7eb] bg-white px-5 py-4 shadow-sm">
+              <div className="flex w-full items-start gap-4">
+                {/* 左侧图标 */}
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#ede9fe]">
+                  <svg className="h-6 w-6 text-[#7c3aed]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                 </div>
-                <div className="mt-2 text-sm leading-6 text-slate-600">
-                  先确认项目范围和排期状态，再进入节点、任务和依赖维护。
-                </div>
-              </div>
-            </div>
-
-            <div className="flex min-w-[280px] flex-1 items-center border-r border-[#edf2f8] px-5">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  任务统计
-                </div>
-                <div className="mt-4 flex gap-4">
-                  <div>
-                    <div className="flex items-end gap-1">
-                      <div className="text-[28px] font-bold leading-none text-slate-900">
-                        {statistics?.completedTaskCount ?? 0}
-                      </div>
-                      <div className="pb-0.5 text-xs text-slate-500">项</div>
+                {/* 右侧内容 */}
+                <div className="min-w-0 flex-1 font-arial">
+                  <div className="text-[12px] font-medium text-[#9ca3af]">当前项目</div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <div className="text-[13px] font-semibold text-[#111827]">
+                      {selectedProject.projectName}
                     </div>
-                    <div className="mt-1 text-xs text-slate-500">已完成任务</div>
+                    <span className="rounded bg-[#f3f4f6] px-2 py-0.5 text-[12px] font-medium text-[#6b7280]">
+                      {selectedProject.projectCode}
+                    </span>
+                    <span
+                      className={`rounded px-2 py-0.5 text-[12px] font-semibold ${
+                        canManageProjectSchedule
+                          ? 'bg-[#10b981] text-white'
+                          : 'bg-[#f59e0b] text-white'
+                      }`}
+                    >
+                      {canManageProjectSchedule ? '可编辑' : '只读'}
+                    </span>
                   </div>
-                  <div>
-                    <div className="flex items-end gap-1">
-                      <div className="text-[28px] font-bold leading-none text-slate-900">
-                        {Math.max(0, (statistics?.taskCount ?? tasks.length) - (statistics?.completedTaskCount ?? 0))}
-                      </div>
-                      <div className="pb-0.5 text-xs text-slate-500">项</div>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">未完成任务</div>
-                  </div>
-                  <div>
-                    <div className="flex items-end gap-1">
-                      <div className="text-[28px] font-bold leading-none text-rose-500">
-                        {statistics?.inProgressTaskCount ?? 0}
-                      </div>
-                      <div className="pb-0.5 text-xs text-slate-500">项</div>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">进行中任务</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex min-w-[260px] flex-1 items-center px-5">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                  <Clock3 className="h-3.5 w-3.5" />
-                  时间对比
-                </div>
-                <div className="mt-4 flex gap-4">
-                  <div>
-                    <div className="text-[26px] font-bold leading-none text-slate-900">
-                      {formatMonthDay(plannedFinish)}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">计划完成时间</div>
-                  </div>
-                  <div>
-                    <div className="text-[26px] font-bold leading-none text-amber-500">
-                      {formatMonthDay(predictedFinish)}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">预计完成时间</div>
-                  </div>
-                  <div>
-                    <div className="flex items-end gap-1">
-                      <div className="text-[26px] font-bold leading-none text-amber-500">
-                        {deviationDays === null ? '--' : `${deviationDays > 0 ? '+' : ''}${deviationDays}`}
-                      </div>
-                      <div className="pb-0.5 text-xs text-slate-500">天</div>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">时间偏差</div>
+                  <div className="mt-1.5 text-[12px] leading-5 text-[#6b7280]">
+                    先确认项目范围和排期状态，再进入节点、任务和依赖维护。
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="flex w-[124px] shrink-0 flex-col justify-center gap-2 px-4">
-              <button
-                className="flex h-10 items-center justify-between gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
-                disabled={!canManageProjectSchedule}
-                onClick={openTeamPanel}
-                type="button"
-              >
-                项目团队
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-500">
-                  {members.length}
-                </span>
-              </button>
-              <button
-                className="flex h-10 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                onClick={onOpenProgressConfig}
-                type="button"
-              >
-                里程碑模板
-              </button>
-              {taskDependencies && taskDependencies.length > 0 ? (
-                <button
-                  className={`flex h-9 items-center justify-center rounded-[8px] border text-xs font-semibold transition ${
-                    cascadeUpdateEnabled
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
-                  }`}
-                  onClick={() => {
-                    setCascadeUpdateEnabled(!cascadeUpdateEnabled);
-                  }}
-                  type="button"
-                >
-                  {cascadeUpdateEnabled ? '连锁已开启' : '连锁'}
-                </button>
-              ) : null}
+            {/* 卡片3：任务统计 */}
+            <div className="flex min-w-0 flex-col rounded-xl border border-[#e5e7eb] bg-white px-5 py-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4 text-[#9ca3af]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-[12px] font-medium text-[#9ca3af]">任务统计</span>
+              </div>
+              <div className="mt-3 flex items-end justify-between">
+                <div className="flex flex-col items-center">
+                  <div className="text-[22px] font-bold leading-none text-[#10b981]">{statistics?.completedTaskCount ?? 0}</div>
+                  <div className="mt-1 text-[12px] font-medium text-[#6b7280]">已完成</div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="text-[22px] font-bold leading-none text-[#6b7280]">
+                    {Math.max(0, (statistics?.taskCount ?? tasks.length) - (statistics?.completedTaskCount ?? 0))}
+                  </div>
+                  <div className="mt-1 text-[12px] font-medium text-[#6b7280]">未完成</div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="text-[22px] font-bold leading-none text-[#ef4444]">{statistics?.inProgressTaskCount ?? 0}</div>
+                  <div className="mt-1 text-[12px] font-medium text-[#6b7280]">进行中</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 卡片4：时间对比 */}
+            <div className="flex min-w-0 flex-col rounded-xl border border-[#e4ebf5] bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4 text-[#6b7280]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-[12px] font-medium text-[#6b7280]">时间对比</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <div className="text-center font-arial">
+                  <div className="text-[13px] font-semibold text-[#111827]">{formatMonthDay(plannedFinish)}</div>
+                  <div className="mt-1 text-[12px] font-medium text-[#6b7280]">计划完成</div>
+                </div>
+                <div className="flex items-center">
+                  <svg className="h-4 w-4 text-[#d1d5db]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </div>
+                <div className="text-center font-arial">
+                  <div className="text-[13px] font-semibold text-[#f59e0b]">{formatMonthDay(predictedFinish)}</div>
+                  <div className="mt-1 text-[12px] font-medium text-[#6b7280]">预计完成</div>
+                </div>
+                <div className="text-center font-arial">
+                  <div className="text-[13px] font-semibold text-[#f59e0b]">
+                    {deviationDays === null ? '--' : `${deviationDays > 0 ? '+' : ''}${deviationDays}`}天
+                  </div>
+                  <div className="mt-1 text-[12px] font-medium text-[#6b7280]">时间偏差</div>
+                </div>
+              </div>
             </div>
           </div>
-        <div className="flex h-14 border-y border-[#d9e7f7] bg-[linear-gradient(180deg,#f8fbff_0%,#f1f6fd_100%)]">
-          <div
-            className="flex items-center gap-2 border-r border-[#d9e7f7] bg-[linear-gradient(180deg,#f5f9ff_0%,#eef4fc_100%)] px-4"
-            style={{ width: SIDEBAR_WIDTH }}
-          >
-            <div className="flex h-9 min-w-0 flex-[1.5] items-center gap-1 rounded-xl border border-[#d6e4f4] bg-white/95 px-2.5 text-xs font-medium text-slate-600 shadow-[0_6px_16px_-12px_rgba(15,23,42,0.45)]">
-              <span className="min-w-0 flex-1 truncate whitespace-nowrap">{selectedProject.projectName}</span>
-              <ChevronDown className="h-3.5 w-3.5" />
-            </div>
-            <div className="flex h-9 min-w-[88px] flex-[0.9] items-center justify-between gap-1 rounded-xl border border-[#d6e4f4] bg-white/95 px-2.5 text-xs font-medium text-slate-600 shadow-[0_6px_16px_-12px_rgba(15,23,42,0.45)]">
-              <span className="whitespace-nowrap">{projectTypes.length} 个类型</span>
-              <ChevronDown className="h-3.5 w-3.5" />
-            </div>
+        <div className="h-4 flex-shrink-0 bg-[#f5f8ff]" />
+        <div className="sticky top-0 z-30 flex flex-shrink-0 flex-col overflow-hidden rounded-t-lg border-b border-[#d9e4f5] bg-white">
+          {/* 筛选栏第一行 */}
+          <div className="flex h-12 items-center gap-2 border-b border-[#e4edf8] bg-white px-3">
+            {/* 所有项目 */}
             <button
-              className="ml-auto flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-[#d6e4f4] bg-white/95 text-slate-500 shadow-[0_6px_16px_-12px_rgba(15,23,42,0.45)] transition-colors hover:text-slate-700"
+              className="flex h-8 w-[104px] min-w-0 items-center justify-between gap-1 rounded-[4px] border border-[#d8e3f0] bg-white px-2.5 text-[12px] font-medium text-[#526681] transition-colors hover:border-[#b9cbe1]"
               type="button"
             >
-              <Search className="h-3.5 w-3.5" />
+              <span className="min-w-0 flex-1 truncate whitespace-nowrap">所有项目</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
             </button>
-          </div>
-
-          <div className="flex-1 overflow-hidden">
-            <div
-              className="no-scrollbar relative h-full overflow-x-auto overflow-y-hidden bg-[linear-gradient(180deg,#f8fbff_0%,#eff5fd_100%)]"
-              ref={(element: HTMLDivElement | null) => {
-                axisRef.current = element;
-              }}
+            {/* 所有负责人 */}
+            <button
+              className="flex h-8 w-[112px] min-w-0 items-center justify-between gap-1 rounded-[4px] border border-[#d8e3f0] bg-white px-2.5 text-[12px] font-medium text-[#526681] transition-colors hover:border-[#b9cbe1]"
+              type="button"
             >
-              <div className="pointer-events-none absolute left-0 top-0 z-0" style={{ width: timelineWidth, height: 56 }}>
-                {timelineDays.map((day, index) => {
-                  const dayOfWeek = getDayOfWeek(new Date(day.date));
-                  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                  return isWeekend ? (
-                    <div
-                      key={`header-weekend-${day.id}`}
-                      className="absolute top-0 h-full border-r border-amber-100 bg-[linear-gradient(180deg,rgba(255,244,214,0.85)_0%,rgba(255,248,234,0.72)_100%)]"
-                      style={{ left: index * DAY_COLUMN_WIDTH, width: DAY_COLUMN_WIDTH }}
-                    />
-                  ) : null;
-                })}
-              </div>
-              {hoverIndex !== null ? (
-                <div
-                  className="pointer-events-none absolute left-0 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-700 shadow-sm"
-                  style={{ left: hoverIndex * DAY_COLUMN_WIDTH + DAY_COLUMN_WIDTH / 2 }}
+              <span className="min-w-0 flex-1 truncate whitespace-nowrap">所有负责人</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+            </button>
+            {/* 搜索任务名称 */}
+            <div className="relative flex h-8 items-center">
+              <Search className="absolute left-2.5 h-3.5 w-3.5 text-[#9ca3af]" strokeWidth={1.8} />
+              <input
+                className="h-8 w-[164px] rounded-[4px] border border-[#d8e3f0] bg-white pl-7 pr-2.5 text-[12px] font-medium text-[#526681] placeholder:text-[#9ca3af] outline-none transition focus:border-[#1f7cff] focus:ring-1 focus:ring-[#dceaff]"
+                placeholder="搜索任务名称"
+                type="text"
+              />
+            </div>
+            {/* 日/周/月切换 */}
+            <div className="ml-auto flex h-8 items-center overflow-hidden rounded-[4px] border border-[#d8e3f0] bg-white">
+              {TIMELINE_SCALE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  className={`h-full w-9 border-r border-[#e4edf8] text-[12px] font-medium transition last:border-r-0 ${
+                    timelineScale === option.value
+                      ? 'bg-[#1f7cff] text-white shadow-[inset_0_0_0_1px_#1f7cff]'
+                      : 'text-[#526681] hover:bg-[#f0f7ff]'
+                  }`}
+                  onClick={() => {
+                    handleTimelineScaleChange(option.value);
+                  }}
+                  title={option.title}
+                  type="button"
                 >
-                  {formatMonthDay(hoverDate)}
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {/* 今天按钮 */}
+            <button
+              className="flex h-8 items-center gap-1.5 rounded-[4px] border border-[#d8e3f0] bg-white px-3 text-[12px] font-medium text-[#526681] transition-colors hover:border-[#b9cbe1]"
+              onClick={() => {
+                if (currentLineIndex !== null) {
+                  scrollTimelineToDayIndex(currentLineIndex, dayColumnWidth, 'focus');
+                }
+              }}
+              type="button"
+            >
+              <CalendarDays className="h-3.5 w-3.5 text-[#6b7f9e]" strokeWidth={1.8} />
+              今天
+            </button>
+            {/* 状态图例 */}
+            <div className="flex items-center gap-3 border-l border-[#e4edf8] pl-3 text-[12px] font-medium text-[#526681]">
+              {TASK_STATUS_LEGEND_ITEMS.map((item) => (
+                <span key={item.label} className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span
+                    className="h-2 w-2 rounded-full border"
+                    style={{ backgroundColor: item.fill, borderColor: item.border }}
+                  />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          {/* 表头第二行 */}
+          <div className="flex h-[56px] flex-shrink-0">
+            {/* 左侧：任务名称 */}
+            <div
+              className="flex items-center gap-2 border-r border-[#d9e4f5] bg-white px-3 font-arial"
+              style={{ width: SIDEBAR_WIDTH }}
+            >
+              <span className="text-[13px] font-semibold text-[#263653]">任务名称</span>
+              <Settings2 className="ml-auto h-3.5 w-3.5 text-[#8da0bd]" strokeWidth={1.8} />
+              <span className="text-[12px] font-medium text-[#6b7f9e]">总数</span>
+            </div>
+            {/* 右侧：日期表头 */}
+            <div className="flex-1 overflow-hidden">
+              <div
+                className="relative h-full overflow-hidden bg-white"
+                ref={(element: HTMLDivElement | null) => {
+                  axisRef.current = element;
+                }}
+              >
+                {/* 月份切换行 */}
+                <div className="absolute bottom-7 left-0 right-0 h-7 border-b border-[#e4edf8] bg-white" />
+                <div
+                  className="absolute bottom-7 left-0 z-40 flex h-7 w-[132px] cursor-grab select-none items-center overflow-hidden border-r border-[#d9e7f7] bg-white text-[#1f65e8] active:cursor-grabbing"
+                  onPointerCancel={endTimelinePan}
+                  onPointerDown={startTimelinePan}
+                  onPointerMove={moveTimelinePan}
+                  onPointerUp={endTimelinePan}
+                  onWheel={handleTimelineAxisWheel}
+                >
+                  <button
+                    aria-label="查看上个月"
+                    className="flex h-full w-7 items-center justify-center text-[#8da0bd] transition hover:bg-[#edf6ff] hover:text-[#1f65e8] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={activeMonthIndex <= 0}
+                    onClick={() => {
+                      jumpTimelineMonth(-1);
+                    }}
+                    onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => {
+                      event.stopPropagation();
+                    }}
+                    type="button"
+                  >
+                    <ChevronLeft className="h-4 w-4" strokeWidth={1.8} />
+                  </button>
+                  <div className="flex h-full flex-1 items-center justify-center text-[13px] font-semibold">
+                    {activeMonthOption?.label ?? '月份'}
+                  </div>
+                  <button
+                    aria-label="查看下个月"
+                    className="flex h-full w-7 items-center justify-center text-[#8da0bd] transition hover:bg-[#edf6ff] hover:text-[#1f65e8] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={activeMonthIndex >= timelineMonthOptions.length - 1}
+                    onClick={() => {
+                      jumpTimelineMonth(1);
+                    }}
+                    onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => {
+                      event.stopPropagation();
+                    }}
+                    type="button"
+                  >
+                    <ChevronRight className="h-4 w-4" strokeWidth={1.8} />
+                  </button>
                 </div>
-              ) : currentLineIndex !== null ? (
+                {/* 日期刻度行 */}
                 <div
-                  className="pointer-events-none absolute left-0 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-sky-100 bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-sky-600 shadow-sm"
-                  style={{ left: currentLineIndex * DAY_COLUMN_WIDTH + DAY_COLUMN_WIDTH / 2 }}
+                  className="pointer-events-none absolute bottom-0 left-0 h-[56px] will-change-transform"
+                  style={{
+                    transform: `translateX(${-timelineViewport.scrollLeft}px)`,
+                    width: timelineWidth,
+                  }}
                 >
-                  {formatMonthDay(currentDate)}
-                </div>
-              ) : null}
-
-              <div className="relative z-10 flex h-full flex-col" style={{ width: timelineWidth }}>
-                <div
-                  className="grid h-7 border-b border-[#d9e7f7]"
-                  style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${DAY_COLUMN_WIDTH}px)` }}
-                >
-                  {monthGroups.map((group, index) => (
-                    <div
-                      key={`month-${group.month}-${index}`}
-                      className={`theme-text-soft border-r border-[#d9e7f7] px-2 text-xs font-bold leading-7 ${
-                        currentMonth === group.month ? 'bg-[#e7f1ff] text-sky-700' : ''
-                      }`}
-                      style={{ gridColumn: `span ${group.count}` }}
-                    >
-                      {group.month}月
+                  <div className="relative z-10 flex h-full flex-col" style={{ width: timelineWidth }}>
+                    <div className="h-7"></div>
+                    <div className="relative flex-1">
+                      {visibleTimelineDays.map(({ day, index }) => {
+                        const dayOfWeek = getDayOfWeek(new Date(day.date));
+                        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                        const isCurrentDay = currentDayId === day.id;
+                        return (
+                          <div
+                            key={day.id}
+                            className={`absolute top-0 flex h-full items-center justify-center border-r border-[#d9e7f7] text-[12px] font-medium ${
+                              isCurrentDay
+                                ? 'bg-[#1f7cff] text-white'
+                                : isWeekend
+                                  ? 'bg-[#fff7ed] text-[#ff8a00]'
+                                  : 'text-[#526681]'
+                            }`}
+                            style={{ left: index * dayColumnWidth, width: dayColumnWidth }}
+                          >
+                            {isWeekend ? '休' : day.date.getDate()}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
+                  </div>
                 </div>
                 <div
-                  className="grid h-7"
-                  style={{ gridTemplateColumns: `repeat(${timelineDays.length}, ${DAY_COLUMN_WIDTH}px)` }}
-                >
-                  {timelineDays.map((day) => {
-                    const dayOfWeek = getDayOfWeek(new Date(day.date));
-                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                    return (
-                      <div
-                        key={day.id}
-                        className={`relative border-r border-[#d9e7f7] text-center text-xs leading-7 ${
-                          currentDayId === day.id
-                            ? 'bg-[#cfe3ff] font-bold text-sky-700 shadow-[inset_0_-1px_0_0_#93c5fd]'
-                            : isWeekend
-                              ? 'bg-amber-50/75 font-semibold text-amber-600'
-                              : 'theme-text-soft'
-                        }`}
-                      >
-                        {isWeekend ? (
-                          <span className="absolute left-1 top-1 rounded-full bg-amber-100 px-1 py-0 text-[9px] leading-none text-amber-600">
-                            休
-                          </span>
-                        ) : null}
-                        {day.label}
-                      </div>
-                    );
-                  })}
-                </div>
+                  aria-label="拖动时间轴"
+                  className="pointer-events-auto absolute bottom-0 left-0 right-0 z-30 h-7 cursor-grab select-none active:cursor-grabbing touch-pan-x"
+                  onPointerCancel={endTimelinePan}
+                  onPointerDown={startTimelinePan}
+                  onPointerMove={moveTimelinePan}
+                  onPointerUp={endTimelinePan}
+                  onWheel={handleTimelineAxisWheel}
+                  role="presentation"
+                />
               </div>
             </div>
           </div>
         </div>
 
-        <div
-          className="no-scrollbar relative min-h-0 flex-1 overflow-auto"
-          onMouseLeave={() => {
-            setHoverIndex(null);
-          }}
-          onMouseMove={handleTimelineMouseMove}
-          onScroll={syncAxisScroll}
-          ref={(element: HTMLDivElement | null) => {
-            bodyRef.current = element;
-          }}
-        >
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
           <div
-            className="relative flex min-h-full"
-            style={{ minWidth: SIDEBAR_WIDTH + timelineWidth }}
+            className="flex min-h-0 flex-shrink-0 flex-col border-r border-[#d9e4f5] bg-white"
+            style={{ width: SIDEBAR_WIDTH }}
           >
-            <div
-              className="sticky left-0 top-0 z-20 min-h-full flex-shrink-0 border-r border-black/5 bg-white"
-              style={{ width: SIDEBAR_WIDTH }}
-            >
               <div
-                className="flex items-center gap-2 border-b border-[#d9e4f5] bg-white/95 px-4 py-3"
-                style={{ height: SIDEBAR_SEARCH_BAND_HEIGHT }}
+                className="no-scrollbar min-h-0 flex-1 overflow-hidden"
+                onWheel={handleLeftBodyWheel}
+                ref={(element: HTMLDivElement | null) => {
+                  leftBodyRef.current = element;
+                }}
               >
-                <input
-                  className="theme-input h-10 min-w-0 flex-1 rounded-2xl px-4 text-sm shadow-[inset_0_0_0_1px_rgba(148,163,184,0.08)]"
-                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                    setSearchKeyword(event.target.value);
-                  }}
-                  placeholder="搜索节点或任务"
-                  value={searchKeyword}
-                />
-                <button
-                  className="flex h-10 flex-shrink-0 items-center justify-center rounded-2xl border border-[#d6e4f4] bg-white px-3.5 text-xs font-semibold text-sky-600 shadow-[0_6px_16px_-12px_rgba(15,23,42,0.45)] transition-colors hover:border-sky-200 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-45"
-                  disabled={!selectedProjectId || actionLoading || !canManageProjectSchedule}
-                  onClick={() => {
-                    openCreateDialog('node', null, true);
-                  }}
-                  title={canManageProjectSchedule ? '新增一级节点' : '当前账号在排期协同中为只读'}
-                  type="button"
-                >
-                  新增一级节点
-                </button>
-              </div>
-
-              {visibleRows.map((row) => {
-                const isSelected = selectedRowId === row.id;
-                if (row.rowType === 'category') {
-                  return (
-                    <button
+                {visibleRows.map((row) => {
+                  const isSelected = selectedRowId === row.id;
+                  if (row.rowType === 'category') {
+                    const taskCount = row.count ?? 0;
+                    return (
+                      <button
                       key={row.id}
-                      className="flex w-full items-center gap-2 border-b border-[#d9e4f5] bg-[#f3f7fe] px-4 text-left transition-colors hover:bg-[#eaf1fc]"
+                      className="group flex w-full items-center gap-2 border-b border-[#e4edf8] bg-white px-4 text-left text-[13px] font-semibold leading-5 text-[#263653] transition-colors hover:bg-[#f6faff]"
                       onClick={() => {
                         setSelectedRowId(row.id);
                         toggleExpand(row.id);
@@ -2425,17 +3785,17 @@ export function ProjectGanttWorkspacePage({
                       type="button"
                     >
                       {(expandedMap[row.id] ?? true) ? (
-                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        <ChevronDown className="h-4 w-4 text-[#526681]" strokeWidth={1.7} />
                       ) : (
-                        <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                        <ChevronRight className="h-4 w-4 text-[#526681]" strokeWidth={1.7} />
                       )}
-                      <CategoryMark />
-                      <span className="theme-text-strong min-w-0 flex-1 truncate pr-2 text-xs font-semibold">{row.title}</span>
-                      <span className="ml-auto flex items-center gap-1">
+                      <span className="min-w-0 flex-1 truncate pr-2">{row.title}</span>
+                      <span className="ml-auto flex shrink-0 items-center gap-1">
                         {row.entityId ? (
-                          <>
+                          <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                             <span
-                              className="rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-500 transition-colors hover:border-sky-200 hover:text-sky-600"
+                              aria-label={`新增${row.title}子项`}
+                              className="flex h-6 w-6 items-center justify-center rounded-[4px] border border-[#d9e3f1] bg-white text-[#6b7f9e] transition-colors hover:border-sky-200 hover:text-[var(--portal-color-brand-600)]"
                               onClick={(event: React.MouseEvent<HTMLSpanElement>) => {
                                 event.stopPropagation();
                                 openCreateDialog('node', row);
@@ -2445,11 +3805,13 @@ export function ProjectGanttWorkspacePage({
                               }}
                               role="button"
                               tabIndex={0}
+                              title="新增子项"
                             >
-                              子项
+                              <FolderKanban className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                             </span>
                             <span
-                              className="rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-500 transition-colors hover:border-violet-200 hover:text-violet-600"
+                              aria-label={`新增${row.title}任务`}
+                              className="flex h-6 w-6 items-center justify-center rounded-[4px] border border-[#d9e3f1] bg-white text-[#6b7f9e] transition-colors hover:border-sky-200 hover:text-[var(--portal-color-brand-600)]"
                               onClick={(event: React.MouseEvent<HTMLSpanElement>) => {
                                 event.stopPropagation();
                                 openCreateDialog('task', row);
@@ -2459,11 +3821,13 @@ export function ProjectGanttWorkspacePage({
                               }}
                               role="button"
                               tabIndex={0}
+                              title="新增任务"
                             >
-                              任务
+                              <ClipboardList className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                             </span>
                             <span
-                              className="rounded-full border border-rose-100 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-rose-500 transition-colors hover:border-rose-200 hover:text-rose-600"
+                              aria-label={`删除${row.title}`}
+                              className="flex h-6 w-6 items-center justify-center rounded-[4px] border border-rose-100 bg-white text-rose-500 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                               onClick={(event: React.MouseEvent<HTMLSpanElement>) => {
                                 event.stopPropagation();
                                 void handleDeleteRow(row);
@@ -2473,27 +3837,28 @@ export function ProjectGanttWorkspacePage({
                               }}
                               role="button"
                               tabIndex={0}
+                              title="删除"
                             >
-                              删除
+                              <Trash2 className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                             </span>
-                          </>
+                          </span>
                         ) : null}
-                        <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[11px] text-slate-500">
-                          {row.count ?? 0}
+                      <span className="rounded-[4px] bg-[#edf4ff] px-2 py-0.5 text-[12px] font-medium leading-5 text-[#526681]">
+                          {ganttSegmentCountByRowId.get(row.id) ?? 0}
                         </span>
                       </span>
                     </button>
                   );
-                }
+                  }
 
-                if (row.rowType === 'subCategory') {
+                  if (row.rowType === 'subCategory') {
                   return (
                     <button
                       key={row.id}
-                      className={`group relative flex w-full items-center gap-2 border-b border-[#e5edf8] px-4 pl-6 text-left transition-colors ${
+                      className={`group relative flex w-full items-center gap-2 border-b border-[#e4edf8] px-4 pl-7 text-left text-[13px] font-medium leading-5 transition-colors ${
                         isSelected
-                          ? 'bg-[#eef6ff] shadow-[inset_3px_0_0_0_#60a5fa]'
-                          : 'bg-[#fbfdff] hover:bg-[#f4f8fe]'
+                          ? 'bg-[#eaf4ff] text-[var(--portal-color-brand-600)] shadow-[inset_3px_0_0_0_#1f7cff]'
+                          : 'bg-white text-[#526681] hover:bg-[#f8fbff]'
                       }`}
                       onClick={() => {
                         setSelectedRowId(row.id);
@@ -2502,17 +3867,17 @@ export function ProjectGanttWorkspacePage({
                       style={{ height: SUB_CATEGORY_ROW_HEIGHT }}
                       type="button"
                     >
-                      <span className="absolute left-4 top-0 h-full w-px bg-[#d9e6f7]" />
                       {(expandedMap[row.id] ?? true) ? (
-                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        <ChevronDown className="h-3.5 w-3.5 text-[#8da0bd]" strokeWidth={1.7} />
                       ) : (
-                        <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                        <ChevronRight className="h-3.5 w-3.5 text-[#8da0bd]" strokeWidth={1.7} />
                       )}
-                      <SubCategoryMark />
-                      <span className="theme-text-muted min-w-0 flex-1 truncate pr-2 text-xs">{row.title}</span>
+                      <span className="min-w-0 flex-1 truncate pr-2">{row.title}</span>
                       <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        {row.entityId ? (
                         <span
-                          className="rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-500 transition-colors hover:border-sky-200 hover:text-sky-600"
+                          aria-label={`新增${row.title}子项`}
+                          className="flex h-6 w-6 items-center justify-center rounded-[4px] border border-[#d9e3f1] bg-white text-[#6b7f9e] transition-colors hover:border-sky-200 hover:text-[var(--portal-color-brand-600)]"
                           onClick={(event: React.MouseEvent<HTMLSpanElement>) => {
                             event.stopPropagation();
                             openCreateDialog('node', row);
@@ -2522,11 +3887,15 @@ export function ProjectGanttWorkspacePage({
                           }}
                           role="button"
                           tabIndex={0}
+                          title="新增子项"
                         >
-                          子项
+                          <FolderKanban className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                         </span>
+                        ) : null}
+                        {row.entityId ? (
                         <span
-                          className="rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-500 transition-colors hover:border-violet-200 hover:text-violet-600"
+                          aria-label={`新增${row.title}任务`}
+                          className="flex h-6 w-6 items-center justify-center rounded-[4px] border border-[#d9e3f1] bg-white text-[#6b7f9e] transition-colors hover:border-sky-200 hover:text-[var(--portal-color-brand-600)]"
                           onClick={(event: React.MouseEvent<HTMLSpanElement>) => {
                             event.stopPropagation();
                             openCreateDialog('task', row);
@@ -2536,11 +3905,15 @@ export function ProjectGanttWorkspacePage({
                           }}
                           role="button"
                           tabIndex={0}
+                          title="新增任务"
                         >
-                          任务
+                          <ClipboardList className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                         </span>
+                        ) : null}
+                        {row.entityId ? (
                         <span
-                          className="rounded-full border border-rose-100 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-rose-500 transition-colors hover:border-rose-200 hover:text-rose-600"
+                          aria-label={`删除${row.title}`}
+                          className="flex h-6 w-6 items-center justify-center rounded-[4px] border border-rose-100 bg-white text-rose-500 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                           onClick={(event: React.MouseEvent<HTMLSpanElement>) => {
                             event.stopPropagation();
                             void handleDeleteRow(row);
@@ -2550,30 +3923,39 @@ export function ProjectGanttWorkspacePage({
                           }}
                           role="button"
                           tabIndex={0}
+                          title="删除"
                         >
-                          删除
+                          <Trash2 className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                         </span>
+                        ) : null}
                       </span>
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400 transition-colors group-hover:bg-slate-200">
-                        {row.count ?? 0}
+                      <span className="ml-auto rounded-[4px] bg-[#edf4ff] px-2 py-0.5 text-[12px] font-medium leading-5 text-[#526681] transition-colors group-hover:bg-[#eaf2ff]">
+                        {ganttSegmentCountByRowId.get(row.id) ?? 0}
                       </span>
                     </button>
                   );
                 }
 
                 return (
-                  <button
+                  <div
                     key={row.id}
-                    className={`group relative flex w-full items-center gap-3 border-b border-[#e9eff8] px-4 pl-10 pr-14 text-left transition-colors ${
+                    className={`group relative flex w-full items-center gap-2 border-b border-[#e4edf8] px-4 pl-12 pr-3 text-left text-[13px] font-medium leading-5 transition-colors ${
                       isSelected
-                        ? 'bg-[#f6f1ff] shadow-[inset_3px_0_0_0_#8b5cf6]'
-                        : 'bg-[#fbfdff] hover:bg-[#f7faff]'
+                        ? 'bg-[#edf6ff] text-[var(--portal-color-brand-600)] shadow-[inset_3px_0_0_0_var(--portal-color-brand-500)]'
+                        : 'bg-white text-[#526681] hover:bg-[#f8fbff]'
                     }`}
                     onClick={() => {
-                      setSelectedRowId(row.id);
+                      openDetailPanel(row);
                     }}
+                    onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openDetailPanel(row);
+                      }
+                    }}
+                    role="button"
                     style={{ height: TASK_ROW_HEIGHT }}
-                    type="button"
+                    tabIndex={0}
                   >
                     {(() => {
                       const taskDisplayMeta = getTaskDisplayMeta(row);
@@ -2583,113 +3965,143 @@ export function ProjectGanttWorkspacePage({
                       ].filter(Boolean).join(' · ');
                       return (
                         <>
-                          <span className="absolute left-4 top-0 h-full w-px bg-[#e4ecf8]" />
-                          <span className="absolute left-4 top-1/2 h-px w-4 -translate-y-1/2 bg-[#e4ecf8]" />
                           <TaskMark active={isSelected} />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-medium text-slate-600">{row.title}</span>
-                            <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-slate-400">
+                            <span className="block truncate">{row.title}</span>
+                            <span className="hidden min-w-0 items-center gap-1.5 text-[12px] font-medium text-[#8da0bd]">
                               <span className={`shrink-0 rounded px-1.5 py-0.5 font-medium ${taskDisplayMeta.assignmentToneClassName}`}>
                                 {taskDisplayMeta.assignmentStatusLabel}
                               </span>
                               <span className="min-w-0 truncate">{compactMeta}</span>
                             </span>
                           </span>
-                          <span className={`absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-lg bg-white/92 px-1.5 py-1 shadow-sm transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                            <Hand
-                              className="h-3.5 w-3.5 text-sky-400"
-                              onClick={(event: React.MouseEvent<SVGSVGElement>) => {
+                          <span className="hidden">
+                            <button
+                              aria-label={`分配${row.title}人员`}
+                              className="portal-project-shell__icon-button h-6 w-6"
+                              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
                                 event.stopPropagation();
                                 void openQuickAssign(row);
                               }}
-                            />
-                            <Plus
-                              className="h-3.5 w-3.5 text-slate-400"
-                              onClick={(event: React.MouseEvent<SVGSVGElement>) => {
+                              type="button"
+                            >
+                              <Hand className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
+                            </button>
+                            <button
+                              aria-label={`新增${row.title}子任务`}
+                              className="portal-project-shell__icon-button h-6 w-6"
+                              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
                                 event.stopPropagation();
                                 handleQuickCreate(row);
                               }}
-                            />
-                            <Trash2
-                              className="h-3.5 w-3.5 text-rose-400"
-                              onClick={(event: React.MouseEvent<SVGSVGElement>) => {
+                              type="button"
+                            >
+                              <Plus className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
+                            </button>
+                            <button
+                              aria-label={`删除${row.title}`}
+                              className="portal-project-shell__icon-button h-6 w-6 text-rose-500 hover:text-rose-600"
+                              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
                                 event.stopPropagation();
                                 void handleDeleteRow(row);
                               }}
-                            />
+                              type="button"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
+                            </button>
                           </span>
                         </>
                       );
                     })()}
-                  </button>
+                  </div>
                 );
               })}
+              </div>
             </div>
 
-            <div className="relative flex-1 bg-[#fbfdff]">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#fbfdff]">
+              <div
+                className="no-scrollbar relative min-h-0 flex-1 overflow-auto bg-[#fbfdff]"
+                onMouseLeave={() => {
+                  setHoverIndex(null);
+                }}
+                onMouseMove={handleTimelineMouseMove}
+                onScroll={syncAxisScroll}
+                ref={(element: HTMLDivElement | null) => {
+                  bodyRef.current = element;
+                }}
+              >
+                <div className="relative min-h-full bg-white" style={{ width: timelineWidth }}>
               <div className="pointer-events-none absolute inset-0 z-0">
-                {timelineDays.map((day, index) => (
-                  <div
-                    key={`grid-${day.id}`}
-                    className="absolute inset-y-0 border-r border-[#dfeafb]"
-                    style={{ left: index * DAY_COLUMN_WIDTH, width: DAY_COLUMN_WIDTH }}
-                  />
-                ))}
+                {visibleTimelineDays.map(({ day, index }) => {
+                  const dayOfWeek = getDayOfWeek(new Date(day.date));
+                  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                  return (
+                    <div
+                      key={`grid-${day.id}`}
+                      className={`absolute inset-y-0 border-r border-[#dfeafb] ${
+                        isWeekend ? 'bg-amber-50/50' : ''
+                      }`}
+                      style={{ left: index * dayColumnWidth, width: dayColumnWidth }}
+                    />
+                  );
+                })}
               </div>
               {currentLineIndex !== null ? (
                 <div
                   className="pointer-events-none absolute inset-y-0 z-0 bg-sky-500/[0.06]"
                   style={{
-                    left: currentLineIndex * DAY_COLUMN_WIDTH,
-                    width: DAY_COLUMN_WIDTH,
+                    left: currentLineIndex * dayColumnWidth,
+                    width: dayColumnWidth,
                   }}
                 />
               ) : null}
               {hoverIndex !== null ? (
                 <div
                   className="pointer-events-none absolute inset-y-0 z-30 border-l border-sky-400"
-                  style={{ left: hoverIndex * DAY_COLUMN_WIDTH }}
+                  style={{ left: hoverIndex * dayColumnWidth }}
                 />
               ) : currentLineIndex !== null ? (
                 <div
                   className="pointer-events-none absolute inset-y-0 z-20 border-l border-sky-500"
-                  style={{ left: currentLineIndex * DAY_COLUMN_WIDTH }}
+                  style={{ left: currentLineIndex * dayColumnWidth }}
                 />
               ) : null}
 
               <div style={{ width: timelineWidth }}>
-                <div
-                  className="border-b border-[#d9e4f5] bg-white/55"
-                  style={{ height: SIDEBAR_SEARCH_BAND_HEIGHT }}
-                />
                 {visibleRows.map((row) => {
                   const rowHeight = getRowHeight(row);
                   const preview = getRowPreview(row);
                   const hasBar = Boolean(preview.startDate && preview.endDate && row.entityKind);
+                  const taskTimeNodes =
+                    row.entityKind === 'task' && row.entityId
+                      ? localTaskTimeNodes.filter((timeNode) => timeNode.taskId === row.entityId)
+                      : [];
+                  const hasAnyTimelineSegment = hasBar || taskTimeNodes.length > 0;
                   const isSelected = selectedRowId === row.id;
                   const palette = getBarPalette(row);
                   const left =
                     preview.startDate && hasBar
-                      ? daysBetween(timelineRange.start, preview.startDate) * DAY_COLUMN_WIDTH
+                      ? daysBetween(timelineRange.start, preview.startDate) * dayColumnWidth
                       : 0;
                   const width =
                     preview.startDate && preview.endDate && hasBar
-                      ? (daysBetween(preview.startDate, preview.endDate) + 1) * DAY_COLUMN_WIDTH
+                      ? (daysBetween(preview.startDate, preview.endDate) + 1) * dayColumnWidth
                       : 0;
                   const taskDisplayMeta = getTaskDisplayMeta(row);
                   const isMicroBar = width < 44;
-                  const showInlineTitle = width >= 64;
-                  const showStatusInline = row.entityKind === 'task' && width >= 118;
+                  const showInlineTitle = width >= 54;
+                  const showTaskStatusInline = row.entityKind === 'task' && width >= 108;
                   const showProgressBadge = width >= 96;
-                  const showOwnerInline = Boolean(row.owner) && width >= 158;
+                  const showOwnerInline = row.entityKind === 'task' && Boolean(taskDisplayMeta.responsibleLabel) && width >= 154;
                   const showDateRange = width >= 202;
                   const showRoleInline = Boolean(taskDisplayMeta.ownerRoleName) && width >= 246;
                   const showParticipantInline = Boolean(taskDisplayMeta.participantLabel) && width >= 292;
                   const showAssignAction = row.entityKind === 'task' && width >= 136;
                   const overflowSegments = [
-                    !showInlineTitle ? row.title : null,
-                    row.entityKind === 'task' && !showStatusInline ? taskDisplayMeta.assignmentStatusLabel : null,
-                    !showOwnerInline && row.owner ? `负责人:${row.owner}` : null,
+                    !showInlineTitle ? (row.entityKind === 'task' ? taskDisplayMeta.taskShortName : row.title) : null,
+                    row.entityKind === 'task' && !showTaskStatusInline ? taskDisplayMeta.taskStatusLabel : null,
+                    row.entityKind === 'task' && !showOwnerInline ? `负责人:${taskDisplayMeta.responsibleLabel}` : null,
                     !showRoleInline && taskDisplayMeta.ownerRoleName ? taskDisplayMeta.ownerRoleName : null,
                     !showParticipantInline && taskDisplayMeta.participantLabel ? taskDisplayMeta.participantLabel : null,
                     !showDateRange && preview.startDate && preview.endDate
@@ -2702,6 +4114,21 @@ export function ProjectGanttWorkspacePage({
                     left + width + externalLabelWidth + 8 <= timelineWidth
                       ? left + width + 6
                       : Math.max(4, left - externalLabelWidth - 6);
+                  const isDraggingRow = dragState?.rowId === row.id;
+                  const isDependencySource = dependencyMode?.sourceRowId === row.id;
+                  const isDependencyTarget =
+                    Boolean(dependencyMode) &&
+                    row.entityKind === 'task' &&
+                    row.id !== dependencyMode?.sourceRowId;
+                  const dependencyShadow = isDependencySource
+                    ? `0 0 0 2px rgba(31,124,255,0.55), 0 10px 24px rgba(31,124,255,0.18)`
+                    : isDependencyTarget
+                      ? `0 0 0 2px rgba(16,185,129,0.42), 0 10px 24px rgba(16,185,129,0.14)`
+                      : undefined;
+                  const dragPreviewLabelLeft = Math.min(
+                    Math.max(4, left + Math.max(0, width / 2 - 96)),
+                    Math.max(4, timelineWidth - 196),
+                  );
 
                   return (
                     <div
@@ -2712,34 +4139,41 @@ export function ProjectGanttWorkspacePage({
                           : row.rowType === 'subCategory'
                             ? 'bg-[#fcfdff]'
                             : 'bg-white hover:bg-[#f8fbff]'
-                      }`}
+                      } ${isDraggingRow ? 'bg-[#edf6ff]' : ''} ${isDependencyTarget ? 'bg-emerald-50/30' : ''}`}
                       style={{ height: rowHeight }}
                     >
                       {/* 周末背景层 */}
-                      {timelineDays.map((day, index) => {
+                      {visibleTimelineDays.map(({ day, index }) => {
                         const dow = getDayOfWeek(new Date(day.date));
                         const isWeekend = dow === 0 || dow === 6;
                         return isWeekend ? (
                           <div
                             key={`${row.id}-weekend-${day.id}`}
                             className="pointer-events-none absolute inset-y-0 bg-[#fef9f0] opacity-60"
-                            style={{ left: index * DAY_COLUMN_WIDTH, width: DAY_COLUMN_WIDTH }}
+                            style={{ left: index * dayColumnWidth, width: dayColumnWidth }}
                           />
                         ) : null;
                       })}
                       {/* 网格线 */}
-                      {timelineDays.map((day, index) => (
+                      {visibleTimelineDays.map(({ day, index }) => (
                         <div
                           key={`${row.id}-${day.id}`}
                           className="pointer-events-none absolute inset-y-0 border-r border-[#dfeafb]"
-                          style={{ left: index * DAY_COLUMN_WIDTH, width: DAY_COLUMN_WIDTH }}
+                          style={{ left: index * dayColumnWidth, width: dayColumnWidth }}
                         />
                       ))}
 
                       {row.entityKind && row.entityId ? (
                         <div
-                          className="absolute inset-0"
+                          className={`absolute inset-0 ${
+                            canManageProjectSchedule
+                              ? 'cursor-crosshair transition-colors group-hover/row:bg-sky-50/35'
+                              : ''
+                          }`}
                           onMouseDown={(event: React.MouseEvent<HTMLDivElement>) => {
+                            if (dependencyMode) {
+                              return;
+                            }
                             if (event.target !== event.currentTarget) {
                               return;
                             }
@@ -2751,20 +4185,141 @@ export function ProjectGanttWorkspacePage({
                         />
                       ) : null}
 
+                      {taskTimeNodes.map((timeNode, timeNodeIndex) => {
+                        const timeNodeLeft = daysBetween(timelineRange.start, timeNode.startDate) * dayColumnWidth;
+                        const timeNodeWidth =
+                          (daysBetween(timeNode.startDate, timeNode.endDate) + 1) * dayColumnWidth;
+                        const laneTop = [4, 20][timeNodeIndex % 2] ?? 4;
+                        return (
+                          <button
+                            key={timeNode.id}
+                            className="group/time-node absolute z-20 h-5 cursor-grab rounded-[6px] border border-l-[3px] text-left shadow-[0_6px_18px_rgba(15,23,42,0.08)] transition hover:brightness-[1.03] active:cursor-grabbing"
+                            onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                              event.stopPropagation();
+                              if (suppressEditorOpenRef.current) {
+                                suppressEditorOpenRef.current = false;
+                                return;
+                              }
+                              if (canManageProjectSchedule) {
+                                openTimeNodeEditor(row, timeNode);
+                                return;
+                              }
+                              openDetailPanel(row);
+                            }}
+                            onMouseDown={(event: React.MouseEvent<HTMLButtonElement>) => {
+                              if (!canManageProjectSchedule || dependencyMode) {
+                                event.stopPropagation();
+                                return;
+                              }
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const offsetX = event.clientX - rect.left;
+                              const edgeHitSize = Math.min(14, Math.max(8, rect.width / 3));
+                              if (offsetX <= edgeHitSize) {
+                                startTimeNodeResize(event, row, timeNode, 'resize-start');
+                                return;
+                              }
+                              if (rect.width - offsetX <= edgeHitSize) {
+                                startTimeNodeResize(event, row, timeNode, 'resize-end');
+                                return;
+                              }
+                              startTimeNodeResize(event, row, timeNode, 'move');
+                            }}
+                            style={{
+                              backgroundColor: palette.fill,
+                              borderColor: palette.border,
+                              borderLeftColor: palette.border,
+                              left: timeNodeLeft,
+                              top: laneTop,
+                              width: Math.max(14, timeNodeWidth),
+                            }}
+                            title={`${row.title} / ${timeNode.title}: ${formatShortMonthDay(timeNode.startDate)}-${formatShortMonthDay(timeNode.endDate)}，拖动移动，点击编辑`}
+                            type="button"
+                          >
+                            <span
+                              aria-label="调整时间节点开始时间"
+                              className="absolute inset-y-0 left-0 z-20 flex w-3 cursor-ew-resize items-center justify-center bg-white/10 opacity-0 transition-opacity group-hover/time-node:opacity-100"
+                              onMouseDown={(event: React.MouseEvent<HTMLSpanElement>) => {
+                                startTimeNodeResize(event, row, timeNode, 'resize-start');
+                              }}
+                              role="button"
+                              tabIndex={0}
+                            />
+                            <span
+                              aria-label="调整时间节点结束时间"
+                              className="absolute inset-y-0 right-0 z-20 flex w-3 cursor-ew-resize items-center justify-center bg-white/10 opacity-0 transition-opacity group-hover/time-node:opacity-100"
+                              onMouseDown={(event: React.MouseEvent<HTMLSpanElement>) => {
+                                startTimeNodeResize(event, row, timeNode, 'resize-end');
+                              }}
+                              role="button"
+                              tabIndex={0}
+                            />
+                            <span
+                              className="absolute left-1.5 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-white/85"
+                              style={{ boxShadow: `0 0 0 2px ${palette.border}` }}
+                            />
+                            {timeNodeWidth >= 72 ? (
+                              <span className="flex min-w-0 items-center gap-1.5 pl-5 pr-2 text-[12px] font-medium leading-5 text-slate-700">
+                                <span className="min-w-0 truncate">{taskDisplayMeta.taskShortName}</span>
+                                {timeNodeWidth >= 118 ? (
+                                  <span className={`shrink-0 rounded px-1 py-0 text-[12px] ${taskDisplayMeta.taskStatusToneClassName}`}>
+                                    {taskDisplayMeta.taskStatusLabel}
+                                  </span>
+                                ) : null}
+                                {timeNodeWidth >= 168 ? (
+                                  <span className="shrink-0 rounded bg-white/70 px-1 py-0 text-[12px] text-slate-500">
+                                    {taskDisplayMeta.responsibleLabel}
+                                  </span>
+                                ) : null}
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+
                       {hasBar ? (
                         <>
                         <button
-                          className={`group/task absolute top-1/2 z-10 h-6 -translate-y-1/2 overflow-hidden rounded-[6px] border border-l-[3px] text-left shadow-[0_6px_18px_rgba(15,23,42,0.08)] transition-[filter,box-shadow] hover:brightness-[1.03] ${
+                          className={`group/task absolute top-1/2 z-30 h-6 -translate-y-1/2 overflow-hidden rounded-[6px] border border-l-[3px] text-left shadow-[0_6px_18px_rgba(15,23,42,0.08)] transition-[filter,box-shadow] hover:brightness-[1.03] ${
+                            dependencyMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+                          } ${
                             isMicroBar ? 'px-1' : 'px-2'
                           }`}
+                          onMouseEnter={() => setHoveredGanttBarId(row.id)}
+                          onMouseLeave={() => setHoveredGanttBarId(null)}
                           onDoubleClick={() => {
-                            openDetailPanel(row);
+                            if (!dependencyMode) {
+                              openDetailPanel(row);
+                            }
                           }}
                           onClick={() => {
-                            setSelectedRowId(row.id);
+                            if (suppressEditorOpenRef.current) {
+                              suppressEditorOpenRef.current = false;
+                              return;
+                            }
+                            if (dependencyMode) {
+                              void handleDependencyTargetClick(row);
+                              return;
+                            }
+                            openDetailPanel(row);
                           }}
                           onMouseDown={(event: React.MouseEvent<HTMLButtonElement>) => {
+                            if (dependencyMode) {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              return;
+                            }
                             if (event.detail === 1) {
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const offsetX = event.clientX - rect.left;
+                              const edgeHitSize = Math.min(16, Math.max(8, rect.width / 3));
+                              if (offsetX <= edgeHitSize) {
+                                startDrag(event, row, 'resize-start');
+                                return;
+                              }
+                              if (rect.width - offsetX <= edgeHitSize) {
+                                startDrag(event, row, 'resize-end');
+                                return;
+                              }
                               startDrag(event, row, 'move');
                             }
                           }}
@@ -2772,7 +4327,9 @@ export function ProjectGanttWorkspacePage({
                             backgroundColor: palette.fill,
                             borderColor: palette.border,
                             borderLeftColor: palette.border,
-                            boxShadow: isSelected ? `0 0 0 2px ${palette.border}40` : undefined,
+                            boxShadow: isDraggingRow
+                              ? `0 0 0 2px ${palette.border}66, 0 10px 24px rgba(15,23,42,0.14)`
+                              : dependencyShadow ?? (isSelected ? `0 0 0 2px ${palette.border}40` : undefined),
                             left,
                             width,
                           }}
@@ -2788,17 +4345,49 @@ export function ProjectGanttWorkspacePage({
                           />
 
                           <span
-                            className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize opacity-0 transition-opacity group-hover/task:opacity-100 hover:bg-white/20"
+                            aria-label="调整开始时间"
+                            className="absolute inset-y-0 left-0 z-20 flex w-3 cursor-ew-resize items-center justify-center bg-white/10 opacity-0 transition-opacity group-hover/task:opacity-100"
                             onMouseDown={(event: React.MouseEvent<HTMLSpanElement>) => {
+                              event.preventDefault();
+                              event.stopPropagation();
                               startDrag(event, row, 'resize-start');
                             }}
+                            role="button"
+                            tabIndex={0}
                           />
                           <span
-                            className="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize opacity-0 transition-opacity group-hover/task:opacity-100 hover:bg-white/20"
+                            aria-label="调整结束时间"
+                            className="absolute inset-y-0 right-0 z-20 flex w-3 cursor-ew-resize items-center justify-center bg-white/10 opacity-0 transition-opacity group-hover/task:opacity-100"
                             onMouseDown={(event: React.MouseEvent<HTMLSpanElement>) => {
+                              event.preventDefault();
+                              event.stopPropagation();
                               startDrag(event, row, 'resize-end');
                             }}
+                            role="button"
+                            tabIndex={0}
                           />
+                          {row.entityKind === 'task' && canManageProjectSchedule ? (
+                            <span
+                              aria-label={`从${row.title}发起依赖连接`}
+                              className={`absolute right-5 top-1/2 z-30 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-white/70 bg-white/90 text-sky-600 shadow-sm transition ${
+                                isDependencySource
+                                  ? 'pointer-events-auto opacity-100'
+                                  : 'pointer-events-none opacity-0 group-hover/task:pointer-events-auto group-hover/task:opacity-100'
+                              }`}
+                              onClick={(event: React.MouseEvent<HTMLSpanElement>) => {
+                                startDependencyConnect(event, row);
+                              }}
+                              onMouseDown={(event: React.MouseEvent<HTMLSpanElement>) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              title="建立依赖"
+                            >
+                              <Link2 className="h-3 w-3" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
+                            </span>
+                          ) : null}
 
                           <div
                             className={`relative z-10 flex h-full min-w-0 flex-nowrap items-center overflow-hidden ${
@@ -2812,33 +4401,33 @@ export function ProjectGanttWorkspacePage({
                               <span className={`h-2 w-2 flex-shrink-0 rounded-full ${taskDisplayMeta.assignmentDotClassName}`} />
                             ) : null}
                             {showInlineTitle ? (
-                              <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[11px] font-medium text-slate-700">
-                                {row.title}
+                              <span className="min-w-0 flex-1 truncate whitespace-nowrap text-[12px] font-medium text-slate-700">
+                                {row.entityKind === 'task' ? taskDisplayMeta.taskShortName : row.title}
                               </span>
                             ) : null}
-                            {showStatusInline ? (
-                              <span className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium ${taskDisplayMeta.assignmentToneClassName}`}>
-                                {taskDisplayMeta.assignmentStatusLabel}
+                            {showTaskStatusInline ? (
+                              <span className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[12px] font-medium ${taskDisplayMeta.taskStatusToneClassName}`}>
+                                {taskDisplayMeta.taskStatusLabel}
                               </span>
                             ) : null}
                             {showOwnerInline ? (
-                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500 lg:inline">
-                                {row.owner}
+                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-white/70 px-1.5 py-0.5 text-[12px] text-slate-500 lg:inline">
+                                {taskDisplayMeta.responsibleLabel}
                               </span>
                             ) : null}
                             {showRoleInline ? (
-                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-indigo-50/90 px-1.5 py-0.5 text-[10px] text-indigo-600 xl:inline">
+                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-indigo-50/90 px-1.5 py-0.5 text-[12px] text-indigo-600 xl:inline">
                                 {taskDisplayMeta.ownerRoleName}
                               </span>
                             ) : null}
                             {showParticipantInline ? (
-                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-slate-100/90 px-1.5 py-0.5 text-[10px] text-slate-500 2xl:inline">
+                              <span className="hidden shrink-0 whitespace-nowrap rounded bg-slate-100/90 px-1.5 py-0.5 text-[12px] text-slate-500 2xl:inline">
                                 {taskDisplayMeta.participantLabel}
                               </span>
                             ) : null}
                             {showAssignAction ? (
                               <span
-                                className="shrink-0 cursor-pointer whitespace-nowrap rounded bg-white/75 px-1.5 py-0.5 text-[10px] text-sky-600 opacity-0 transition-opacity group-hover/task:opacity-100"
+                                className="shrink-0 cursor-pointer whitespace-nowrap rounded bg-white/75 px-1.5 py-0.5 text-[12px] text-sky-600 opacity-0 transition-opacity group-hover/task:opacity-100"
                                 onMouseDown={(event: React.MouseEvent<HTMLSpanElement>) => {
                                   event.stopPropagation();
                                 }}
@@ -2853,17 +4442,118 @@ export function ProjectGanttWorkspacePage({
                               </span>
                             ) : null}
                             {showProgressBadge ? (
-                              <span className={`shrink-0 whitespace-nowrap rounded bg-white/70 px-1.5 py-0.5 text-[10px] ${palette.badge}`}>
+                              <span className={`shrink-0 whitespace-nowrap rounded bg-white/70 px-1.5 py-0.5 text-[12px] ${palette.badge}`}>
                                 {normalizeProgress(row.progress)}%
                               </span>
                             ) : null}
                             {showDateRange ? (
-                              <span className="hidden shrink-0 whitespace-nowrap text-[10px] text-slate-500 md:inline">
+                              <span className="hidden shrink-0 whitespace-nowrap text-[12px] text-slate-500 md:inline">
                                 {formatShortMonthDay(preview.startDate)}-{formatShortMonthDay(preview.endDate)}
                               </span>
                             ) : null}
                           </div>
                         </button>
+                        {hoveredGanttBarId === row.id && row.entityKind === 'task' ? (
+                          <div
+                            className="absolute left-1/2 bottom-full z-50 mb-2 w-52 -translate-x-1/2 rounded-lg border border-[#e4ebf5] bg-white px-3 py-2.5 shadow-[0_8px_24px_rgba(15,23,42,0.14)]"
+                            onMouseEnter={() => setHoveredGanttBarId(row.id)}
+                            onMouseLeave={() => setHoveredGanttBarId(null)}
+                          >
+                            <div className="mb-1.5 text-[13px] font-semibold text-[#111c33] truncate">{row.title}</div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[12px]">
+                                <span className="text-[#8da0bd]">任务状态</span>
+                                <span className="font-medium text-[#526681]">{taskDisplayMeta.taskStatusLabel}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[12px]">
+                                <span className="text-[#8da0bd]">分配状态</span>
+                                <span className="font-medium text-[#526681]">{taskDisplayMeta.assignmentStatusLabel}</span>
+                              </div>
+                              {taskDisplayMeta.responsibleLabel ? (
+                                <div className="flex items-center justify-between text-[12px]">
+                                  <span className="text-[#8da0bd]">负责人</span>
+                                  <span className="font-medium text-[#526681]">{taskDisplayMeta.responsibleLabel}</span>
+                                </div>
+                              ) : null}
+                              {taskDisplayMeta.ownerRoleName ? (
+                                <div className="flex items-center justify-between text-[12px]">
+                                  <span className="text-[#8da0bd]">角色</span>
+                                  <span className="font-medium text-[#526681]">{taskDisplayMeta.ownerRoleName}</span>
+                                </div>
+                              ) : null}
+                              {taskDisplayMeta.participantLabel ? (
+                                <div className="flex items-center justify-between text-[12px]">
+                                  <span className="text-[#8da0bd]">参与人</span>
+                                  <span className="font-medium text-[#526681]">{taskDisplayMeta.participantLabel}</span>
+                                </div>
+                              ) : null}
+                              {row.startDate && row.endDate ? (
+                                <div className="flex items-center justify-between text-[12px]">
+                                  <span className="text-[#8da0bd]">计划时间</span>
+                                  <span className="font-medium text-[#526681]">
+                                    {formatShortMonthDay(row.startDate)}-{formatShortMonthDay(row.endDate)}
+                                  </span>
+                                </div>
+                              ) : null}
+                              <div className="flex items-center justify-between text-[12px]">
+                                <span className="text-[#8da0bd]">进度</span>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="h-1.5 w-16 overflow-hidden rounded-full bg-[#e4ebf5]">
+                                    <div className="h-full rounded-full bg-[var(--portal-color-brand-500)]" style={{ width: `${normalizeProgress(row.progress)}%` }} />
+                                  </div>
+                                  <span className="font-medium text-[#526681]">{normalizeProgress(row.progress)}%</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="pointer-events-none absolute -bottom-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b border-r border-[#e4ebf5] bg-white" />
+                          </div>
+                        ) : null}
+                        {canManageProjectSchedule && !dependencyMode ? (
+                          <>
+                            <button
+                              aria-label="调整开始时间"
+                              className="absolute top-1/2 z-50 h-8 w-4 -translate-y-1/2 cursor-ew-resize rounded-l-[6px] border border-white/80 bg-white/80 shadow-[0_2px_8px_rgba(15,23,42,0.12)] transition hover:bg-white"
+                              onMouseDown={(event: React.MouseEvent<HTMLButtonElement>) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                startDrag(event, row, 'resize-start');
+                              }}
+                              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                              }}
+                              onDragStart={(event: React.DragEvent<HTMLButtonElement>) => {
+                                event.preventDefault();
+                              }}
+                              style={{ left: Math.max(0, left - 6) }}
+                              title="调整开始时间"
+                              type="button"
+                            >
+                              <span className="mx-auto block h-4 w-0.5 rounded-full bg-[#6b7f9e]" />
+                            </button>
+                            <button
+                              aria-label="调整结束时间"
+                              className="absolute top-1/2 z-50 h-8 w-4 -translate-y-1/2 cursor-ew-resize rounded-r-[6px] border border-white/80 bg-white/80 shadow-[0_2px_8px_rgba(15,23,42,0.12)] transition hover:bg-white"
+                              onMouseDown={(event: React.MouseEvent<HTMLButtonElement>) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                startDrag(event, row, 'resize-end');
+                              }}
+                              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                              }}
+                              onDragStart={(event: React.DragEvent<HTMLButtonElement>) => {
+                                event.preventDefault();
+                              }}
+                              style={{ left: Math.max(0, left + width - 10) }}
+                              title="调整结束时间"
+                              type="button"
+                            >
+                              <span className="mx-auto block h-4 w-0.5 rounded-full bg-[#6b7f9e]" />
+                            </button>
+                          </>
+                        ) : null}
                         {showExternalLabel ? (
                           <div
                             className={`pointer-events-none absolute top-1/2 z-20 -translate-y-1/2 transition-opacity ${
@@ -2874,15 +4564,45 @@ export function ProjectGanttWorkspacePage({
                               maxWidth: externalLabelWidth,
                             }}
                           >
-                            <span className="block truncate rounded-md border border-slate-200 bg-white/95 px-2 py-1 text-[10px] font-medium text-slate-600 shadow-[0_8px_20px_-16px_rgba(15,23,42,0.45)]">
+                            <span className="block truncate rounded-md border border-slate-200 bg-white/95 px-2 py-1 text-[12px] font-medium text-slate-600 shadow-[0_8px_20px_-16px_rgba(15,23,42,0.45)]">
                               {overflowSegments.join(' · ')}
                             </span>
                           </div>
                         ) : null}
+                        {isDraggingRow && preview.startDate && preview.endDate ? (
+                          <div
+                            className="pointer-events-none absolute top-1 z-40 rounded-md border border-[#bfdbfe] bg-white px-2.5 py-1 text-[12px] font-semibold text-[#1f65e8] shadow-[0_8px_18px_rgba(31,101,232,0.18)]"
+                            style={{ left: dragPreviewLabelLeft }}
+                          >
+                            {dragState ? getDragModeLabel(dragState.mode) : ''}
+                            <span className="ml-1 font-medium text-[#526681]">
+                              {formatShortMonthDay(preview.startDate)}-{formatShortMonthDay(preview.endDate)}
+                            </span>
+                          </div>
+                        ) : null}
                         </>
-                      ) : row.entityKind ? (
-                        <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-xs text-slate-300">
-                          拖拽空白区域创建计划时间
+                      ) : row.entityKind && !hasAnyTimelineSegment ? (
+                        <div
+                          className="pointer-events-none absolute top-1/2 flex h-6 -translate-y-1/2 items-center rounded-md border border-dashed border-[#b9d4ff] bg-white/90 px-2.5 text-[12px] font-medium text-[#6b7f9e] opacity-0 shadow-sm transition-opacity group-hover/row:opacity-100"
+                          style={{
+                            left: unscheduledHintLeft,
+                            width: Math.min(220, Math.max(150, timelineViewport.viewportWidth * 0.34)),
+                          }}
+                        >
+                              拖拽新增时间节点
+                        </div>
+                      ) : null}
+
+                      {row.entityKind && canManageProjectSchedule && hasAnyTimelineSegment ? (
+                        <div
+                          className={`pointer-events-none absolute top-1/2 z-30 -translate-y-1/2 rounded-md border border-dashed border-[#bfdbfe] bg-white/95 px-2.5 py-1 text-[12px] font-medium text-[#6b7f9e] shadow-sm transition-opacity ${
+                            isDraggingRow && dragState?.mode === 'create'
+                              ? 'opacity-100'
+                              : 'opacity-0 group-hover/row:opacity-100'
+                          }`}
+                          style={{ left: unscheduledHintLeft }}
+                        >
+                              拖拽新增时间节点
                         </div>
                       ) : null}
 
@@ -2907,10 +4627,11 @@ export function ProjectGanttWorkspacePage({
                     className="pointer-events-none absolute left-0 top-0"
                     style={{
                       width: timelineWidth,
-                      height: visibleRows.reduce((sum, row) => sum + getRowHeight(row), 0),
+                      height: timelineRowsHeight,
                       overflow: 'visible',
+                      top: 0,
                     }}
-                    viewBox={`0 0 ${timelineWidth} ${visibleRows.reduce((sum, row) => sum + getRowHeight(row), 0)}`}
+                    viewBox={`0 0 ${timelineWidth} ${timelineRowsHeight}`}
                   >
                     <defs>
                       {Object.entries(DEPENDENCY_TYPE_CONFIG).map(([type, config]) => (
@@ -2943,6 +4664,11 @@ export function ProjectGanttWorkspacePage({
                     {dependencyLines.map((line) => {
                       const config = DEPENDENCY_TYPE_CONFIG[line.dependencyType];
                       const isHovered = hoveredDependencyId === line.id;
+                      const isSelectedRelation =
+                        selectedRowId === line.predecessorId ||
+                        selectedRowId === line.successorId ||
+                        dependencyMode?.sourceRowId === line.predecessorId;
+                      const isHighlighted = isHovered || isSelectedRelation;
                       return (
                         <g
                           key={line.id}
@@ -2961,11 +4687,11 @@ export function ProjectGanttWorkspacePage({
                           <path
                             d={generateDependencyPath(line.from, line.to)}
                             stroke={config.color}
-                            strokeWidth={isHovered ? 2.5 : 1.5}
-                            strokeDasharray={isHovered ? 'none' : '5,3'}
+                            strokeWidth={isHighlighted ? 2.5 : 1.5}
+                            strokeDasharray={isHighlighted ? 'none' : '5,3'}
                             fill="none"
-                            markerEnd={`url(#arrow-${line.dependencyType}-${isHovered ? 'hover' : 'normal'})`}
-                            opacity={isHovered ? 1 : 0.7}
+                            markerEnd={`url(#arrow-${line.dependencyType}-${isHighlighted ? 'hover' : 'normal'})`}
+                            opacity={isHighlighted ? 1 : 0.55}
                           />
                           {/* 悬停时显示信息 */}
                           {isHovered && (
@@ -2985,7 +4711,7 @@ export function ProjectGanttWorkspacePage({
                                 x="60"
                                 y="16"
                                 textAnchor="middle"
-                                fontSize="11"
+                                fontSize="12"
                                 fill="#475569"
                               >
                                 {config.label}
@@ -2998,11 +4724,12 @@ export function ProjectGanttWorkspacePage({
                   </svg>
                 )}
               </div>
+              </div>
             </div>
           </div>
         </div>
-      </Card>
-    </div>
+      </div>
+      </div>
 
       {createDraft ? (
         <div
@@ -3014,17 +4741,17 @@ export function ProjectGanttWorkspacePage({
           }}
         >
           <Card
-            className="w-full max-w-[420px] rounded-[28px] p-5"
+            className={`w-full max-w-[420px] ${GANTT_CARD_CLASS}`}
             onClick={(event: React.MouseEvent<HTMLDivElement>) => {
               event.stopPropagation();
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="theme-text-soft text-xs font-semibold">
+                <div className="text-xs font-medium text-[#8da0bd]">
                   {createDraft.mode === 'node' ? '节点新增' : '任务新增'}
                 </div>
-                <div className="theme-text-strong mt-2 text-[22px] font-bold">
+                <div className="mt-2 text-base font-bold text-[#111c33]">
                   {createDraft.mode === 'node'
                     ? createDraft.parentNodeId
                       ? '新增子节点'
@@ -3033,24 +4760,25 @@ export function ProjectGanttWorkspacePage({
                 </div>
               </div>
               <button
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-black/8 text-slate-400 transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="关闭新增面板"
+                className="portal-project-shell__icon-button"
                 disabled={actionLoading}
                 onClick={() => {
                   setCreateDraft(null);
                 }}
                 type="button"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
               </button>
             </div>
 
             <div className="mt-5 space-y-4">
               <div>
-                <div className="theme-text-soft text-xs font-semibold">
+                <div className={GANTT_FIELD_LABEL_CLASS}>
                   {createDraft.mode === 'node' ? '名称' : '标题'}
                 </div>
                 <input
-                  className="theme-input mt-2 h-11 w-full rounded-2xl px-4 text-sm"
+                  className={`${GANTT_INPUT_CLASS} mt-2`}
                   onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                     setCreateDraft((current) => (current ? { ...current, title: event.target.value } : current));
                   }}
@@ -3060,9 +4788,9 @@ export function ProjectGanttWorkspacePage({
               </div>
 
               <div>
-                <div className="theme-text-soft text-xs font-semibold">编码</div>
+                <div className={GANTT_FIELD_LABEL_CLASS}>编码</div>
                 <input
-                  className="theme-input mt-2 h-11 w-full rounded-2xl px-4 text-sm"
+                  className={`${GANTT_INPUT_CLASS} mt-2`}
                   onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                     setCreateDraft((current) => (current ? { ...current, code: event.target.value } : current));
                   }}
@@ -3073,9 +4801,9 @@ export function ProjectGanttWorkspacePage({
 
               {createDraft.mode === 'task' ? (
                 <div>
-                  <div className="theme-text-soft text-xs font-semibold">任务内容</div>
+                  <div className={GANTT_FIELD_LABEL_CLASS}>任务内容</div>
                   <textarea
-                    className="theme-input mt-2 min-h-[110px] w-full rounded-2xl px-4 py-3 text-sm"
+                    className={`${GANTT_TEXTAREA_CLASS} mt-2`}
                     onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => {
                       setCreateDraft((current) => (current ? { ...current, content: event.target.value } : current));
                     }}
@@ -3086,9 +4814,9 @@ export function ProjectGanttWorkspacePage({
               ) : null}
 
               <div>
-                <div className="theme-text-soft text-xs font-semibold">备注</div>
+                <div className={GANTT_FIELD_LABEL_CLASS}>备注</div>
                 <textarea
-                  className="theme-input mt-2 min-h-[96px] w-full rounded-2xl px-4 py-3 text-sm"
+                  className={`${GANTT_TEXTAREA_CLASS} mt-2`}
                   onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => {
                     setCreateDraft((current) => (current ? { ...current, remark: event.target.value } : current));
                   }}
@@ -3120,6 +4848,107 @@ export function ProjectGanttWorkspacePage({
         </div>
       ) : null}
 
+      {timeNodeEditor ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 backdrop-blur-sm"
+          onClick={() => {
+            setTimeNodeEditor(null);
+          }}
+        >
+          <Card
+            className={`w-full max-w-[420px] ${GANTT_CARD_CLASS}`}
+            onClick={(event: React.MouseEvent<HTMLDivElement>) => {
+              event.stopPropagation();
+            }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-medium text-[#8da0bd]">时间节点编辑</div>
+                <div className="mt-2 max-w-[300px] truncate text-base font-bold text-[#111c33]">
+                  {findRow(timeNodeEditor.rowId)?.title ?? '任务时间节点'}
+                </div>
+              </div>
+              <button
+                aria-label="关闭时间节点编辑"
+                className="portal-project-shell__icon-button"
+                onClick={() => {
+                  setTimeNodeEditor(null);
+                }}
+                type="button"
+              >
+                <X className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className={GANTT_FIELD_LABEL_CLASS}>节点名称</label>
+                <input
+                  className={`${GANTT_INPUT_CLASS} mt-2`}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                    setTimeNodeEditor((current) =>
+                      current ? { ...current, title: event.target.value } : current,
+                    );
+                  }}
+                  value={timeNodeEditor.title}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={GANTT_FIELD_LABEL_CLASS}>开始日期</label>
+                  <input
+                    className={`${GANTT_INPUT_CLASS} mt-2`}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                      setTimeNodeEditor((current) =>
+                        current ? { ...current, startDate: event.target.value } : current,
+                      );
+                    }}
+                    type="date"
+                    value={timeNodeEditor.startDate}
+                  />
+                </div>
+                <div>
+                  <label className={GANTT_FIELD_LABEL_CLASS}>结束日期</label>
+                  <input
+                    className={`${GANTT_INPUT_CLASS} mt-2`}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                      setTimeNodeEditor((current) =>
+                        current ? { ...current, endDate: event.target.value } : current,
+                      );
+                    }}
+                    type="date"
+                    value={timeNodeEditor.endDate}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <button
+                className="flex h-9 items-center gap-2 rounded-md border border-rose-100 bg-rose-50 px-3 text-[13px] font-semibold text-rose-600 transition hover:border-rose-200 hover:bg-rose-100"
+                onClick={handleDeleteTimeNodeEditor}
+                type="button"
+              >
+                <Trash2 className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
+                删除
+              </button>
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setTimeNodeEditor(null);
+                  }}
+                  tone="ghost"
+                >
+                  取消
+                </Button>
+                <Button onClick={handleSaveTimeNodeEditor}>保存</Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
       {editorState ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-[4px]"
@@ -3133,28 +4962,28 @@ export function ProjectGanttWorkspacePage({
               event.stopPropagation();
             }}
           >
-            <div className="overflow-hidden rounded-2xl bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]">
+            <div className="overflow-hidden rounded-lg border border-[#e4ebf5] bg-white shadow-[0_16px_40px_rgba(24,39,75,0.16)]">
               {/* 标题栏 */}
-              <div className="relative bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-5 py-5">
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30"></div>
+              <div className="border-b border-[#edf2f8] bg-white px-5 py-4">
                 <div className="relative flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm shadow-lg">
-                      <CalendarDays className="h-6 w-6 text-white" />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[#edf6ff] text-[var(--portal-color-brand-600)]">
+                      <CalendarDays className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                     </div>
                     <div>
-                      <h2 className="text-[18px] font-bold text-white">计划时间编辑</h2>
-                      <p className="text-sm text-white/80 truncate max-w-[280px]">{findRow(editorState.rowId)?.title ?? '设置任务计划时间'}</p>
+                      <h2 className="text-base font-bold text-[#111c33]">计划时间编辑</h2>
+                      <p className="mt-1 max-w-[280px] truncate text-xs font-medium text-[#6b7f9e]">{findRow(editorState.rowId)?.title ?? '设置任务计划时间'}</p>
                     </div>
                   </div>
                   <button
-                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-all hover:bg-white/20 hover:text-white"
+                    aria-label="关闭计划时间编辑"
+                    className="portal-project-shell__icon-button"
                     onClick={() => {
                       setEditorState(null);
                     }}
                     type="button"
                   >
-                    <X className="h-5 w-5" />
+                    <X className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                   </button>
                 </div>
               </div>
@@ -3164,9 +4993,9 @@ export function ProjectGanttWorkspacePage({
                 {/* 日期输入卡片 */}
                 <div className="mb-5 grid grid-cols-2 gap-4">
                   <div className="group">
-                    <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-600">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-sm">
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <label className="mb-2 flex items-center gap-2 text-xs font-medium text-[#6b7f9e]">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                           <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
@@ -3174,7 +5003,7 @@ export function ProjectGanttWorkspacePage({
                     </label>
                     <div className="relative">
                       <input
-                        className="h-12 w-full cursor-pointer rounded-xl border-2 border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 text-slate-700 transition-all hover:border-slate-300 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        className={GANTT_INPUT_CLASS}
                         onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                           setEditorState((current) =>
                             current
@@ -3191,9 +5020,9 @@ export function ProjectGanttWorkspacePage({
                     </div>
                   </div>
                   <div className="group">
-                    <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-600">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-rose-400 to-pink-500 text-white shadow-sm">
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <label className="mb-2 flex items-center gap-2 text-xs font-medium text-[#6b7f9e]">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-md bg-rose-50 text-rose-600">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                           <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
@@ -3201,7 +5030,7 @@ export function ProjectGanttWorkspacePage({
                     </label>
                     <div className="relative">
                       <input
-                        className="h-12 w-full cursor-pointer rounded-xl border-2 border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 text-slate-700 transition-all hover:border-slate-300 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        className={GANTT_INPUT_CLASS}
                         onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                           setEditorState((current) =>
                             current
@@ -3222,23 +5051,23 @@ export function ProjectGanttWorkspacePage({
                 {/* 快捷操作 */}
                 {findRow(editorState.rowId)?.entityKind === 'task' && (
                   <div className="mb-5">
-                    <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-600">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-violet-400 to-purple-500 text-white shadow-sm">
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <label className="mb-2 flex items-center gap-2 text-xs font-medium text-[#6b7f9e]">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-md bg-[#edf6ff] text-[var(--portal-color-brand-600)]">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                           <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
                       依赖管理
                     </label>
                     <button
-                      className="group flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 px-4 py-3 text-sm font-medium text-violet-600 transition-all hover:border-violet-400 hover:from-violet-100 hover:to-purple-100"
+                      className="group flex h-9 w-full items-center justify-center gap-2 rounded-md border border-dashed border-[#b9d4ff] bg-[#edf6ff] px-4 text-[13px] font-medium text-[var(--portal-color-brand-600)] transition hover:border-[var(--portal-color-brand-500)] hover:bg-[#e4f0ff]"
                       onClick={() => {
                         const row = findRow(editorState.rowId);
                         if (row) openDependencyModal(row);
                       }}
                       type="button"
                     >
-                      <svg className="h-4 w-4 transition-transform group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg className="h-4 w-4 transition-transform group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                         <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                       管理任务依赖关系
@@ -3247,36 +5076,34 @@ export function ProjectGanttWorkspacePage({
                 )}
 
                 {/* 提示信息 */}
-                <div className="mb-5 flex items-start gap-3 rounded-xl bg-slate-50 px-4 py-3">
-                  <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-slate-200">
-                    <svg className="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <div className="mb-5 flex items-start gap-3 rounded-lg border border-[#e4ebf5] bg-[#f8fbff] px-4 py-3">
+                  <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-[#edf6ff] text-[var(--portal-color-brand-600)]">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                       <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs font-medium leading-5 text-[#6b7f9e]">
                     设置任务的计划开始和结束时间。如果存在后续依赖任务，可开启「连锁」功能自动调整关联任务日期。
                   </p>
                 </div>
               </div>
 
               {/* 底部操作栏 */}
-              <div className="border-t border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
+              <div className="border-t border-[#edf2f8] bg-white px-5 py-4">
                 <div className="flex items-center justify-between gap-4">
                   <button
-                    className="group flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-all hover:bg-red-50 hover:text-red-600"
+                    className="portal-project-shell__secondary-button border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
                     onClick={() => {
                       void handleEditorDelete();
                     }}
                     disabled={actionLoading}
                   >
-                    <svg className="h-4 w-4 transition-transform group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
+                    <Trash2 className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                     清空时间
                   </button>
                   <div className="flex items-center gap-3">
                     <button
-                      className="rounded-xl px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-100"
+                      className="portal-project-shell__secondary-button"
                       onClick={() => {
                         setEditorState(null);
                       }}
@@ -3284,20 +5111,16 @@ export function ProjectGanttWorkspacePage({
                       取消
                     </button>
                     <button
-                      className="group relative flex items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition-all hover:shadow-xl hover:shadow-blue-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="portal-project-shell__primary-button disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => {
                         void handleEditorSave();
                       }}
                       disabled={actionLoading}
                     >
-                      <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-purple-600 opacity-0 transition-opacity group-hover:opacity-100"></div>
-                      <span className="relative flex items-center gap-2">
+                      <span className="flex items-center gap-2">
                         {actionLoading ? (
                           <>
-                            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                            </svg>
+                            <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                             保存中...
                           </>
                         ) : (
@@ -3328,32 +5151,33 @@ export function ProjectGanttWorkspacePage({
           }}
         >
           <Card
-            className="w-full max-w-[440px] rounded-[28px] p-5"
+            className={`w-full max-w-[440px] ${GANTT_CARD_CLASS}`}
             onClick={(event: React.MouseEvent<HTMLDivElement>) => {
               event.stopPropagation();
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="theme-text-soft text-xs font-semibold">任务人员分配</div>
-                <div className="theme-text-strong mt-2 text-[22px] font-bold">{quickAssignState.taskTitle}</div>
+                <div className="text-xs font-medium text-[#8da0bd]">任务人员分配</div>
+                <div className="mt-2 text-base font-bold text-[#111c33]">{quickAssignState.taskTitle}</div>
               </div>
               <button
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-black/8 text-slate-400 transition-colors hover:text-slate-900"
+                aria-label="关闭人员分配"
+                className="portal-project-shell__icon-button"
                 onClick={() => {
                   closeQuickAssign();
                 }}
                 type="button"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
               </button>
             </div>
 
             <div className="mt-5 space-y-5">
               <div>
-                <div className="theme-text-soft text-xs font-semibold">负责人</div>
+                <div className={GANTT_FIELD_LABEL_CLASS}>负责人</div>
                 <select
-                  className="theme-input mt-2 h-11 w-full rounded-2xl px-4 text-sm"
+                  className={`${GANTT_INPUT_CLASS} mt-2`}
                   disabled={quickAssignState.loading || members.length === 0}
                   onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
                     const userId = event.target.value || null;
@@ -3377,8 +5201,8 @@ export function ProjectGanttWorkspacePage({
               </div>
 
               <div>
-                <div className="theme-text-soft text-xs font-semibold">参与人</div>
-                <div className="mt-2 max-h-[220px] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className={GANTT_FIELD_LABEL_CLASS}>参与人</div>
+                <div className="mt-2 max-h-[220px] space-y-2 overflow-auto rounded-lg border border-[#e4ebf5] bg-[#f8fbff] p-3">
                   {members.filter((member) => member.userId !== quickAssignState.responsibleUserId).length ? (
                     members
                       .filter((member) => member.userId !== quickAssignState.responsibleUserId)
@@ -3387,19 +5211,19 @@ export function ProjectGanttWorkspacePage({
                         return (
                           <label
                             key={member.userId}
-                            className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                            className={`flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2 text-[13px] font-medium transition-colors ${
                               checked
-                                ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                ? 'border-[#b9d4ff] bg-[#edf6ff] text-[var(--portal-color-brand-700)]'
+                                : 'border-[#d9e3f1] bg-white text-[#526681] hover:border-[#b9d4ff]'
                             }`}
                           >
                             <div className="min-w-0">
                               <div className="truncate font-medium">{member.userName}</div>
-                              <div className="truncate text-xs text-slate-400">{member.roleName ?? member.dutyContent ?? '项目团队成员'}</div>
+                              <div className="truncate text-xs font-medium text-[#8da0bd]">{member.roleName ?? member.dutyContent ?? '项目团队成员'}</div>
                             </div>
                             <input
                               checked={checked}
-                              className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-300"
+                              className="h-4 w-4 rounded border-[#d9e3f1] text-[var(--portal-color-brand-600)] focus:ring-[#dceaff]"
                               onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                                 setQuickAssignState((current) => ({
                                   ...current,
@@ -3414,7 +5238,7 @@ export function ProjectGanttWorkspacePage({
                         );
                       })
                   ) : (
-                    <div className="py-5 text-center text-sm text-slate-400">暂无可选参与人，请先补充项目团队成员。</div>
+                    <div className="py-5 text-center text-[13px] font-medium text-[#8da0bd]">暂无可选参与人，请先补充项目团队成员。</div>
                   )}
                 </div>
               </div>
@@ -3422,19 +5246,19 @@ export function ProjectGanttWorkspacePage({
               {quickAssignState.participantMembers.length ? (
                 <div className="flex flex-wrap gap-2">
                   {quickAssignState.participantMembers.map((member) => (
-                    <span key={member.userId} className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
+                    <span key={member.userId} className="rounded-md bg-[#edf6ff] px-2.5 py-1 text-xs font-medium text-[var(--portal-color-brand-700)]">
                       {member.userName}
                     </span>
                   ))}
                 </div>
               ) : (
-                <div className="text-xs text-slate-400">当前未设置参与人</div>
+                <div className="text-xs font-medium text-[#8da0bd]">当前未设置参与人</div>
               )}
             </div>
 
             <div className="mt-5 flex justify-end gap-3">
               <button
-                className="rounded-xl px-5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-100"
+                className="portal-project-shell__secondary-button"
                 onClick={() => {
                   closeQuickAssign();
                 }}
@@ -3443,7 +5267,7 @@ export function ProjectGanttWorkspacePage({
                 取消
               </button>
               <button
-                className="rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-200 transition-all hover:shadow-xl hover:shadow-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+                className="portal-project-shell__primary-button disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={quickAssignState.loading}
                 onClick={() => {
                   void handleSaveQuickAssign();
@@ -3466,35 +5290,36 @@ export function ProjectGanttWorkspacePage({
           }}
         >
           <Card
-            className="w-full max-w-[520px] rounded-[28px] p-5"
+            className={`w-full max-w-[520px] ${GANTT_CARD_CLASS}`}
             onClick={(event: React.MouseEvent<HTMLDivElement>) => {
               event.stopPropagation();
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="theme-text-soft text-xs font-semibold">
+                <div className="text-xs font-medium text-[#8da0bd]">
                   任务依赖管理
                 </div>
-                <div className="theme-text-strong mt-2 text-[22px] font-bold">
+                <div className="mt-2 text-base font-bold text-[#111c33]">
                   {dependencyModalState.taskTitle}
                 </div>
               </div>
               <button
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-black/8 text-slate-400 transition-colors hover:text-slate-900"
+                aria-label="关闭依赖管理"
+                className="portal-project-shell__icon-button"
                 onClick={() => {
                   setDependencyModalState(null);
                 }}
                 type="button"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
               </button>
             </div>
 
             <div className="mt-5 space-y-5">
               {/* 现有依赖关系 */}
               <div>
-                <div className="theme-text-soft mb-3 text-xs font-semibold">
+                <div className="mb-3 text-xs font-medium text-[#6b7f9e]">
                   当前依赖关系
                 </div>
                 {(() => {
@@ -3502,7 +5327,7 @@ export function ProjectGanttWorkspacePage({
                   const allDeps = [...deps.predecessors, ...deps.successors];
                   if (allDeps.length === 0) {
                     return (
-                      <div className="rounded-xl bg-slate-50 py-5 text-center text-sm text-slate-400">
+                      <div className="rounded-lg border border-dashed border-[#d9e3f1] bg-[#f8fbff] py-5 text-center text-[13px] font-medium text-[#8da0bd]">
                         暂无依赖关系
                       </div>
                     );
@@ -3512,19 +5337,19 @@ export function ProjectGanttWorkspacePage({
                       {/* 前驱任务 */}
                       {deps.predecessors.length > 0 && (
                         <div>
-                          <div className="text-xs text-slate-500">前驱任务（该任务依赖于）</div>
+                          <div className="text-xs font-medium text-[#6b7f9e]">前驱任务（该任务依赖于）</div>
                           {deps.predecessors.map(dep => (
                             <div
                               key={`pred-${dep.id}`}
-                              className="mt-1 flex items-center justify-between rounded-lg bg-blue-50 px-3 py-2"
+                              className="mt-1 flex items-center justify-between rounded-md border border-[#e4ebf5] bg-[#f8fbff] px-3 py-2"
                             >
                               <div>
-                                <span className="text-xs text-blue-600">前驱：</span>
-                                <span className="text-sm font-medium text-slate-700">{dep.predecessorTaskTitle}</span>
-                                <span className="ml-2 text-xs text-slate-400">({dep.dependencyTypeDesc})</span>
+                                <span className="text-xs font-medium text-[var(--portal-color-brand-600)]">前驱：</span>
+                                <span className="text-[13px] font-medium text-[#263653]">{dep.predecessorTaskTitle}</span>
+                                <span className="ml-2 text-xs font-medium text-[#8da0bd]">({dep.dependencyTypeDesc})</span>
                               </div>
                               <button
-                                className="text-xs text-red-500 hover:text-red-700"
+                                className="text-xs font-medium text-rose-500 hover:text-rose-700"
                                 onClick={() => handleDeleteDependency(dep.id)}
                                 type="button"
                               >
@@ -3537,19 +5362,19 @@ export function ProjectGanttWorkspacePage({
                       {/* 后继任务 */}
                       {deps.successors.length > 0 && (
                         <div className="mt-3">
-                          <div className="text-xs text-slate-500">后继任务（依赖该任务）</div>
+                          <div className="text-xs font-medium text-[#6b7f9e]">后继任务（依赖该任务）</div>
                           {deps.successors.map(dep => (
                             <div
                               key={`succ-${dep.id}`}
-                              className="mt-1 flex items-center justify-between rounded-lg bg-green-50 px-3 py-2"
+                              className="mt-1 flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2"
                             >
                               <div>
-                                <span className="text-xs text-green-600">后继：</span>
-                                <span className="text-sm font-medium text-slate-700">{dep.successorTaskTitle}</span>
-                                <span className="ml-2 text-xs text-slate-400">({dep.dependencyTypeDesc})</span>
+                                <span className="text-xs font-medium text-emerald-600">后继：</span>
+                                <span className="text-[13px] font-medium text-[#263653]">{dep.successorTaskTitle}</span>
+                                <span className="ml-2 text-xs font-medium text-[#8da0bd]">({dep.dependencyTypeDesc})</span>
                               </div>
                               <button
-                                className="text-xs text-red-500 hover:text-red-700"
+                                className="text-xs font-medium text-rose-500 hover:text-rose-700"
                                 onClick={() => handleDeleteDependency(dep.id)}
                                 type="button"
                               >
@@ -3566,14 +5391,14 @@ export function ProjectGanttWorkspacePage({
 
               {/* 添加新依赖 */}
               <div>
-                <div className="theme-text-soft mb-3 text-xs font-semibold">
+                <div className="mb-3 text-xs font-medium text-[#6b7f9e]">
                   添加后继任务依赖
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1 block text-xs text-slate-500">选择后继任务</label>
+                    <label className={GANTT_FIELD_LABEL_CLASS}>选择后继任务</label>
                     <select
-                      className="theme-input h-11 w-full rounded-2xl px-4 text-sm"
+                      className={GANTT_INPUT_CLASS}
                       value={newDependency.targetTaskId ?? ''}
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                         setNewDependency(prev => ({
@@ -3594,9 +5419,9 @@ export function ProjectGanttWorkspacePage({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-1 block text-xs text-slate-500">依赖类型</label>
+                      <label className={GANTT_FIELD_LABEL_CLASS}>依赖类型</label>
                       <select
-                        className="theme-input h-11 w-full rounded-2xl px-4 text-sm"
+                        className={GANTT_INPUT_CLASS}
                         value={newDependency.dependencyType}
                         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                           setNewDependency(prev => ({
@@ -3612,9 +5437,9 @@ export function ProjectGanttWorkspacePage({
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-slate-500">滞后天数</label>
+                      <label className={GANTT_FIELD_LABEL_CLASS}>滞后天数</label>
                       <input
-                        className="theme-input h-11 w-full rounded-2xl px-4 text-sm"
+                        className={GANTT_INPUT_CLASS}
                         type="number"
                         value={newDependency.lagDays}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3627,7 +5452,7 @@ export function ProjectGanttWorkspacePage({
                       />
                     </div>
                   </div>
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs font-medium text-[#8da0bd]">
                     {DEPENDENCY_TYPE_CONFIG[newDependency.dependencyType].description}
                   </div>
                 </div>
@@ -3671,31 +5496,29 @@ export function ProjectGanttWorkspacePage({
               event.stopPropagation();
             }}
           >
-            <div className="overflow-hidden rounded-2xl bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]">
+            <div className="overflow-hidden rounded-lg border border-[#e4ebf5] bg-white shadow-[0_16px_40px_rgba(24,39,75,0.16)]">
               {/* 标题栏 */}
-              <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-5 py-5">
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIwOS0xLjc5MS00LTQtNHMtNCAxLjc5MS00IDQgMS43OTEgNCA0IDQgNC0xLjc5MSA0LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30"></div>
+              <div className="border-b border-[#edf2f8] bg-white px-5 py-4">
                 <div className="relative flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm shadow-lg">
-                      <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[#edf6ff] text-[var(--portal-color-brand-600)]">
+                      <ClipboardList className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                     </div>
                     <div>
-                      <h2 className="text-[18px] font-bold text-white">连锁日期更新</h2>
-                      <p className="text-sm text-white/80">系统将自动调整后续任务的日期</p>
+                      <h2 className="text-base font-bold text-[#111c33]">连锁日期更新</h2>
+                      <p className="mt-1 text-xs font-medium text-[#6b7f9e]">系统将自动调整后续任务的日期</p>
                     </div>
                   </div>
                   <button
-                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-all hover:bg-white/20 hover:text-white"
+                    aria-label="关闭连锁日期更新"
+                    className="portal-project-shell__icon-button"
                     onClick={() => {
                       setShowCascadeConfirm(false);
                       setCascadePreview(null);
                     }}
                     type="button"
                   >
-                    <X className="h-5 w-5" />
+                    <X className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                   </button>
                 </div>
               </div>
@@ -3704,40 +5527,40 @@ export function ProjectGanttWorkspacePage({
               <div className="px-5 py-5">
                 {/* 统计卡片 */}
                 <div className="mb-5 grid grid-cols-3 gap-3">
-                  <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-4 text-center">
-                    <div className="text-[22px] font-bold text-slate-700">{cascadePreview.totalAffectedCount}</div>
-                    <div className="text-xs text-slate-500">受影响任务</div>
+                  <div className="rounded-lg border border-[#e4ebf5] bg-[#f8fbff] p-4 text-center">
+                    <div className="text-xl font-bold text-[#111c33]">{cascadePreview.totalAffectedCount}</div>
+                    <div className="text-xs font-medium text-[#6b7f9e]">受影响任务</div>
                   </div>
-                  <div className="rounded-xl bg-gradient-to-br from-red-50 to-orange-50 p-4 text-center">
-                    <div className="flex items-center justify-center gap-1 text-lg font-bold text-red-600">
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <div className="rounded-lg border border-rose-100 bg-rose-50 p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 text-lg font-bold text-rose-600">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                         <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                       {cascadePreview.affectedTasks.filter(t => t.startTimeOffsetDays && t.startTimeOffsetDays > 0).length}
                     </div>
-                    <div className="text-xs text-red-600/80">将延后</div>
+                    <div className="text-xs font-medium text-rose-600/80">将延后</div>
                   </div>
-                  <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 p-4 text-center">
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-center">
                     <div className="flex items-center justify-center gap-1 text-lg font-bold text-emerald-600">
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                         <path d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                       {cascadePreview.affectedTasks.filter(t => t.startTimeOffsetDays && t.startTimeOffsetDays < 0).length}
                     </div>
-                    <div className="text-xs text-emerald-600/80">将提前</div>
+                    <div className="text-xs font-medium text-emerald-600/80">将提前</div>
                   </div>
                 </div>
 
                 {/* 提示信息 */}
-                <div className="mb-5 flex items-start gap-3 rounded-xl bg-indigo-50 px-4 py-3">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-100">
-                    <svg className="h-4 w-4 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <div className="mb-5 flex items-start gap-3 rounded-lg border border-[#e4ebf5] bg-[#f8fbff] px-4 py-3">
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[#edf6ff] text-[var(--portal-color-brand-600)]">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                       <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </div>
-                  <div className="flex-1 text-sm text-indigo-900">
+                  <div className="flex-1 text-[13px] font-medium leading-6 text-[#526681]">
                     <span className="font-semibold">操作说明：</span>
-                    拖拽将影响 <span className="font-bold text-indigo-700">{cascadePreview.totalAffectedCount}</span> 个后续关联任务的日期。
+                    拖拽将影响 <span className="font-bold text-[var(--portal-color-brand-600)]">{cascadePreview.totalAffectedCount}</span> 个后续关联任务的日期。
                     选择「确认并更新」将同时调整这些任务的计划时间。
                   </div>
                 </div>
@@ -3745,29 +5568,28 @@ export function ProjectGanttWorkspacePage({
                 {/* 受影响的任务列表 */}
                 <div className="mb-5">
                   <div className="mb-3 flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-slate-700">受影响任务预览</h3>
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-200 px-1.5 text-xs font-medium text-slate-600">
+                    <h3 className="text-[13px] font-semibold text-[#263653]">受影响任务预览</h3>
+                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-md bg-[#edf2f8] px-1.5 text-xs font-medium text-[#6b7f9e]">
                       {cascadePreview.affectedTasks.length}
                     </span>
                   </div>
-                  <div className="max-h-[280px] space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/50 p-2">
+                  <div className="max-h-[280px] space-y-2 overflow-y-auto rounded-lg border border-[#e4ebf5] bg-[#f8fbff] p-2">
                     {cascadePreview.affectedTasks.map((affected, index) => (
                       <div
                         key={`affected-${affected.taskId}-${index}`}
-                        className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md"
+                        className="group relative overflow-hidden rounded-md border border-[#e4ebf5] bg-white p-3 transition-colors hover:border-[#b9d4ff]"
                       >
-                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-50/0 via-indigo-50/50 to-indigo-50/0 opacity-0 transition-opacity group-hover:opacity-100"></div>
                         <div className="relative flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 text-xs font-bold text-slate-500">
+                              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#edf2f8] text-xs font-semibold text-[#6b7f9e]">
                                 {index + 1}
                               </div>
                               <div className="min-w-0 flex-1">
-                                <div className="truncate font-medium text-slate-800">
+                                  <div className="truncate text-[13px] font-medium text-[#263653]">
                                   {affected.taskTitle}
                                 </div>
-                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-[#6b7f9e]">
                                   <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium ${
                                     affected.dependencyType === 'FS' ? 'bg-blue-100 text-blue-700' :
                                     affected.dependencyType === 'FF' ? 'bg-purple-100 text-purple-700' :
@@ -3775,7 +5597,7 @@ export function ProjectGanttWorkspacePage({
                                     'bg-orange-100 text-orange-700'
                                   }`}>
                                     {affected.dependencyType}
-                                    <span className="text-[10px] opacity-70">
+                                    <span className="text-[12px] opacity-70">
                                       {affected.dependencyType === 'FS' ? '完成-开始' :
                                        affected.dependencyType === 'FF' ? '完成-完成' :
                                        affected.dependencyType === 'SS' ? '开始-开始' : '开始-完成'}
@@ -3847,7 +5669,7 @@ export function ProjectGanttWorkspacePage({
                 {/* 操作按钮 */}
                 <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
                   <button
-                    className="group relative flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="portal-project-shell__secondary-button disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={() => {
                       const row = findRowByEntityId(cascadePreview.originalTaskId);
                       if (row) {
@@ -3860,13 +5682,13 @@ export function ProjectGanttWorkspacePage({
                     }}
                     disabled={actionLoading}
                   >
-                    <svg className="h-4 w-4 text-slate-500 transition-transform group-hover:-translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={GANTT_ICON_STROKE_WIDTH}>
                       <path d="M19 12H5m0 0l7 7m-7-7l7-7" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                     仅保存主任务
                   </button>
                   <button
-                    className="group relative flex h-11 items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition-all hover:shadow-xl hover:shadow-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="portal-project-shell__primary-button disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={() => {
                       const row = findRowByEntityId(cascadePreview.originalTaskId);
                       if (row) {
@@ -3879,14 +5701,10 @@ export function ProjectGanttWorkspacePage({
                     }}
                     disabled={actionLoading}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 opacity-0 transition-opacity group-hover:opacity-100"></div>
-                    <span className="relative flex items-center gap-2">
+                    <span className="flex items-center gap-2">
                       {actionLoading ? (
                         <>
-                          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                          </svg>
+                          <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                           更新中...
                         </>
                       ) : (
@@ -3907,23 +5725,29 @@ export function ProjectGanttWorkspacePage({
       ) : null}
 
       {teamPanelVisible && selectedProjectId ? (
-        <div className="fixed right-0 top-0 z-50 h-full w-[420px] shadow-[-20px_0_60px_rgba(0,0,0,0.15)]">
+        <div className="fixed right-0 top-0 z-50 h-full w-[380px] border-l border-[#e4ebf5] shadow-[-14px_0_30px_rgba(24,39,75,0.08)]">
           <div className="flex h-full flex-col bg-white">
-            <div className="relative border-b border-slate-100 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-5 py-5">
+            <div className="border-b border-[#edf2f8] bg-white px-5 py-4">
               <div className="relative flex items-start justify-between">
-                <div>
-                  <div className="text-xs font-semibold text-white/80">项目级管理</div>
-                  <h2 className="mt-1 text-lg font-bold text-white">项目团队</h2>
-                  <div className="mt-1 text-xs text-white/75">
-                    先维护项目团队，再在每一步任务上分配负责人和参与人。
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#edf6ff] text-[var(--portal-color-brand-600)]">
+                    <FolderKanban className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-[#8da0bd]">项目级管理</div>
+                    <h2 className="mt-1 text-base font-bold text-[#111c33]">项目团队</h2>
+                    <div className="mt-1 text-xs font-medium leading-5 text-[#6b7f9e]">
+                      先维护项目团队，再在每一步任务上分配负责人和参与人。
+                    </div>
                   </div>
                 </div>
                 <button
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/80 backdrop-blur-sm transition-all hover:bg-white/20 hover:text-white"
+                  aria-label="关闭项目团队"
+                  className="portal-project-shell__icon-button"
                   onClick={closeTeamPanel}
                   type="button"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-4 w-4" strokeWidth={GANTT_ICON_STROKE_WIDTH} />
                 </button>
               </div>
             </div>
@@ -3949,6 +5773,7 @@ export function ProjectGanttWorkspacePage({
         currentUserName={currentUserName}
         detailEditState={detailEditState}
         detailPanel={detailPanel}
+        hasUnsavedChanges={hasDetailPanelUnsavedChanges}
         members={members}
         projectId={selectedProjectId ?? 0}
         readOnly={!canManageProjectSchedule}

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 
-import { Badge, Button, Card, cx } from '@lserp/ui';
+import { Button, Card, cx } from '@lserp/ui';
 
 import {
   fetchProjectEmployeeRoleWorkspace,
@@ -58,6 +58,118 @@ function buildSearchText(employee: SystemUserOption) {
     .toLowerCase();
 }
 
+function getUserInitial(name: string) {
+  const trimmedName = name.trim();
+  return trimmedName ? trimmedName.slice(0, 1) : '-';
+}
+
+function MetricCell({
+  label,
+  tone = 'default',
+  value,
+}: {
+  label: string;
+  tone?: 'blue' | 'default' | 'green' | 'orange';
+  value: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-[80px] flex-col justify-center px-4 py-3">
+      <div className="text-[13px] font-medium text-[#6b7f9e]">{label}</div>
+      <div
+        className={cx(
+          'mt-1 text-2xl font-bold leading-8',
+          tone === 'blue' ? 'text-[#1f65e8]' : '',
+          tone === 'green' ? 'text-[#16b978]' : '',
+          tone === 'orange' ? 'text-[#ff8a00]' : '',
+          tone === 'default' ? 'text-[#111c33]' : '',
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function UserCell({ employee }: { employee: SystemUserOption }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#edf4ff] text-[13px] font-bold text-[#1f65e8]">
+        {getUserInitial(employee.userName)}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-medium text-[#263653]">{employee.userName}</span>
+        <span className="mt-0.5 block truncate text-[12px] font-medium text-[#6b7f9e]">ID {employee.userId}</span>
+      </span>
+    </div>
+  );
+}
+
+function CountBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-[#f2f6fb] px-2 text-[13px] font-medium text-[#526681]">
+      {children}
+    </span>
+  );
+}
+
+function TableActionButton({
+  children,
+  disabled,
+  onClick,
+  title,
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      className={cx(
+        'inline-flex h-7 min-w-[64px] items-center justify-center rounded px-1.5 text-[13px] font-medium transition focus:outline-none focus:ring-2 focus:ring-[#dceaff]',
+        disabled
+          ? 'cursor-not-allowed text-[#b6c4d8]'
+          : 'text-[#1f65e8] hover:bg-[#eaf3ff] hover:text-[#1557d7]',
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      title={title}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Notice({
+  children,
+  tone,
+}: {
+  children: ReactNode;
+  tone: 'danger' | 'success';
+}) {
+  return (
+    <div
+      className={cx(
+        'rounded-md border px-4 py-3 text-[13px] font-medium',
+        tone === 'success'
+          ? 'border-[#b7ebd1] bg-[#effcf6] text-[#13875b]'
+          : 'border-[#ffd0d0] bg-[#fff2f2] text-[#d64545]',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DrawerCloseIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="16" viewBox="0 0 16 16" width="16">
+      <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
 export function ProjectUserPermissionManagementPage({
   currentUserName,
 }: {
@@ -104,6 +216,16 @@ export function ProjectUserPermissionManagementPage({
       safePageNumber: nextSafePageNumber,
     };
   }, [filteredEmployees, pageNumber]);
+
+  const assignedEmployeeCount = useMemo(
+    () => Object.values(roleIdsByUserId).filter((roleIds) => roleIds.length > 0).length,
+    [roleIdsByUserId],
+  );
+  const pageAssignedRoleCount = useMemo(
+    () => pageEmployees.reduce((total, employee) => total + (roleIdsByUserId[employee.userId]?.length ?? 0), 0),
+    [pageEmployees, roleIdsByUserId],
+  );
+  const dialogDirty = !areNumberListsEqual(dialogRoleIds, loadedDialogRoleIds);
 
   useEffect(() => {
     setPageNumber(1);
@@ -223,7 +345,7 @@ export function ProjectUserPermissionManagementPage({
   }
 
   async function handleSaveUserRoles() {
-    if (!dialogUser?.employeeId) {
+    if (dialogUser?.employeeId === null || dialogUser?.employeeId === undefined) {
       return;
     }
 
@@ -250,6 +372,12 @@ export function ProjectUserPermissionManagementPage({
     }
   }
 
+  function closeRoleDrawer() {
+    setDialogUser(null);
+    setDialogRoleIds([]);
+    setLoadedDialogRoleIds([]);
+  }
+
   function handleToggleDialogRole(roleId: number) {
     setDialogRoleIds((current) => {
       if (current.includes(roleId)) {
@@ -260,160 +388,129 @@ export function ProjectUserPermissionManagementPage({
     });
   }
 
-  const dialogDirty = !areNumberListsEqual(dialogRoleIds, loadedDialogRoleIds);
-
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto">
-      {false ? <Card className="rounded-[32px] p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-auto bg-[#f5f8fc]">
+      <div className="mb-2 flex shrink-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-[20px] font-bold leading-7 text-[#111c33]">用户权限</h1>
+          <p className="mt-1 text-[14px] font-medium text-[#5e7291]">
+            按员工维护项目角色分配，角色本身在角色权限工作区维护
+          </p>
+        </div>
+        <div className="inline-flex h-8 items-center gap-2 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#526681] shadow-[0_4px_12px_rgba(24,39,75,0.04)]">
+          <span className="h-2 w-2 rounded-full bg-[#1f7cff]" />
+          {currentUserName || '未识别当前用户'}
+        </div>
+      </div>
+
+      <Card className="mb-2 overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+        <div className="grid divide-y divide-[#edf2f8] sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+          <MetricCell label="员工总数" tone="blue" value={userOptions.length} />
+          <MetricCell label="角色总数" tone="green" value={roles.length} />
+          <MetricCell label="已加载分配" value={assignedEmployeeCount} />
+          <MetricCell label="当前页角色项" tone="orange" value={pageAssignedRoleCount} />
+        </div>
+      </Card>
+
+      {feedbackMessage ? (
+        <div className="mb-2">
+          <Notice tone="success">{feedbackMessage}</Notice>
+        </div>
+      ) : null}
+      {errorMessage || userDirectoryError ? (
+        <div className="mb-2">
+          <Notice tone="danger">{errorMessage ?? userDirectoryError}</Notice>
+        </div>
+      ) : null}
+
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+        <div className="flex shrink-0 flex-col gap-3 border-b border-[#edf2f8] px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <div className="theme-text-soft text-xs font-bold">
-              系统管理
-            </div>
-            <div className="theme-text-strong mt-2 text-3xl font-bold">
-              用户权限
-            </div>
-            <div className="theme-text-muted mt-3 max-w-3xl text-sm leading-6">
-              以员工列表方式管理角色分配。角色本身在角色权限工作区维护，用户侧只负责按人设置角色。
-            </div>
+            <h2 className="text-[14px] font-bold text-[#111c33]">员工角色表</h2>
+            <p className="mt-1 text-[13px] font-medium text-[#6b7f9e]">
+              每页 {PAGE_SIZE} 条，可按员工姓名、账号、拼音或编号检索
+            </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge tone="brand">超级管理员</Badge>
-            <Badge tone="neutral">{currentUserName}</Badge>
-            <Badge tone="neutral">{`员工 ${userOptions.length}`}</Badge>
-            <Badge tone="neutral">{`角色 ${roles.length}`}</Badge>
-          </div>
+          <input
+            className="field-input w-full xl:w-[340px]"
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              setSearchKeyword(event.target.value);
+            }}
+            placeholder="搜索员工姓名、账号或拼音"
+            value={searchKeyword}
+          />
         </div>
 
-        {feedbackMessage ? (
-          <div className="mt-5 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {feedbackMessage}
-          </div>
-        ) : null}
-        {errorMessage || userDirectoryError ? (
-          <div className="mt-5 rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {errorMessage ?? userDirectoryError}
-          </div>
-        ) : null}
-      </Card> : null}
-
-      <Card className="rounded-[32px] p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <div className="theme-text-strong text-[18px] font-bold">员工角色表</div>
-            <div className="theme-text-muted mt-2 text-sm">
-              默认前端分页，每页 20 条，可直接按行进入角色设置。
-            </div>
-          </div>
-
-          <div className="flex w-full max-w-[360px] items-center gap-3">
-            <input
-              className="theme-input h-11 w-full rounded-2xl px-4"
-              onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                setSearchKeyword(event.target.value);
-              }}
-              placeholder="搜索员工姓名、账号或拼音"
-              value={searchKeyword}
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Badge tone="neutral">{`鍛樺伐 ${userOptions.length}`}</Badge>
-          <Badge tone="neutral">{`瑙掕壊 ${roles.length}`}</Badge>
-        </div>
-
-        {feedbackMessage ? (
-          <div className="mt-5 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {feedbackMessage}
-          </div>
-        ) : null}
-        {errorMessage || userDirectoryError ? (
-          <div className="mt-5 rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {errorMessage ?? userDirectoryError}
-          </div>
-        ) : null}
-
-        <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 bg-white text-left">
-              <thead className="bg-slate-50">
-                <tr className="text-xs font-bold text-slate-500">
-                  <th className="px-5 py-4">员工姓名</th>
-                  <th className="px-5 py-4">登录账号</th>
-                  <th className="px-5 py-4">已分配角色</th>
-                  <th className="px-5 py-4">角色数量</th>
-                  <th className="px-5 py-4 text-right">行工具</th>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="w-full min-w-[900px] border-collapse text-left">
+            <thead className="bg-[#f8fbff]">
+              <tr className="text-[13px] font-medium text-[#6b7f9e]">
+                <th className="px-4 py-3">员工姓名</th>
+                <th className="px-4 py-3">登录账号</th>
+                <th className="px-4 py-3">已分配角色</th>
+                <th className="px-4 py-3">角色数量</th>
+                <th className="px-4 py-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {userDirectoryLoading || loading ? (
+                <tr>
+                  <td className="border-t border-[#edf2f8] px-4 py-8 text-center text-[13px] font-medium text-[#8da0bd]" colSpan={5}>
+                    正在加载员工权限数据...
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {userDirectoryLoading || loading ? (
-                  <tr>
-                    <td className="px-5 py-8 text-sm text-slate-500" colSpan={5}>
-                      正在加载员工权限数据...
-                    </td>
-                  </tr>
-                ) : pageEmployees.length ? (
-                  pageEmployees.map((employee) => {
-                    const roleIds = roleIdsByUserId[employee.userId] ?? [];
-                    const roleNames = formatRoleNames(roleIds, roles);
-                    const rowLoading = loadingUserIds.includes(employee.userId);
+              ) : pageEmployees.length ? (
+                pageEmployees.map((employee) => {
+                  const roleIds = roleIdsByUserId[employee.userId] ?? [];
+                  const roleNames = formatRoleNames(roleIds, roles);
+                  const rowLoading = loadingUserIds.includes(employee.userId);
 
-                    return (
-                      <tr key={employee.userId} className="align-top text-sm text-slate-700">
-                        <td className="px-5 py-4">
-                          <div className="font-semibold text-slate-900">{employee.userName}</div>
-                          <div className="mt-1 text-xs text-slate-400">{employee.userId}</div>
-                        </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {employee.loginAccount || '--'}
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className={cx('max-w-[420px] leading-6', rowLoading ? 'text-slate-400' : 'text-slate-600')}>
-                            {rowLoading ? '角色加载中...' : roleNames}
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <Badge tone="neutral">{rowLoading ? '--' : String(roleIds.length)}</Badge>
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <button
-                            className={cx(
-                              'inline-flex h-9 items-center justify-center rounded-xl border px-4 text-sm font-semibold transition',
-                              rowLoading || loading || !roles.length
-                                ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                                : 'border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100',
-                            )}
+                  return (
+                    <tr className="border-t border-[#edf2f8] bg-white text-[13px] font-medium transition hover:bg-[#f8fbff]" key={employee.userId}>
+                      <td className="px-4 py-3">
+                        <UserCell employee={employee} />
+                      </td>
+                      <td className="px-4 py-3 text-[#526681]">{employee.loginAccount || '--'}</td>
+                      <td className="max-w-[460px] px-4 py-3">
+                        <div className={cx('line-clamp-2 leading-6', rowLoading ? 'text-[#8da0bd]' : 'text-[#526681]')}>
+                          {rowLoading ? '角色加载中...' : roleNames}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <CountBadge>{rowLoading ? '--' : roleIds.length}</CountBadge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end">
+                          <TableActionButton
                             disabled={rowLoading || loading || !roles.length}
                             onClick={() => {
                               void openRoleDialog(employee);
                             }}
                             title={!roles.length ? '角色目录不可用，暂时无法设置角色' : undefined}
-                            type="button"
                           >
                             设置角色
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td className="px-5 py-8 text-sm text-slate-500" colSpan={5}>
-                      没有匹配的员工记录。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                          </TableActionButton>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td className="border-t border-[#edf2f8] px-4 py-8 text-center text-[13px] font-medium text-[#8da0bd]" colSpan={5}>
+                    没有匹配的员工记录
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
-        <div className="mt-5 flex flex-col gap-3 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-[#edf2f8] px-4 py-3 text-[13px] font-medium text-[#6b7f9e] md:flex-row md:items-center md:justify-between">
           <div>{`第 ${safePageNumber} / ${pageCount} 页，共 ${filteredEmployees.length} 条员工记录`}</div>
           <div className="flex items-center gap-2">
             <Button
+              className="h-8 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
               disabled={safePageNumber <= 1}
               onClick={() => {
                 setPageNumber((current) => Math.max(1, current - 1));
@@ -423,6 +520,7 @@ export function ProjectUserPermissionManagementPage({
               上一页
             </Button>
             <Button
+              className="h-8 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
               disabled={safePageNumber >= pageCount}
               onClick={() => {
                 setPageNumber((current) => Math.min(pageCount, current + 1));
@@ -436,87 +534,92 @@ export function ProjectUserPermissionManagementPage({
       </Card>
 
       {dialogUser ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[28px] bg-white p-5 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 flex justify-end bg-[#111c33]/20">
+          <aside className="flex h-full w-full max-w-[420px] flex-col border-l border-[#e4ebf5] bg-white shadow-[-14px_0_30px_rgba(24,39,75,0.08)]">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf2f8] px-5 py-4">
               <div>
-                <div className="text-xs font-bold text-slate-400">
-                  用户权限
-                </div>
-                <div className="mt-2 text-[22px] font-bold text-slate-900">
-                  设置角色
-                </div>
-                <div className="mt-2 text-sm text-slate-500">
-                  {dialogUser.userName}
-                  {dialogUser.loginAccount ? ` / ${dialogUser.loginAccount}` : ''}
-                </div>
+                <h3 className="text-[16px] font-bold text-[#111c33]">设置角色</h3>
+                <p className="mt-1 text-[13px] font-medium text-[#6b7f9e]">为员工分配项目角色权限</p>
               </div>
               <button
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-400 transition hover:border-slate-300 hover:text-slate-600"
-                onClick={() => {
-                  setDialogUser(null);
-                  setDialogRoleIds([]);
-                  setLoadedDialogRoleIds([]);
-                }}
+                aria-label="关闭角色设置"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#7e91b0] transition hover:bg-[#f2f6fb] hover:text-[#263653] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
+                onClick={closeRoleDrawer}
                 type="button"
               >
-                ×
+                <DrawerCloseIcon />
               </button>
             </div>
 
-            <div className="mt-5 grid max-h-[420px] gap-3 overflow-auto pr-1">
-              {roles.length ? (
-                roles.map((role) => (
-                  <label
-                    key={`dialog-role-${role.roleId}`}
-                    className="flex items-start gap-3 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3"
-                  >
-                    <input
-                      checked={dialogRoleIds.includes(role.roleId)}
-                      className="mt-1 h-4 w-4 rounded border-slate-300"
-                      onChange={() => {
-                        handleToggleDialogRole(role.roleId);
-                      }}
-                      type="checkbox"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold text-slate-900">
-                        {role.roleName}
-                      </span>
-                      <span className="mt-1 block text-xs text-slate-500">
-                        {role.roleCode}
-                      </span>
-                      {role.roleDescription ? (
-                        <span className="mt-2 block text-xs leading-5 text-slate-500">
-                          {role.roleDescription}
-                        </span>
-                      ) : null}
-                    </span>
-                  </label>
-                ))
-              ) : (
-                <div className="rounded-[22px] border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-                  当前还没有可分配的角色，请先到角色权限工作区创建角色。
+            <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+              <div className="mb-3 rounded-lg border border-[#e4ebf5] bg-[#f8fbff] px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#edf4ff] text-[13px] font-bold text-[#1f65e8]">
+                    {getUserInitial(dialogUser.userName)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] font-bold text-[#263653]">{dialogUser.userName}</div>
+                    <div className="mt-0.5 truncate text-[13px] font-medium text-[#526681]">
+                      {dialogUser.loginAccount || `ID ${dialogUser.userId}`}
+                    </div>
+                  </div>
                 </div>
-              )}
+              </div>
+
+              <div className="space-y-2">
+                {roles.length ? (
+                  roles.map((role) => {
+                    const checked = dialogRoleIds.includes(role.roleId);
+                    return (
+                      <label
+                        className={cx(
+                          'flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition',
+                          checked
+                            ? 'border-[#9fc9ff] bg-[#edf6ff]'
+                            : 'border-[#e4ebf5] bg-white hover:border-[#cfe1f8] hover:bg-[#f8fbff]',
+                        )}
+                        key={`dialog-role-${role.roleId}`}
+                      >
+                        <input
+                          checked={checked}
+                          className="mt-1 h-4 w-4 rounded border-[#c9d6e8] text-[#1f7cff] focus:ring-[#dceaff]"
+                          onChange={() => {
+                            handleToggleDialogRole(role.roleId);
+                          }}
+                          type="checkbox"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px] font-medium text-[#263653]">{role.roleName}</span>
+                          <span className="mt-1 block text-[12px] font-medium text-[#6b7f9e]">{role.roleCode}</span>
+                          {role.roleDescription ? (
+                            <span className="mt-2 block text-[13px] font-medium leading-5 text-[#526681]">
+                              {role.roleDescription}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-lg border border-dashed border-[#d9e3f1] px-4 py-8 text-center text-[13px] font-medium text-[#8da0bd]">
+                    当前还没有可分配的角色，请先到角色权限工作区创建角色
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
-              <div className="text-sm text-slate-500">
-                {`已选 ${dialogRoleIds.length} 个角色`}
-              </div>
-              <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[#edf2f8] px-5 py-4">
+              <div className="text-[13px] font-medium text-[#6b7f9e]">{`已选 ${dialogRoleIds.length} 个角色`}</div>
+              <div className="flex items-center gap-2">
                 <Button
-                  onClick={() => {
-                    setDialogUser(null);
-                    setDialogRoleIds([]);
-                    setLoadedDialogRoleIds([]);
-                  }}
+                  className="h-8 rounded-md border border-[#d9e3f1] bg-white px-4 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
+                  onClick={closeRoleDrawer}
                   tone="ghost"
                 >
                   取消
                 </Button>
                 <Button
+                  className="h-8 rounded-md bg-[#1f7cff] px-4 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.22)] hover:bg-[#176df0]"
                   disabled={!dialogDirty || busyAction === 'save-user-roles'}
                   onClick={() => {
                     void handleSaveUserRoles();
@@ -527,9 +630,30 @@ export function ProjectUserPermissionManagementPage({
                 </Button>
               </div>
             </div>
-          </div>
+          </aside>
         </div>
       ) : null}
+      <style>{`
+        .field-input {
+          height: 36px;
+          border-radius: 6px;
+          border: 1px solid #d9e3f1;
+          background: #fff;
+          padding: 0 12px;
+          font-size: 13px;
+          font-weight: 500;
+          color: #263653;
+          outline: none;
+          transition: border-color .16s ease, box-shadow .16s ease;
+        }
+        .field-input::placeholder {
+          color: #9aabc4;
+        }
+        .field-input:focus {
+          border-color: #1f7cff;
+          box-shadow: 0 0 0 3px #dceaff;
+        }
+      `}</style>
     </div>
   );
 }

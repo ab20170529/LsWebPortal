@@ -1,6 +1,14 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from 'react';
 
-import { Badge, Button, Card, cx } from '@lserp/ui';
+import { X } from 'lucide-react';
+
+import { Card, cx } from '@lserp/ui';
 
 import { getProjectStatusLabel } from '../../project-display';
 import { useProjectToast } from '../../project-toast';
@@ -104,12 +112,44 @@ type DelayFormState = {
   userName: string;
 };
 
-// ─── Helpers ────────────────────────────────────────────────────────────────────
+type DelayTargetOption = {
+  id: string;
+  label: string;
+  ownerName?: string | null;
+  planEndTime?: string | null;
+  planStartTime?: string | null;
+  status?: string | null;
+  targetType: DelayFormState['targetType'];
+};
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+type DelayReportRow = {
+  report: DelayApplicationReport;
+  target: DelayTargetOption | null;
+  targetLabel: string;
+  targetType: DelayFormState['targetType'];
+};
+
+type DelayFormSetter = (value: DelayFormState | ((current: DelayFormState) => DelayFormState)) => void;
+
+const emptyForm: DelayFormState = {
+  coordinationContent: '',
+  delayReason: '',
+  remark: '',
+  reportContent: '',
+  reportDate: '',
+  targetId: '',
+  targetType: 'TASK',
+  userId: '',
+  userName: '',
+};
+
+function Field({ children, label, required = false }: { children: ReactNode; label: string; required?: boolean }) {
   return (
-    <label className="block space-y-2">
-      <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{label}</div>
+    <label className="block space-y-1.5">
+      <div className="text-sm font-medium text-[#5e7291]">
+        {label}
+        {required ? <span className="ml-0.5 text-rose-500">*</span> : null}
+      </div>
       {children}
     </label>
   );
@@ -128,9 +168,15 @@ function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
-function normalizeErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  return '延期申请提交失败，请稍后重试。';
+function formatDate(value?: string | null) {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return new Intl.DateTimeFormat('zh-CN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
 }
 
 function toDateInput(value?: string | null) {
@@ -140,19 +186,469 @@ function toDateInput(value?: string | null) {
   return parsed.toISOString().slice(0, 10);
 }
 
-const emptyForm: DelayFormState = {
-  coordinationContent: '',
-  delayReason: '',
-  remark: '',
-  reportContent: '',
-  reportDate: '',
-  targetId: '',
-  targetType: 'TASK',
-  userId: '',
-  userName: '',
-};
+function getTodayDateInput() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
-// ─── Main Component ────────────────────────────────────────────────────────────
+function normalizeErrorMessage(error: unknown) {
+  return error instanceof Error && error.message.trim() ? error.message : '延期申请提交失败，请稍后重试。';
+}
+
+function trimToNull(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function buildEmptyForm(project: DelayApplicationProject | null): DelayFormState {
+  return {
+    ...emptyForm,
+    reportDate: getTodayDateInput(),
+    userId: project?.managerId ?? '',
+    userName: project?.managerName ?? '',
+  };
+}
+
+function getStatusPillClass(status?: string | null) {
+  const normalized = (status ?? 'DRAFT').toUpperCase();
+  if (normalized === 'COMPLETED') return 'bg-[#e8fbf5] text-[#12b981]';
+  if (normalized === 'IN_PROGRESS') return 'bg-[#eaf3ff] text-[#1f7cff]';
+  if (normalized === 'PENDING') return 'bg-[#fff4e5] text-[#ff8a00]';
+  if (normalized === 'OVERDUE' || normalized === 'DELAYED') return 'bg-rose-50 text-rose-600';
+  return 'bg-[#f2f6fb] text-[#5e7291]';
+}
+
+function StatusPill({ status }: { status?: string | null }) {
+  return (
+    <span className={cx('inline-flex h-6 items-center rounded-full px-3 text-[13px] font-medium', getStatusPillClass(status))}>
+      {getProjectStatusLabel(status ?? 'DRAFT')}
+    </span>
+  );
+}
+
+function TargetTypePill({ targetType }: { targetType: DelayFormState['targetType'] }) {
+  return (
+    <span
+      className={cx(
+        'inline-flex h-6 items-center rounded-full px-2.5 text-[13px] font-medium',
+        targetType === 'TASK' ? 'bg-[#eaf3ff] text-[#1f65e8]' : 'bg-[#f2f6fb] text-[#526681]',
+      )}
+    >
+      {targetType === 'TASK' ? '任务' : '节点'}
+    </span>
+  );
+}
+
+function UserCell({ name }: { name?: string | null }) {
+  const displayName = name?.trim() || '--';
+  const initial = displayName === '--' ? '-' : displayName.slice(0, 1);
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#edf4ff] text-xs font-bold text-[#1f65e8]">
+        {initial}
+      </span>
+      <span className="truncate text-[13px] font-medium text-[#263653]">{displayName}</span>
+    </div>
+  );
+}
+
+function TableActionButton({
+  children,
+  onClick,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="inline-flex h-7 min-w-[44px] items-center justify-center rounded px-1.5 text-[13px] font-medium text-[#1f65e8] transition hover:bg-[#eaf3ff] hover:text-[#1557d7] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
+      onClick={(event: { stopPropagation: () => void }) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function OverviewMetric({
+  label,
+  tone = 'default',
+  value,
+}: {
+  label: string;
+  tone?: 'blue' | 'default' | 'rose';
+  value: number;
+}) {
+  return (
+    <div className="flex min-h-[82px] flex-col justify-center px-4 py-3">
+      <div className="text-[13px] font-medium text-[#6b7f9e]">{label}</div>
+      <div
+        className={cx(
+          'mt-1 text-2xl font-bold leading-8',
+          tone === 'rose' ? 'text-rose-600' : tone === 'blue' ? 'text-[#1f65e8]' : 'text-[#111c33]',
+        )}
+      >
+        {value}
+        <span className="ml-1 text-[13px] font-medium text-[#7e91b0]">项</span>
+      </div>
+    </div>
+  );
+}
+
+function DelayOverview({
+  delayCount,
+  nodeCount,
+  taskCount,
+}: {
+  delayCount: number;
+  nodeCount: number;
+  taskCount: number;
+}) {
+  return (
+    <Card className="overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+      <div className="grid divide-y divide-[#edf2f8] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        <OverviewMetric label="延期申请" tone="rose" value={delayCount} />
+        <OverviewMetric label="节点数量" tone="blue" value={nodeCount} />
+        <OverviewMetric label="任务数量" value={taskCount} />
+      </div>
+    </Card>
+  );
+}
+
+function DelayRecordTableSection({
+  activeReportId,
+  items,
+  onEdit,
+}: {
+  activeReportId: number | null;
+  items: DelayReportRow[];
+  onEdit: (report: DelayApplicationReport) => void;
+}) {
+  return (
+    <Card className="overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div>
+          <h3 className="text-base font-bold text-[#111c33]">延期申请记录</h3>
+          <div className="mt-1 text-xs font-medium text-[#8da0bd]">共 {items.length} 条记录</div>
+        </div>
+      </div>
+      <div className="overflow-auto">
+        <table className="w-full min-w-[820px] border-collapse">
+          <thead className="bg-[#f8fbff]">
+            <tr className="text-left text-[13px] font-medium text-[#6b7f9e]">
+              <th className="px-4 py-3">延期对象</th>
+              <th className="px-4 py-3">申请人</th>
+              <th className="px-4 py-3">申请日期</th>
+              <th className="px-4 py-3">当前状态</th>
+              <th className="px-4 py-3">延期原因</th>
+              <th className="px-4 py-3 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length ? items.map(({ report, target, targetLabel, targetType }) => {
+              const selected = report.id === activeReportId;
+              return (
+                <tr
+                  className={cx(
+                    'border-t border-[#edf2f8] text-[13px] font-medium transition',
+                    selected ? 'bg-[#edf6ff]' : 'bg-white hover:bg-[#f8fbff]',
+                  )}
+                  key={report.id}
+                >
+                  <td className="max-w-[260px] px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <TargetTypePill targetType={targetType} />
+                      <span className="truncate font-medium text-[#263653]">{targetLabel}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3"><UserCell name={report.userName} /></td>
+                  <td className="px-4 py-3 text-[#526681]">{formatDate(report.reportDate)}</td>
+                  <td className="px-4 py-3"><StatusPill status={target?.status} /></td>
+                  <td className="max-w-[320px] px-4 py-3 text-[#526681]">
+                    <div className="line-clamp-2 leading-6">{report.delayReason || report.reportContent || '--'}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end">
+                      <TableActionButton onClick={() => onEdit(report)}>{selected ? '编辑中' : '编辑'}</TableActionButton>
+                    </div>
+                  </td>
+                </tr>
+              );
+            }) : (
+              <tr>
+                <td className="px-4 py-8 text-center text-[13px] font-medium text-[#8da0bd]" colSpan={6}>
+                  暂无延期申请记录
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function DelayTargetTableSection({
+  activeTargetId,
+  activeTargetType,
+  items,
+  onCreate,
+}: {
+  activeTargetId: string;
+  activeTargetType: DelayFormState['targetType'];
+  items: DelayTargetOption[];
+  onCreate: (target: DelayTargetOption) => void;
+}) {
+  return (
+    <Card className="overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div>
+          <h3 className="text-base font-bold text-[#111c33]">可申请延期对象</h3>
+          <div className="mt-1 text-xs font-medium text-[#8da0bd]">节点与任务共 {items.length} 项</div>
+        </div>
+      </div>
+      <div className="overflow-auto">
+        <table className="w-full min-w-[820px] border-collapse">
+          <thead className="bg-[#f8fbff]">
+            <tr className="text-left text-[13px] font-medium text-[#6b7f9e]">
+              <th className="px-4 py-3">类型</th>
+              <th className="px-4 py-3">名称</th>
+              <th className="px-4 py-3">负责人</th>
+              <th className="px-4 py-3">计划开始</th>
+              <th className="px-4 py-3">计划结束</th>
+              <th className="px-4 py-3">状态</th>
+              <th className="px-4 py-3 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length ? items.map((item) => {
+              const selected = item.id === activeTargetId && item.targetType === activeTargetType;
+              return (
+                <tr
+                  className={cx(
+                    'border-t border-[#edf2f8] text-[13px] font-medium transition',
+                    selected ? 'bg-[#edf6ff]' : 'bg-white hover:bg-[#f8fbff]',
+                  )}
+                  key={`${item.targetType}-${item.id}`}
+                >
+                  <td className="px-4 py-3"><TargetTypePill targetType={item.targetType} /></td>
+                  <td className="max-w-[280px] px-4 py-3 font-medium text-[#263653]">{item.label}</td>
+                  <td className="px-4 py-3"><UserCell name={item.ownerName} /></td>
+                  <td className="px-4 py-3 text-[#526681]">{formatDateTime(item.planStartTime)}</td>
+                  <td className="px-4 py-3 text-[#526681]">{formatDateTime(item.planEndTime)}</td>
+                  <td className="px-4 py-3"><StatusPill status={item.status} /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end">
+                      <TableActionButton onClick={() => onCreate(item)}>{selected ? '已选择' : '申请延期'}</TableActionButton>
+                    </div>
+                  </td>
+                </tr>
+              );
+            }) : (
+              <tr>
+                <td className="px-4 py-8 text-center text-[13px] font-medium text-[#8da0bd]" colSpan={7}>
+                  暂无节点或任务数据
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function DelayFormAside({
+  editingReportId,
+  form,
+  onCancel,
+  onChange,
+  onSubmit,
+  selectedTarget,
+  submitting,
+  targetOptions,
+}: {
+  editingReportId: number | null;
+  form: DelayFormState;
+  onCancel: () => void;
+  onChange: DelayFormSetter;
+  onSubmit: () => void;
+  selectedTarget: DelayTargetOption | null;
+  submitting: boolean;
+  targetOptions: DelayTargetOption[];
+}) {
+  return (
+    <Card className="sticky top-0 min-h-[calc(100vh-128px)] overflow-hidden rounded-none border-0 border-l border-[#e4ebf5] bg-white p-0 shadow-[-14px_0_30px_rgba(24,39,75,0.055)]">
+      <div className="flex h-full max-h-[calc(100vh-128px)] flex-col">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf2f8] px-5 py-4">
+          <div>
+            <div className="text-base font-bold text-[#111c33]">{editingReportId === null ? '新增延期申请' : '编辑延期申请'}</div>
+            <div className="mt-1 text-xs font-medium text-[#8da0bd]">维护延期对象、原因与协同说明</div>
+          </div>
+          <button
+            aria-label="关闭延期申请表单"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#7e91b0] transition hover:bg-[#f2f6fb] hover:text-[#263653] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
+            onClick={onCancel}
+            type="button"
+          >
+            <X size={16} strokeWidth={2} />
+          </button>
+        </div>
+
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(event: { preventDefault: () => void }) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto px-5 py-4">
+            <Field label="对象类型" required>
+              <select
+                className="field-input"
+                onChange={(event: ChangeEvent<HTMLSelectElement>) => onChange((current) => ({ ...current, targetId: '', targetType: event.target.value as DelayFormState['targetType'] }))}
+                value={form.targetType}
+              >
+                <option value="TASK">任务</option>
+                <option value="NODE">节点</option>
+              </select>
+            </Field>
+
+            <Field label="延期对象" required>
+              <select
+                className="field-input"
+                onChange={(event: ChangeEvent<HTMLSelectElement>) => onChange((current) => ({ ...current, targetId: event.target.value }))}
+                value={form.targetId}
+              >
+                <option value="">请选择延期对象</option>
+                {targetOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+            </Field>
+
+            <div className="rounded-md border border-[#e4ebf5] bg-[#f8fbff] p-3">
+              <div className="mb-2 text-xs font-medium text-[#8da0bd]">当前对象</div>
+              {selectedTarget ? (
+                <div className="space-y-2 text-[13px] font-medium">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[#6b7f9e]">对象名称</span>
+                    <span className="truncate text-[#263653]">{selectedTarget.label}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[#6b7f9e]">计划开始</span>
+                    <span className="text-[#526681]">{formatDateTime(selectedTarget.planStartTime)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[#6b7f9e]">计划结束</span>
+                    <span className="text-[#526681]">{formatDateTime(selectedTarget.planEndTime)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[#6b7f9e]">当前状态</span>
+                    <StatusPill status={selectedTarget.status} />
+                  </div>
+                </div>
+              ) : (
+                <div className="py-4 text-center text-[13px] font-medium text-[#8da0bd]">请选择延期对象</div>
+              )}
+            </div>
+
+            <Field label="申请日期" required>
+              <input
+                className="field-input"
+                onChange={(event: ChangeEvent<HTMLInputElement>) => onChange((current) => ({ ...current, reportDate: event.target.value }))}
+                type="date"
+                value={form.reportDate}
+              />
+            </Field>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <Field label="申请人" required>
+                <input
+                  className="field-input"
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => onChange((current) => ({ ...current, userName: event.target.value }))}
+                  placeholder="请输入申请人"
+                  value={form.userName}
+                />
+              </Field>
+              <Field label="申请人ID" required>
+                <input
+                  className="field-input"
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => onChange((current) => ({ ...current, userId: event.target.value }))}
+                  placeholder="请输入申请人ID"
+                  value={form.userId}
+                />
+              </Field>
+            </div>
+
+            <Field label="延期原因" required>
+              <textarea
+                className="field-textarea"
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange((current) => ({ ...current, delayReason: event.target.value }))}
+                placeholder="请说明延期原因、影响范围及预计调整方式"
+                rows={4}
+                value={form.delayReason}
+              />
+            </Field>
+
+            <Field label="申请说明">
+              <textarea
+                className="field-textarea"
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange((current) => ({ ...current, reportContent: event.target.value }))}
+                placeholder="填写申请背景、涉及工作或调整说明"
+                rows={3}
+                value={form.reportContent}
+              />
+            </Field>
+
+            <Field label="协调内容">
+              <textarea
+                className="field-textarea"
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange((current) => ({ ...current, coordinationContent: event.target.value }))}
+                placeholder="填写需要协同的人员、资源或前置事项"
+                rows={3}
+                value={form.coordinationContent}
+              />
+            </Field>
+
+            <Field label="备注">
+              <textarea
+                className="field-textarea"
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange((current) => ({ ...current, remark: event.target.value }))}
+                placeholder="请输入备注（选填）"
+                rows={3}
+                value={form.remark}
+              />
+            </Field>
+          </div>
+
+          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-[#edf2f8] bg-white px-5 py-4">
+            <button
+              className="inline-flex h-9 min-w-[76px] items-center justify-center rounded-md border border-[#d9e3f1] bg-white px-4 text-sm font-semibold text-[#526681] transition hover:bg-[#f8fbff] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
+              onClick={onCancel}
+              type="button"
+            >
+              取消
+            </button>
+            <button
+              className="inline-flex h-9 min-w-[96px] items-center justify-center rounded-md bg-[#1f7cff] px-4 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.22)] transition hover:bg-[#176df0] focus:outline-none focus:ring-2 focus:ring-[#dceaff] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={submitting}
+              type="submit"
+            >
+              {submitting ? '提交中...' : editingReportId === null ? '提交申请' : '保存申请'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </Card>
+  );
+}
 
 export function ProjectDelayApplicationPage({
   loading,
@@ -166,49 +662,87 @@ export function ProjectDelayApplicationPage({
 }: DelayApplicationPageProps) {
   const { pushToast } = useProjectToast();
   const [editingReportId, setEditingReportId] = useState<number | null>(null);
-  const [form, setForm] = useState<DelayFormState>(emptyForm);
+  const [form, setForm] = useState<DelayFormState>(() => buildEmptyForm(selectedProject));
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (editingReportId !== null) return;
     setForm((current) => ({
       ...current,
+      reportDate: current.reportDate || getTodayDateInput(),
       userId: selectedProject?.managerId ?? '',
       userName: selectedProject?.managerName ?? '',
     }));
   }, [editingReportId, selectedProject?.managerId, selectedProject?.managerName]);
 
+  const targetRows = useMemo<DelayTargetOption[]>(
+    () => [
+      ...nodes.map((node) => ({
+        id: String(node.id),
+        label: node.nodeName,
+        ownerName: selectedProject?.managerName ?? null,
+        planEndTime: node.planEndTime ?? null,
+        planStartTime: node.planStartTime ?? null,
+        status: node.status ?? null,
+        targetType: 'NODE' as const,
+      })),
+      ...tasks.map((task) => ({
+        id: String(task.id),
+        label: task.taskTitle,
+        ownerName: task.responsibleName ?? selectedProject?.managerName ?? null,
+        planEndTime: task.planEndTime ?? null,
+        planStartTime: task.planStartTime ?? null,
+        status: task.status ?? null,
+        targetType: 'TASK' as const,
+      })),
+    ],
+    [nodes, selectedProject?.managerName, tasks],
+  );
+
   const delayReports = useMemo(() => reports.filter((item) => item.delayFlag), [reports]);
 
   const targetOptions = useMemo(
-    () =>
-      form.targetType === 'NODE'
-        ? nodes.map((node) => ({
-            id: String(node.id),
-            label: node.nodeName,
-            planEndTime: node.planEndTime ?? null,
-            planStartTime: node.planStartTime ?? null,
-            status: node.status ?? null,
-          }))
-        : tasks.map((task) => ({
-            id: String(task.id),
-            label: task.taskTitle,
-            planEndTime: task.planEndTime ?? null,
-            planStartTime: task.planStartTime ?? null,
-            status: task.status ?? null,
-          })),
-    [form.targetType, nodes, tasks],
+    () => targetRows.filter((item) => item.targetType === form.targetType),
+    [form.targetType, targetRows],
   );
 
-  const selectedTarget = useMemo(() => targetOptions.find((item) => item.id === form.targetId) ?? null, [form.targetId, targetOptions]);
+  const selectedTarget = useMemo(
+    () => targetOptions.find((item) => item.id === form.targetId) ?? null,
+    [form.targetId, targetOptions],
+  );
+
+  const delayReportRows = useMemo<DelayReportRow[]>(
+    () => delayReports.map((report) => {
+      const targetType: DelayFormState['targetType'] = report.projectTaskId ? 'TASK' : 'NODE';
+      const targetId = report.projectTaskId ?? report.projectNodeId ?? null;
+      const target = targetId === null
+        ? null
+        : targetRows.find((item) => item.targetType === targetType && item.id === String(targetId)) ?? null;
+      return {
+        report,
+        target,
+        targetLabel: target?.label ?? '未识别对象',
+        targetType,
+      };
+    }),
+    [delayReports, targetRows],
+  );
 
   function resetForm() {
     setEditingReportId(null);
-    setForm({
-      ...emptyForm,
-      userId: selectedProject?.managerId ?? '',
-      userName: selectedProject?.managerName ?? '',
-    });
+    setForm(buildEmptyForm(selectedProject));
+  }
+
+  function beginCreateForTarget(target: DelayTargetOption) {
+    setEditingReportId(null);
+    setForm((current) => ({
+      ...buildEmptyForm(selectedProject),
+      reportDate: current.reportDate || getTodayDateInput(),
+      targetId: target.id,
+      targetType: target.targetType,
+      userId: current.userId || selectedProject?.managerId || '',
+      userName: current.userName || selectedProject?.managerName || '',
+    }));
   }
 
   function startEdit(report: DelayApplicationReport) {
@@ -218,7 +752,7 @@ export function ProjectDelayApplicationPage({
       delayReason: report.delayReason ?? '',
       remark: report.remark ?? '',
       reportContent: report.reportContent ?? '',
-      reportDate: toDateInput(report.reportDate),
+      reportDate: toDateInput(report.reportDate) || getTodayDateInput(),
       targetId: report.projectTaskId ? String(report.projectTaskId) : report.projectNodeId ? String(report.projectNodeId) : '',
       targetType: report.projectTaskId ? 'TASK' : 'NODE',
       userId: report.userId ?? selectedProject?.managerId ?? '',
@@ -227,20 +761,32 @@ export function ProjectDelayApplicationPage({
   }
 
   async function handleSubmit() {
-    if (!selectedProject) { pushToast({ message: '请先选择项目。', tone: 'danger' }); return; }
-    if (!form.targetId) { pushToast({ message: '请先选择延期对象。', tone: 'danger' }); return; }
-    if (!form.userId.trim() || !form.userName.trim()) { pushToast({ message: '请填写申请人信息。', tone: 'danger' }); return; }
-    if (!form.delayReason.trim()) { pushToast({ message: '请填写延期原因。', tone: 'danger' }); return; }
+    if (!selectedProject) {
+      pushToast({ message: '请先选择项目。', tone: 'danger' });
+      return;
+    }
+    if (!form.targetId) {
+      pushToast({ message: '请先选择延期对象。', tone: 'danger' });
+      return;
+    }
+    if (!form.userId.trim() || !form.userName.trim()) {
+      pushToast({ message: '请填写申请人信息。', tone: 'danger' });
+      return;
+    }
+    if (!form.delayReason.trim()) {
+      pushToast({ message: '请填写延期原因。', tone: 'danger' });
+      return;
+    }
 
     const payload = {
-      coordinationContent: form.coordinationContent.trim() || null,
+      coordinationContent: trimToNull(form.coordinationContent),
       delayFlag: true,
-      delayReason: form.delayReason.trim() || null,
+      delayReason: trimToNull(form.delayReason),
       finishContent: null,
       projectNodeId: form.targetType === 'NODE' ? Number(form.targetId) : null,
       projectTaskId: form.targetType === 'TASK' ? Number(form.targetId) : null,
-      remark: form.remark.trim() || null,
-      reportContent: form.reportContent.trim() || null,
+      remark: trimToNull(form.remark),
+      reportContent: trimToNull(form.reportContent),
       reportDate: form.reportDate || null,
       reportMonth: null,
       reportType: 'DELAY',
@@ -268,16 +814,11 @@ export function ProjectDelayApplicationPage({
 
   if (!selectedProject) {
     return (
-      <div className="flex h-full items-center justify-center p-8">
-        <Card className="w-full max-w-lg rounded-3xl p-10 text-center">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100">
-            <svg className="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24">
-              <path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          <div className="text-2xl font-black tracking-tight text-slate-900">延期申请</div>
-          <div className="mt-3 text-sm leading-7 text-slate-500">
-            请先在「项目台账」中选择一个项目，再进入当前页面发起节点或任务延期申请。
+      <div className="flex h-full items-center justify-center bg-[#f5f8fc]">
+        <Card className="w-full max-w-lg rounded-lg border border-[#e4ebf5] bg-white p-8 text-center shadow-[0_12px_28px_rgba(24,39,75,0.05)]">
+          <div className="text-xl font-bold text-[#111c33]">延期申请</div>
+          <div className="mt-3 text-sm leading-7 text-[#5e7291]">
+            请先在“项目台账”中选择一个项目，再进入当前页面发起节点或任务延期申请。
           </div>
         </Card>
       </div>
@@ -285,396 +826,109 @@ export function ProjectDelayApplicationPage({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f3f5f9]">
-
-      {/* Header */}
-      <div className="bg-white px-6 pt-6 pb-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-rose-600 text-white shadow-[0_8px_20px_-8px_rgba(244,63,94,0.6)]">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 20 20">
-                <path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16ZM10 6v4l3 2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5"/>
-              </svg>
-            </div>
-            <div>
-              <div className="text-2xl font-black tracking-tight text-slate-900">延期申请</div>
-              <div className="mt-0.5 text-sm text-slate-500">统一管理节点与任务的延期申请记录</div>
-            </div>
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f5f8fc]">
+      <div className="shrink-0">
+        <div className="flex items-start justify-between gap-4 pb-3">
+          <div>
+            <div className="text-xl font-bold leading-7 text-[#111c33]">延期申请</div>
+            <div className="mt-1 text-sm font-medium text-[#5e7291]">节点、任务延期申请与协同说明</div>
           </div>
-          <div className="flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700">
-            <div className="h-2 w-2 rounded-full bg-rose-500" />
-            {selectedProject.projectName}
+          <div className="inline-flex h-8 max-w-[280px] items-center gap-2 rounded-md border border-[#d9e3f1] bg-white px-3 text-sm font-medium text-[#526681] shadow-[0_6px_16px_rgba(24,39,75,0.045)]">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-[#1f7cff]" />
+            <span className="truncate">{selectedProject.projectName}</span>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 px-6 py-4">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-100 text-rose-600">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-              <path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16ZM10 6v4l3 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">延期申请</p>
-            <p className="text-2xl font-bold text-rose-600 leading-none mt-1">{delayReports.length}</p>
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-100 text-blue-600">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-              <path d="M2 4h3v3H2zM7 4h3v3H7zM12 4h3v3h-3zM2 9h3v3H2zM7 9h3v3H7zM12 9h3v3h-3zM2 14h3v3H2zM7 14h3v3H7z" stroke="currentColor" strokeWidth="1.2"/>
-            </svg>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">节点数量</p>
-            <p className="text-2xl font-bold text-slate-800 leading-none mt-1">{nodes.length}</p>
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100 text-emerald-600">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-              <path d="M5 3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5Z" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M7 7h6M7 10h6M7 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">任务数量</p>
-            <p className="text-2xl font-bold text-slate-800 leading-none mt-1">{tasks.length}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Error Banner */}
       {workspaceError ? (
-        <div className="mx-6 mb-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {workspaceError}
-        </div>
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{workspaceError}</div>
       ) : null}
 
-      {/* Content */}
-      <div className="min-h-0 flex-1 overflow-hidden px-6 pb-6">
-        <div className="flex h-full gap-4">
+      <div className="min-h-0 flex-1 overflow-auto pt-2">
+        <div className="grid min-h-full gap-2 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-2">
+            <DelayOverview delayCount={delayReports.length} nodeCount={nodes.length} taskCount={tasks.length} />
 
-          {/* Left: Application Form */}
-          <Card className="w-0 min-w-0 flex-1 overflow-y-auto rounded-2xl p-6">
-            <div className="mb-5 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100">
-                <svg className="h-4 w-4 text-rose-500" fill="none" viewBox="0 0 20 20">
-                  <path d="M10 5v6M10 14v1" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8"/>
-                  <path d="M3 10a7 7 0 1 0 14 0 7 7 0 0 0-14 0Z" stroke="currentColor" strokeWidth="1.5"/>
-                </svg>
-              </div>
-              <div>
-                <div className="text-lg font-bold text-slate-900">
-                  {editingReportId === null ? '发起延期申请' : '编辑延期申请'}
-                </div>
-                <div className="text-xs text-slate-400">填写延期信息并提交审核</div>
-              </div>
-              {editingReportId !== null && (
-                <button className="ml-auto text-xs font-semibold text-slate-400 hover:text-slate-600" onClick={resetForm} type="button">取消编辑</button>
-              )}
-            </div>
+            {loading ? (
+              <Card className="rounded-lg border border-[#e4ebf5] bg-white p-5 text-sm text-[#7e91b0] shadow-[0_12px_28px_rgba(24,39,75,0.05)]">
+                加载中...
+              </Card>
+            ) : (
+              <>
+                <DelayRecordTableSection
+                  activeReportId={editingReportId}
+                  items={delayReportRows}
+                  onEdit={startEdit}
+                />
+                <DelayTargetTableSection
+                  activeTargetId={form.targetId}
+                  activeTargetType={form.targetType}
+                  items={targetRows}
+                  onCreate={beginCreateForTarget}
+                />
+              </>
+            )}
+          </div>
 
-            <div className="space-y-6">
-
-              {/* Step 1: Target */}
-              <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#2563eb] text-[10px] font-bold text-white">1</div>
-                  <span className="text-sm font-bold text-slate-700">选择延期对象</span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-3">
-                    <Field label="对象类型">
-                      <select
-                        className="field-input"
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) => setForm((current) => ({ ...current, targetId: '', targetType: event.target.value as 'NODE' | 'TASK' }))}
-                        value={form.targetType}
-                      >
-                        <option value="TASK">任务</option>
-                        <option value="NODE">节点</option>
-                      </select>
-                    </Field>
-                    <Field label="选择对象">
-                      <select
-                        className="field-input"
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) => setForm((current) => ({ ...current, targetId: event.target.value }))}
-                        value={form.targetId}
-                      >
-                        <option value="">请选择</option>
-                        {targetOptions.map((option) => (
-                          <option key={option.id} value={option.id}>{option.label}</option>
-                        ))}
-                      </select>
-                    </Field>
-                  </div>
-                  {selectedTarget ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">对象信息</div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-500">当前状态</span>
-                          <Badge tone="neutral">{getProjectStatusLabel(selectedTarget.status ?? 'NOT_STARTED')}</Badge>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-500">计划开始</span>
-                          <span className="font-semibold text-slate-700">{formatDateTime(selectedTarget.planStartTime)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-500">计划结束</span>
-                          <span className="font-semibold text-rose-600">{formatDateTime(selectedTarget.planEndTime)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 p-8 text-sm text-slate-400">
-                      选择延期对象后<br />显示对象当前信息
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Step 2: Reason */}
-              <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#2563eb] text-[10px] font-bold text-white">2</div>
-                  <span className="text-sm font-bold text-slate-700">延期说明</span>
-                </div>
-                <div className="space-y-3">
-                  <Field label="申请日期">
-                    <input
-                      className="field-input"
-                      onChange={(event: ChangeEvent<HTMLInputElement>) => setForm((current) => ({ ...current, reportDate: event.target.value }))}
-                      type="date"
-                      value={form.reportDate}
-                    />
-                  </Field>
-                  <Field label="申请人">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <input
-                        className="field-input"
-                        onChange={(event: ChangeEvent<HTMLInputElement>) => setForm((current) => ({ ...current, userName: event.target.value }))}
-                        placeholder="姓名"
-                        value={form.userName}
-                      />
-                      <input
-                        className="field-input"
-                        onChange={(event: ChangeEvent<HTMLInputElement>) => setForm((current) => ({ ...current, userId: event.target.value }))}
-                        placeholder="ID"
-                        value={form.userId}
-                      />
-                    </div>
-                  </Field>
-                  <Field label="延期原因">
-                    <textarea
-                      className="field-textarea border-rose-200 bg-rose-50"
-                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setForm((current) => ({ ...current, delayReason: event.target.value }))}
-                      placeholder="请详细说明延期原因、对项目的影响以及新的预计完成时间"
-                      rows={4}
-                      value={form.delayReason}
-                    />
-                  </Field>
-                </div>
-              </div>
-
-              {/* Step 3: Details */}
-              <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-300 text-[10px] font-bold text-white">3</div>
-                  <span className="text-sm font-bold text-slate-700">补充信息（选填）</span>
-                </div>
-                <div className="space-y-3">
-                  <Field label="申请说明">
-                    <textarea
-                      className="field-textarea"
-                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setForm((current) => ({ ...current, reportContent: event.target.value }))}
-                      placeholder="填写申请背景、涉及工作和调整说明"
-                      rows={3}
-                      value={form.reportContent}
-                    />
-                  </Field>
-                  <Field label="协调内容">
-                    <textarea
-                      className="field-textarea"
-                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setForm((current) => ({ ...current, coordinationContent: event.target.value }))}
-                      placeholder="填写需要协同的人员、资源或前置事项"
-                      rows={3}
-                      value={form.coordinationContent}
-                    />
-                  </Field>
-                  <Field label="补充备注">
-                    <textarea
-                      className="field-textarea"
-                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setForm((current) => ({ ...current, remark: event.target.value }))}
-                      rows={2}
-                      value={form.remark}
-                    />
-                  </Field>
-                </div>
-              </div>
-
-              {/* Submit */}
-              <button
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-rose-600 text-base font-bold text-white shadow-[0_4px_14px_-4px_rgba(244,63,94,0.5)] transition-all hover:shadow-[0_6px_18px_-4px_rgba(244,63,94,0.65)] active:scale-95 disabled:opacity-50"
-                disabled={submitting}
-                onClick={() => { void handleSubmit(); }}
-                type="button"
-              >
-                {submitting ? (
-                  <>
-                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 20 20">
-                      <circle className="opacity-25" cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="3"/>
-                      <path className="opacity-75" d="M10 2a8 8 0 0 1 8 8" stroke="currentColor" strokeLinecap="round" strokeWidth="3"/>
-                    </svg>
-                    提交中...
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 20 20">
-                      <path d="M10 5v6M10 14v1" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8"/>
-                      <path d="M3 10a7 7 0 1 0 14 0 7 7 0 0 0-14 0Z" stroke="currentColor" strokeWidth="1.5"/>
-                    </svg>
-                    {editingReportId === null ? '提交延期申请' : '保存延期申请'}
-                  </>
-                )}
-              </button>
-            </div>
-          </Card>
-
-          {/* Right: Application Records */}
-          <Card className="w-[360px] shrink-0 overflow-y-auto rounded-2xl p-6">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
-                <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 20 20">
-                  <path d="M4 4h12v12H4z" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M7 8h6M7 12h4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5"/>
-                </svg>
-              </div>
-              <div className="text-base font-bold text-slate-900">延期申请记录</div>
-              <div className="ml-auto rounded-xl bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">
-                {delayReports.length}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {loading ? (
-                <div className="py-8 text-center text-sm text-slate-400">加载中...</div>
-              ) : delayReports.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-12 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
-                    <svg className="h-6 w-6 text-slate-300" fill="none" viewBox="0 0 24 24">
-                      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                  <div className="text-sm font-semibold text-slate-400">暂无延期申请记录</div>
-                </div>
-              ) : (
-                delayReports.map((report) => {
-                  const relatedNode = report.projectNodeId ? nodes.find((item) => item.id === report.projectNodeId) : null;
-                  const relatedTask = report.projectTaskId ? tasks.find((item) => item.id === report.projectTaskId) : null;
-                  const targetLabel = relatedTask?.taskTitle ?? relatedNode?.nodeName ?? '未识别对象';
-                  const targetTypeLabel = relatedTask ? '任务' : '节点';
-
-                  return (
-                    <div
-                      key={report.id}
-                      className={cx(
-                        'group overflow-hidden rounded-2xl border transition-all',
-                        editingReportId === report.id
-                          ? 'border-sky-300 bg-sky-50'
-                          : 'border-slate-200 bg-white hover:border-rose-200 hover:shadow-sm',
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2 p-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge tone="neutral">{targetTypeLabel}</Badge>
-                            <Badge tone="danger">延期</Badge>
-                          </div>
-                          <div className="mt-2 truncate text-sm font-semibold text-slate-900">{targetLabel}</div>
-                        </div>
-                        <button
-                          className={cx(
-                            'shrink-0 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all',
-                            editingReportId === report.id
-                              ? 'border-sky-200 bg-sky-100 text-sky-700'
-                              : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700',
-                          )}
-                          onClick={() => startEdit(report)}
-                          type="button"
-                        >
-                          {editingReportId === report.id ? '编辑中' : '编辑'}
-                        </button>
-                      </div>
-                      <div className="space-y-2 border-t border-slate-100 bg-slate-50/50 px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-[10px] font-bold text-slate-500">
-                            {report.userName.slice(0, 1)}
-                          </div>
-                          <span className="text-xs font-semibold text-slate-700">{report.userName}</span>
-                          <span className="text-xs text-slate-400">{formatDateTime(report.reportDate)}</span>
-                        </div>
-                        <div className="line-clamp-3 text-xs leading-6 text-slate-600">{report.delayReason ?? report.reportContent ?? '暂无延期原因'}</div>
-                        {report.coordinationContent ? (
-                          <div className="mt-2 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                            协调：{report.coordinationContent}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </Card>
+          <DelayFormAside
+            editingReportId={editingReportId}
+            form={form}
+            onCancel={resetForm}
+            onChange={setForm}
+            onSubmit={() => { void handleSubmit(); }}
+            selectedTarget={selectedTarget}
+            submitting={submitting}
+            targetOptions={targetOptions}
+          />
         </div>
       </div>
 
       <style>{`
         .field-input {
           display: flex;
-          height: 44px;
+          height: 36px;
           width: 100%;
-          border-radius: 12px;
-          border: 1.5px solid #e2e8f0;
-          background: #f8fafc;
-          padding: 0 14px;
+          border-radius: 6px;
+          border: 1px solid #d9e3f1;
+          background: #fff;
+          padding: 0 12px;
           font-size: 14px;
-          color: #1e293b;
+          color: #263653;
           outline: none;
-          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+          transition: border-color .15s, box-shadow .15s;
         }
         .field-input:focus {
-          border-color: #38bdf8;
-          background: #ffffff;
-          box-shadow: 0 0 0 3px rgba(56,189,248,0.12);
+          border-color: #1f7cff;
+          box-shadow: 0 0 0 2px #dceaff;
+        }
+        .field-input:disabled {
+          background: #f6f9fd;
+          color: #7e91b0;
         }
         .field-input::placeholder {
-          color: #94a3b8;
+          color: #9badc7;
         }
         .field-textarea {
           display: flex;
           width: 100%;
-          border-radius: 12px;
-          border: 1.5px solid #e2e8f0;
-          background: #f8fafc;
-          padding: 12px 14px;
-          font-size: 14px;
-          color: #1e293b;
-          outline: none;
+          min-height: 72px;
           resize: vertical;
-          min-height: 80px;
-          transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+          border-radius: 6px;
+          border: 1px solid #d9e3f1;
+          background: #fff;
+          padding: 8px 12px;
+          font-size: 14px;
+          line-height: 24px;
+          color: #263653;
+          outline: none;
+          transition: border-color .15s, box-shadow .15s;
         }
         .field-textarea:focus {
-          border-color: #38bdf8;
-          background: #ffffff;
-          box-shadow: 0 0 0 3px rgba(56,189,248,0.12);
+          border-color: #1f7cff;
+          box-shadow: 0 0 0 2px #dceaff;
         }
         .field-textarea::placeholder {
-          color: #94a3b8;
+          color: #9badc7;
         }
       `}</style>
     </div>

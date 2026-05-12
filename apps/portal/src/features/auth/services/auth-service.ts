@@ -1,4 +1,4 @@
-import { apiConfig } from '../../../config';
+import { apiConfig, appConfig } from '../../../config';
 import type {
   AuthActiveCompany,
   AuthLoginStage,
@@ -15,6 +15,37 @@ const FIXED_EMPLOYEE_DIRECTORY_QUERY = {
   serverip: '114.116.152.217',
   serverport: 16890,
 } as const;
+
+const FALLBACK_EMPLOYEES: EmployeeOption[] = [
+  {
+    departmentId: 'dept-platform',
+    employeeId: 1,
+    employeeName: '张伟',
+    loginAccount: 'zhangwei',
+    py: 'zw',
+  },
+  {
+    departmentId: 'dept-project',
+    employeeId: 2,
+    employeeName: '王秀娟',
+    loginAccount: 'wangxiujuan',
+    py: 'wxj',
+  },
+  {
+    departmentId: 'dept-project',
+    employeeId: 3,
+    employeeName: '李明',
+    loginAccount: 'liming',
+    py: 'lm',
+  },
+  {
+    departmentId: 'dept-platform',
+    employeeId: 4,
+    employeeName: '张又新',
+    loginAccount: 'zhangyouxin',
+    py: 'zyx',
+  },
+];
 
 type AuthSessionResponse = Omit<AuthSession, 'activeCompany' | 'admin' | 'loginStage'> & {
   activeCompany?: AuthActiveCompany | null;
@@ -57,10 +88,25 @@ function normalizeSession(session: AuthSessionResponse): AuthSession {
 }
 
 export async function fetchEmployeeOptions(): Promise<EmployeeOption[]> {
-  return apiRequest<EmployeeOption[]>(apiConfig.auth.employees, {
-    method: 'GET',
-    query: FIXED_EMPLOYEE_DIRECTORY_QUERY,
-  });
+  try {
+    const employees = await apiRequest<EmployeeOption[]>(apiConfig.auth.employees, {
+      method: 'GET',
+      query: FIXED_EMPLOYEE_DIRECTORY_QUERY,
+    });
+
+    if (Array.isArray(employees) && employees.length > 0) {
+      return employees;
+    }
+
+    return appConfig.features.enableMockData ? FALLBACK_EMPLOYEES : employees;
+  } catch (error) {
+    if (!appConfig.features.enableMockData) {
+      throw error;
+    }
+
+    console.warn('员工目录接口不可用，已启用本地预览人员。', error);
+    return FALLBACK_EMPLOYEES;
+  }
 }
 
 export async function fetchServerOptions(employeeId?: number): Promise<ServerOption[]> {
@@ -80,12 +126,48 @@ export async function fetchAccessibleCompanies(accessToken: string): Promise<Ser
 }
 
 export async function loginWithIdentity(payload: IdentityLoginPayload): Promise<AuthSession> {
-  const response = await apiRequest<AuthSessionResponse>(apiConfig.auth.identityLogin, {
-    body: payload,
-    method: 'POST',
-  });
+  try {
+    const response = await apiRequest<AuthSessionResponse>(apiConfig.auth.identityLogin, {
+      body: payload,
+      method: 'POST',
+    });
 
-  return normalizeSession(response);
+    return normalizeSession(response);
+  } catch (error) {
+    if (!appConfig.features.enableMockData) {
+      throw error;
+    }
+
+    const fallbackEmployee = FALLBACK_EMPLOYEES.find(
+      (employee) => employee.employeeId === payload.employeeId,
+    );
+
+    if (!fallbackEmployee) {
+      throw error;
+    }
+
+    console.warn('身份登录接口不可用，已启用本地预览登录。', error);
+    return normalizeSession({
+      accessToken: '',
+      activeCompany: {
+        companyKey: 'demo-company',
+        datasourceCode: 'demo-company',
+        title: '朗速科技演示库',
+      },
+      admin: fallbackEmployee.employeeId === 1 || fallbackEmployee.employeeId === 4,
+      companyKey: 'demo-company',
+      companyTitle: '朗速科技演示库',
+      datasourceCode: 'demo-company',
+      departmentId: fallbackEmployee.departmentId,
+      employeeId: fallbackEmployee.employeeId,
+      employeeName: fallbackEmployee.employeeName,
+      expiresAt: '',
+      loginStage: 'company',
+      tokenType: 'Preview',
+      tokenVersion: 1,
+      username: fallbackEmployee.loginAccount,
+    });
+  }
 }
 
 export async function activateCompanySession(

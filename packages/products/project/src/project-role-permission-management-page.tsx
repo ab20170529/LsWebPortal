@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 
-import { Badge, Button, Card, cx } from '@lserp/ui';
+import { Button, Card, cx } from '@lserp/ui';
 
 import {
   createProjectPermissionRole,
@@ -55,6 +55,143 @@ function collectMenuIdsFromTree(nodes: ProjectPermissionMenuNode[]) {
   return sortUniqueNumberList(nodes.flatMap((node) => collectMenuIds(node)));
 }
 
+function MetricCell({
+  label,
+  tone = 'default',
+  value,
+}: {
+  label: string;
+  tone?: 'blue' | 'default' | 'green' | 'orange';
+  value: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-[80px] flex-col justify-center px-4 py-3">
+      <div className="text-[13px] font-medium text-[#6b7f9e]">{label}</div>
+      <div
+        className={cx(
+          'mt-1 text-2xl font-bold leading-8',
+          tone === 'blue' ? 'text-[#1f65e8]' : '',
+          tone === 'green' ? 'text-[#16b978]' : '',
+          tone === 'orange' ? 'text-[#ff8a00]' : '',
+          tone === 'default' ? 'text-[#111c33]' : '',
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function CountBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-[#f2f6fb] px-2 text-[13px] font-medium text-[#526681]">
+      {children}
+    </span>
+  );
+}
+
+function TableActionButton({
+  children,
+  danger,
+  disabled,
+  onClick,
+}: {
+  children: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cx(
+        'inline-flex h-7 min-w-[44px] items-center justify-center rounded px-1.5 text-[13px] font-medium transition focus:outline-none focus:ring-2 focus:ring-[#dceaff]',
+        disabled
+          ? 'cursor-not-allowed text-[#b6c4d8]'
+          : danger
+            ? 'text-[#d64545] hover:bg-[#fff2f2]'
+            : 'text-[#1f65e8] hover:bg-[#eaf3ff] hover:text-[#1557d7]',
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Notice({
+  children,
+  tone,
+}: {
+  children: ReactNode;
+  tone: 'danger' | 'success';
+}) {
+  return (
+    <div
+      className={cx(
+        'rounded-md border px-4 py-3 text-[13px] font-medium',
+        tone === 'success'
+          ? 'border-[#b7ebd1] bg-[#effcf6] text-[#13875b]'
+          : 'border-[#ffd0d0] bg-[#fff2f2] text-[#d64545]',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DrawerCloseIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="16" viewBox="0 0 16 16" width="16">
+      <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function Field({
+  children,
+  label,
+  required,
+}: {
+  children: ReactNode;
+  label: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-[12px] font-medium text-[#6b7f9e]">
+        {label}
+        {required ? <span className="ml-0.5 text-[#f04444]">*</span> : null}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function RoleNameCell({ role }: { role: ProjectPermissionRole }) {
+  return (
+    <div className="min-w-0">
+      <div className="truncate text-[13px] font-medium text-[#263653]">{role.roleName}</div>
+      <div className="mt-0.5 truncate text-[12px] font-medium text-[#6b7f9e]">ID {role.roleId}</div>
+    </div>
+  );
+}
+
+function MenuTypeBadge({ type }: { type: string }) {
+  const subsystem = type === 'subsystem';
+  return (
+    <span
+      className={cx(
+        'inline-flex h-5 items-center rounded-full px-2 text-[12px] font-medium',
+        subsystem ? 'bg-[#eaf3ff] text-[#1f65e8]' : 'bg-[#f2f6fb] text-[#526681]',
+      )}
+    >
+      {subsystem ? '系统' : '菜单'}
+    </span>
+  );
+}
+
 function MenuTreeNode({
   depth = 0,
   node,
@@ -75,12 +212,12 @@ function MenuTreeNode({
     <div className="space-y-2">
       <button
         className={cx(
-          'flex w-full items-start gap-3 rounded-[22px] border px-4 py-3 text-left transition',
+          'flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition',
           fullySelected
-            ? 'border-sky-200 bg-sky-50 text-sky-800'
+            ? 'border-[#9fc9ff] bg-[#edf6ff]'
             : partiallySelected
-              ? 'border-amber-200 bg-amber-50 text-amber-900'
-              : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50',
+              ? 'border-[#ffd59b] bg-[#fff8ed]'
+              : 'border-[#e4ebf5] bg-white hover:border-[#cfe1f8] hover:bg-[#f8fbff]',
           branchMenuIds.length === 0 ? 'cursor-default opacity-70' : '',
         )}
         disabled={branchMenuIds.length === 0}
@@ -92,27 +229,27 @@ function MenuTreeNode({
       >
         <span
           className={cx(
-            'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[12px] font-bold',
+            'mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[12px] font-bold',
             fullySelected
-              ? 'border-sky-500 bg-sky-500 text-white'
+              ? 'border-[#1f7cff] bg-[#1f7cff] text-white'
               : partiallySelected
-                ? 'border-amber-300 bg-amber-100 text-amber-700'
-                : 'border-slate-300 bg-white text-transparent',
+                ? 'border-[#ffb64d] bg-[#fff0d8] text-[#ff8a00]'
+                : 'border-[#c9d6e8] bg-white text-transparent',
           )}
         >
-          {fullySelected ? 'Y' : partiallySelected ? '-' : 'Y'}
+          {fullySelected ? '✓' : partiallySelected ? '-' : '✓'}
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-semibold">{node.title}</span>
-            <Badge tone="neutral">{node.nodeType === 'subsystem' ? '系统' : '菜单'}</Badge>
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="truncate text-[13px] font-medium text-[#263653]">{node.title}</span>
+            <MenuTypeBadge type={node.nodeType} />
             {typeof node.menuId === 'number' ? (
-              <span className="text-[11px] text-slate-400">ID {node.menuId}</span>
+              <span className="text-[12px] font-medium text-[#6b7f9e]">ID {node.menuId}</span>
             ) : null}
           </span>
           {node.code ? (
-            <span className="mt-1 block text-[12px] text-slate-500">
+            <span className="mt-1 block truncate text-[12px] font-medium text-[#6b7f9e]">
               {node.code}
             </span>
           ) : null}
@@ -123,8 +260,8 @@ function MenuTreeNode({
         <div className="space-y-2">
           {(node.children ?? []).map((child) => (
             <MenuTreeNode
-              key={child.id}
               depth={depth + 1}
+              key={child.id}
               node={child}
               onToggleBranch={onToggleBranch}
               selectedMenuIds={selectedMenuIds}
@@ -200,6 +337,14 @@ export function ProjectRolePermissionManagementPage({
     () => !areNumberListsEqual(selectedMenuIds, loadedMenuIds),
     [loadedMenuIds, selectedMenuIds],
   );
+  const totalEmployeeCount = useMemo(
+    () => roles.reduce((total, role) => total + (role.employeeCount ?? 0), 0),
+    [roles],
+  );
+  const totalMenuCount = useMemo(
+    () => roles.reduce((total, role) => total + (role.menuCount ?? 0), 0),
+    [roles],
+  );
 
   useEffect(() => {
     setPageNumber(1);
@@ -273,8 +418,7 @@ export function ProjectRolePermissionManagementPage({
         : await createProjectPermissionRole(payload);
 
       await reloadRoles(savedRole.roleId);
-      setRoleDialogState({ mode: 'create', roleId: null, visible: false });
-      setRoleForm(createEmptyRoleForm());
+      closeRoleDrawer();
       setFeedbackMessage(roleDialogState.roleId ? '角色已更新。' : '角色已创建。');
     } catch (error: unknown) {
       setErrorMessage(normalizeErrorMessage(error));
@@ -296,10 +440,7 @@ export function ProjectRolePermissionManagementPage({
       await deleteProjectPermissionRole(role.roleId);
       await reloadRoles(null);
       if (menuDialogState.roleId === role.roleId) {
-        setMenuDialogState({ roleId: null, roleName: '', visible: false });
-        setRoleMenuWorkspace(null);
-        setSelectedMenuIds([]);
-        setLoadedMenuIds([]);
+        closeMenuDrawer();
       }
       setFeedbackMessage('角色已删除。');
     } catch (error: unknown) {
@@ -327,6 +468,11 @@ export function ProjectRolePermissionManagementPage({
     setFeedbackMessage(null);
   }
 
+  function closeRoleDrawer() {
+    setRoleDialogState({ mode: 'create', roleId: null, visible: false });
+    setRoleForm(createEmptyRoleForm());
+  }
+
   async function openMenuDialog(role: ProjectPermissionRole) {
     setBusyAction('load-role-menus');
     setErrorMessage(null);
@@ -348,6 +494,13 @@ export function ProjectRolePermissionManagementPage({
     } finally {
       setBusyAction(null);
     }
+  }
+
+  function closeMenuDrawer() {
+    setMenuDialogState({ roleId: null, roleName: '', visible: false });
+    setRoleMenuWorkspace(null);
+    setSelectedMenuIds([]);
+    setLoadedMenuIds([]);
   }
 
   function handleToggleMenuBranch(node: ProjectPermissionMenuNode) {
@@ -397,153 +550,140 @@ export function ProjectRolePermissionManagementPage({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto">
-      <Card className="rounded-[32px] p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <div className="theme-text-soft text-xs font-bold">
-              系统管理
-            </div>
-            <div className="theme-text-strong mt-2 text-3xl font-bold">
-              角色权限
-            </div>
-            <div className="theme-text-muted mt-3 max-w-3xl text-sm leading-6">
-              角色以表格管理，菜单权限在角色上配置。用户侧只做角色分配，不再把所有操作挤在一个页面里。
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge tone="brand">超级管理员</Badge>
-            <Badge tone="neutral">{currentUserName}</Badge>
-            <Badge tone="neutral">{`角色 ${roles.length}`}</Badge>
-          </div>
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-auto bg-[#f5f8fc]">
+      <div className="mb-2 flex shrink-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-[20px] font-bold leading-7 text-[#111c33]">角色权限</h1>
+          <p className="mt-1 text-[14px] font-medium text-[#5e7291]">
+            维护项目角色信息，并按角色配置可访问菜单权限
+          </p>
         </div>
+        <div className="inline-flex h-8 items-center gap-2 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#526681] shadow-[0_4px_12px_rgba(24,39,75,0.04)]">
+          <span className="h-2 w-2 rounded-full bg-[#1f7cff]" />
+          {currentUserName || '未识别当前用户'}
+        </div>
+      </div>
 
-        {feedbackMessage ? (
-          <div className="mt-5 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {feedbackMessage}
-          </div>
-        ) : null}
-        {errorMessage ? (
-          <div className="mt-5 rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {errorMessage}
-          </div>
-        ) : null}
+      <Card className="mb-2 overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+        <div className="grid divide-y divide-[#edf2f8] sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+          <MetricCell label="角色总数" tone="blue" value={roles.length} />
+          <MetricCell label="关联员工" tone="green" value={totalEmployeeCount} />
+          <MetricCell label="菜单授权" tone="orange" value={totalMenuCount} />
+          <MetricCell label="检索结果" value={filteredRoles.length} />
+        </div>
       </Card>
 
-      <Card className="rounded-[32px] p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <div className="theme-text-strong text-[18px] font-bold">角色权限表</div>
-            <div className="theme-text-muted mt-2 text-sm">
-              角色在这里新增、编辑、删除，并通过“设置菜单”维护菜单权限。
-            </div>
-          </div>
+      {feedbackMessage ? (
+        <div className="mb-2">
+          <Notice tone="success">{feedbackMessage}</Notice>
+        </div>
+      ) : null}
+      {errorMessage ? (
+        <div className="mb-2">
+          <Notice tone="danger">{errorMessage}</Notice>
+        </div>
+      ) : null}
 
-          <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[#e4ebf5] bg-white p-0 shadow-[0_10px_24px_rgba(24,39,75,0.045)]">
+        <div className="flex shrink-0 flex-col gap-3 border-b border-[#edf2f8] px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-[14px] font-bold text-[#111c33]">角色权限表</h2>
+            <p className="mt-1 text-[13px] font-medium text-[#6b7f9e]">
+              角色在这里新增、编辑、删除，并通过“设置菜单”维护授权范围
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
             <input
-              className="theme-input h-11 w-full rounded-2xl px-4 md:w-[320px]"
+              className="field-input w-full md:w-[320px]"
               onChange={(event: ChangeEvent<HTMLInputElement>) => {
                 setSearchKeyword(event.target.value);
               }}
               placeholder="搜索角色名称、编码或说明"
               value={searchKeyword}
             />
-            <Button onClick={openCreateRoleDialog} tone="primary">
-              新增角色
+            <Button
+              className="h-8 rounded-md bg-[#1f7cff] px-4 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.22)] hover:bg-[#176df0]"
+              onClick={openCreateRoleDialog}
+              tone="primary"
+            >
+              + 新增角色
             </Button>
           </div>
         </div>
 
-        <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 bg-white text-left">
-              <thead className="bg-slate-50">
-                <tr className="text-xs font-bold text-slate-500">
-                  <th className="px-5 py-4">角色名称</th>
-                  <th className="px-5 py-4">角色编码</th>
-                  <th className="px-5 py-4">描述</th>
-                  <th className="px-5 py-4">员工数</th>
-                  <th className="px-5 py-4">菜单数</th>
-                  <th className="px-5 py-4">更新人</th>
-                  <th className="px-5 py-4 text-right">行工具</th>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="w-full min-w-[980px] border-collapse text-left">
+            <thead className="bg-[#f8fbff]">
+              <tr className="text-[13px] font-medium text-[#6b7f9e]">
+                <th className="px-4 py-3">角色名称</th>
+                <th className="px-4 py-3">角色编码</th>
+                <th className="px-4 py-3">描述</th>
+                <th className="px-4 py-3">员工数</th>
+                <th className="px-4 py-3">菜单数</th>
+                <th className="px-4 py-3">更新人</th>
+                <th className="px-4 py-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td className="border-t border-[#edf2f8] px-4 py-8 text-center text-[13px] font-medium text-[#8da0bd]" colSpan={7}>
+                    正在加载角色列表...
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <tr>
-                    <td className="px-5 py-8 text-sm text-slate-500" colSpan={7}>
-                      正在加载角色列表...
+              ) : pageRoles.length ? (
+                pageRoles.map((role) => (
+                  <tr className="border-t border-[#edf2f8] bg-white text-[13px] font-medium transition hover:bg-[#f8fbff]" key={role.roleId}>
+                    <td className="px-4 py-3">
+                      <RoleNameCell role={role} />
+                    </td>
+                    <td className="px-4 py-3 text-[#526681]">{role.roleCode}</td>
+                    <td className="max-w-[360px] px-4 py-3 text-[#526681]">
+                      <div className="line-clamp-2 leading-6">{role.roleDescription || '--'}</div>
+                    </td>
+                    <td className="px-4 py-3"><CountBadge>{role.employeeCount}</CountBadge></td>
+                    <td className="px-4 py-3"><CountBadge>{role.menuCount}</CountBadge></td>
+                    <td className="px-4 py-3 text-[#526681]">{role.updatedBy || '--'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <TableActionButton onClick={() => openEditRoleDialog(role)}>编辑</TableActionButton>
+                        <TableActionButton
+                          disabled={busyAction === 'load-role-menus'}
+                          onClick={() => {
+                            void openMenuDialog(role);
+                          }}
+                        >
+                          设置菜单
+                        </TableActionButton>
+                        <TableActionButton
+                          danger
+                          disabled={busyAction === 'delete-role'}
+                          onClick={() => {
+                            void handleDeleteRole(role);
+                          }}
+                        >
+                          删除
+                        </TableActionButton>
+                      </div>
                     </td>
                   </tr>
-                ) : pageRoles.length ? (
-                  pageRoles.map((role) => (
-                    <tr key={role.roleId} className="align-top text-sm text-slate-700">
-                      <td className="px-5 py-4">
-                        <div className="font-semibold text-slate-900">{role.roleName}</div>
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">{role.roleCode}</td>
-                      <td className="px-5 py-4">
-                        <div className="max-w-[320px] leading-6 text-slate-600">
-                          {role.roleDescription || '--'}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <Badge tone="neutral">{String(role.employeeCount)}</Badge>
-                      </td>
-                      <td className="px-5 py-4">
-                        <Badge tone="neutral">{String(role.menuCount)}</Badge>
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">{role.updatedBy || '--'}</td>
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                            onClick={() => {
-                              openEditRoleDialog(role);
-                            }}
-                            type="button"
-                          >
-                            编辑
-                          </button>
-                          <button
-                            className="inline-flex h-9 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 px-4 text-sm font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
-                            onClick={() => {
-                              void openMenuDialog(role);
-                            }}
-                            type="button"
-                          >
-                            设置菜单
-                          </button>
-                          <button
-                            className="inline-flex h-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
-                            onClick={() => {
-                              void handleDeleteRole(role);
-                            }}
-                            type="button"
-                          >
-                            删除
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td className="px-5 py-8 text-sm text-slate-500" colSpan={7}>
-                      没有匹配的角色记录。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              ) : (
+                <tr>
+                  <td className="border-t border-[#edf2f8] px-4 py-8 text-center text-[13px] font-medium text-[#8da0bd]" colSpan={7}>
+                    没有匹配的角色记录
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
-        <div className="mt-5 flex flex-col gap-3 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-[#edf2f8] px-4 py-3 text-[13px] font-medium text-[#6b7f9e] md:flex-row md:items-center md:justify-between">
           <div>{`第 ${safePageNumber} / ${pageCount} 页，共 ${filteredRoles.length} 条角色记录`}</div>
           <div className="flex items-center gap-2">
             <Button
+              className="h-8 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
               disabled={safePageNumber <= 1}
               onClick={() => {
                 setPageNumber((current) => Math.max(1, current - 1));
@@ -553,6 +693,7 @@ export function ProjectRolePermissionManagementPage({
               上一页
             </Button>
             <Button
+              className="h-8 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
               disabled={safePageNumber >= pageCount}
               onClick={() => {
                 setPageNumber((current) => Math.min(pageCount, current + 1));
@@ -566,36 +707,29 @@ export function ProjectRolePermissionManagementPage({
       </Card>
 
       {roleDialogState.visible ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[28px] bg-white p-5 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 flex justify-end bg-[#111c33]/20">
+          <aside className="flex h-full w-full max-w-[420px] flex-col border-l border-[#e4ebf5] bg-white shadow-[-14px_0_30px_rgba(24,39,75,0.08)]">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf2f8] px-5 py-4">
               <div>
-                <div className="text-xs font-bold text-slate-400">
-                  角色权限
-                </div>
-                <div className="mt-2 text-[22px] font-bold text-slate-900">
+                <h3 className="text-[16px] font-bold text-[#111c33]">
                   {roleDialogState.mode === 'create' ? '新增角色' : '编辑角色'}
-                </div>
+                </h3>
+                <p className="mt-1 text-[13px] font-medium text-[#6b7f9e]">维护角色基础信息</p>
               </div>
               <button
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-400 transition hover:border-slate-300 hover:text-slate-600"
-                onClick={() => {
-                  setRoleDialogState({ mode: 'create', roleId: null, visible: false });
-                  setRoleForm(createEmptyRoleForm());
-                }}
+                aria-label="关闭角色表单"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#7e91b0] transition hover:bg-[#f2f6fb] hover:text-[#263653] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
+                onClick={closeRoleDrawer}
                 type="button"
               >
-                ×
+                <DrawerCloseIcon />
               </button>
             </div>
 
-            <div className="mt-5 grid gap-4">
-              <label className="space-y-2">
-                <div className="text-xs font-bold text-slate-500">
-                  角色编码
-                </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
+              <Field label="角色编码" required>
                 <input
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-sky-300"
+                  className="field-input w-full"
                   onChange={(event: ChangeEvent<HTMLInputElement>) => {
                     setRoleForm((current) => ({
                       ...current,
@@ -605,14 +739,11 @@ export function ProjectRolePermissionManagementPage({
                   placeholder="例如：role-project-admin"
                   value={roleForm.roleCode}
                 />
-              </label>
+              </Field>
 
-              <label className="space-y-2">
-                <div className="text-xs font-bold text-slate-500">
-                  角色名称
-                </div>
+              <Field label="角色名称" required>
                 <input
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-sky-300"
+                  className="field-input w-full"
                   onChange={(event: ChangeEvent<HTMLInputElement>) => {
                     setRoleForm((current) => ({
                       ...current,
@@ -622,14 +753,11 @@ export function ProjectRolePermissionManagementPage({
                   placeholder="例如：项目权限管理员"
                   value={roleForm.roleName}
                 />
-              </label>
+              </Field>
 
-              <label className="space-y-2">
-                <div className="text-xs font-bold text-slate-500">
-                  角色说明
-                </div>
+              <Field label="角色说明">
                 <textarea
-                  className="min-h-[110px] w-full resize-none rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none transition focus:border-sky-300"
+                  className="field-textarea"
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
                     setRoleForm((current) => ({
                       ...current,
@@ -639,20 +767,19 @@ export function ProjectRolePermissionManagementPage({
                   placeholder="填写角色用途与适用边界"
                   value={roleForm.roleDescription ?? ''}
                 />
-              </label>
+              </Field>
             </div>
 
-            <div className="mt-5 flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[#edf2f8] px-5 py-4">
               <Button
-                onClick={() => {
-                  setRoleDialogState({ mode: 'create', roleId: null, visible: false });
-                  setRoleForm(createEmptyRoleForm());
-                }}
+                className="h-8 rounded-md border border-[#d9e3f1] bg-white px-4 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
+                onClick={closeRoleDrawer}
                 tone="ghost"
               >
                 取消
               </Button>
               <Button
+                className="h-8 rounded-md bg-[#1f7cff] px-4 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.22)] hover:bg-[#176df0]"
                 disabled={busyAction === 'save-role'}
                 onClick={() => {
                   void handleSaveRole();
@@ -662,43 +789,33 @@ export function ProjectRolePermissionManagementPage({
                 {busyAction === 'save-role' ? '保存中...' : '保存角色'}
               </Button>
             </div>
-          </div>
+          </aside>
         </div>
       ) : null}
 
       {menuDialogState.visible ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-[28px] bg-white p-5 shadow-[0_32px_80px_-24px_rgba(15,23,42,0.35)]">
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 flex justify-end bg-[#111c33]/20">
+          <aside className="flex h-full w-full max-w-[560px] flex-col border-l border-[#e4ebf5] bg-white shadow-[-14px_0_30px_rgba(24,39,75,0.08)]">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf2f8] px-5 py-4">
               <div>
-                <div className="text-xs font-bold text-slate-400">
-                  菜单权限
-                </div>
-                <div className="mt-2 text-[22px] font-bold text-slate-900">
-                  {menuDialogState.roleName}
-                </div>
-                <div className="mt-2 text-sm text-slate-500">
-                  通过树形菜单批量设置当前角色可访问的菜单项。
-                </div>
+                <h3 className="text-[16px] font-bold text-[#111c33]">菜单权限</h3>
+                <p className="mt-1 text-[13px] font-medium text-[#6b7f9e]">{menuDialogState.roleName}</p>
               </div>
               <button
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-400 transition hover:border-slate-300 hover:text-slate-600"
-                onClick={() => {
-                  setMenuDialogState({ roleId: null, roleName: '', visible: false });
-                  setRoleMenuWorkspace(null);
-                  setSelectedMenuIds([]);
-                  setLoadedMenuIds([]);
-                }}
+                aria-label="关闭菜单权限"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#7e91b0] transition hover:bg-[#f2f6fb] hover:text-[#263653] focus:outline-none focus:ring-2 focus:ring-[#dceaff]"
+                onClick={closeMenuDrawer}
                 type="button"
               >
-                ×
+                <DrawerCloseIcon />
               </button>
             </div>
 
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <Badge tone="neutral">{`已选 ${selectedMenuIds.length}`}</Badge>
-              <Badge tone="neutral">{`可授权 ${allMenuIds.length}`}</Badge>
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#edf2f8] px-5 py-3">
+              <CountBadge>{`已选 ${selectedMenuIds.length}`}</CountBadge>
+              <CountBadge>{`可授权 ${allMenuIds.length}`}</CountBadge>
               <Button
+                className="h-8 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
                 disabled={!allMenuIds.length || Boolean(busyAction)}
                 onClick={() => {
                   setSelectedMenuIds(allMenuIds);
@@ -708,6 +825,7 @@ export function ProjectRolePermissionManagementPage({
                 全选
               </Button>
               <Button
+                className="h-8 rounded-md border border-[#d9e3f1] bg-white px-3 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
                 disabled={!selectedMenuIds.length || Boolean(busyAction)}
                 onClick={() => {
                   setSelectedMenuIds([]);
@@ -718,9 +836,9 @@ export function ProjectRolePermissionManagementPage({
               </Button>
             </div>
 
-            <div className="mt-5 min-h-[320px] flex-1 overflow-auto rounded-[24px] border border-slate-200 bg-slate-50/40 p-4">
+            <div className="min-h-0 flex-1 overflow-auto bg-[#f8fbff] px-5 py-4">
               {roleMenuWorkspace?.menuTree?.length ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {roleMenuWorkspace.menuTree.map((node) => (
                     <MenuTreeNode
                       key={node.id}
@@ -731,25 +849,22 @@ export function ProjectRolePermissionManagementPage({
                   ))}
                 </div>
               ) : (
-                <div className="rounded-[22px] border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-                  当前账套暂无可授权菜单树。
+                <div className="rounded-lg border border-dashed border-[#d9e3f1] bg-white px-4 py-8 text-center text-[13px] font-medium text-[#8da0bd]">
+                  当前账号暂无可授权菜单树
                 </div>
               )}
             </div>
 
-            <div className="mt-5 flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[#edf2f8] px-5 py-4">
               <Button
-                onClick={() => {
-                  setMenuDialogState({ roleId: null, roleName: '', visible: false });
-                  setRoleMenuWorkspace(null);
-                  setSelectedMenuIds([]);
-                  setLoadedMenuIds([]);
-                }}
+                className="h-8 rounded-md border border-[#d9e3f1] bg-white px-4 text-[13px] font-medium text-[#526681] hover:bg-[#f8fbff]"
+                onClick={closeMenuDrawer}
                 tone="ghost"
               >
                 关闭
               </Button>
               <Button
+                className="h-8 rounded-md bg-[#1f7cff] px-4 text-[13px] font-semibold text-white shadow-[0_8px_18px_rgba(31,124,255,0.22)] hover:bg-[#176df0]"
                 disabled={!roleMenusDirty || busyAction === 'save-role-menus'}
                 onClick={() => {
                   void handleSaveRoleMenus();
@@ -759,9 +874,43 @@ export function ProjectRolePermissionManagementPage({
                 {busyAction === 'save-role-menus' ? '保存中...' : '保存菜单权限'}
               </Button>
             </div>
-          </div>
+          </aside>
         </div>
       ) : null}
+
+      <style>{`
+        .field-input,
+        .field-textarea {
+          border-radius: 6px;
+          border: 1px solid #d9e3f1;
+          background: #fff;
+          font-size: 13px;
+          font-weight: 500;
+          color: #263653;
+          outline: none;
+          transition: border-color .16s ease, box-shadow .16s ease;
+        }
+        .field-input {
+          height: 36px;
+          padding: 0 12px;
+        }
+        .field-textarea {
+          min-height: 104px;
+          width: 100%;
+          resize: none;
+          padding: 10px 12px;
+          line-height: 1.6;
+        }
+        .field-input::placeholder,
+        .field-textarea::placeholder {
+          color: #9aabc4;
+        }
+        .field-input:focus,
+        .field-textarea:focus {
+          border-color: #1f7cff;
+          box-shadow: 0 0 0 3px #dceaff;
+        }
+      `}</style>
     </div>
   );
 }
