@@ -81,7 +81,10 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
     () => tenants.find((tenant) => tenant.tenantCode === form.tenantCode) ?? null,
     [form.tenantCode, tenants],
   );
-  const isSingleDatabaseMode = !isLoadingTenants && tenants.length === 0;
+  const isSingleDatabaseMode = !isLoadingTenants && (
+    tenants.length === 0
+    || (tenants.length === 1 && tenants[0]?.tenantCode === PLATFORM_DEFAULT_TENANT.tenantCode)
+  );
 
   useEffect(() => {
     let active = true;
@@ -97,17 +100,19 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
         }
 
         const normalizedTenants = Array.isArray(nextTenants) ? nextTenants : [];
-        const tenantOptions = [PLATFORM_DEFAULT_TENANT, ...normalizedTenants];
+        const tenantOptions = normalizedTenants.length > 0 ? normalizedTenants : [PLATFORM_DEFAULT_TENANT];
         const remembered = getRememberedLoginState();
         const rememberedTenant = remembered?.tenantCode
           ? tenantOptions.find((tenant) => tenant.tenantCode === remembered.tenantCode)
           : null;
-        const defaultTenant = rememberedTenant ?? PLATFORM_DEFAULT_TENANT;
+        const defaultTenant = rememberedTenant ?? tenantOptions[0] ?? PLATFORM_DEFAULT_TENANT;
 
         setTenants(tenantOptions);
         setForm((current) => ({
           ...current,
-          tenantCode: current.tenantCode || defaultTenant?.tenantCode || '',
+          tenantCode: tenantOptions.some((tenant) => tenant.tenantCode === current.tenantCode)
+            ? current.tenantCode
+            : defaultTenant?.tenantCode || '',
         }));
       } catch (error) {
         if (active) {
@@ -130,8 +135,10 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
 
   const tenantHelperText = isLoadingTenants
     ? '正在加载平台租户...'
-    : tenants.length
-      ? `当前可选 ${Math.max(tenants.length - 1, 0)} 个租户，也可进入平台默认库。`
+    : isSingleDatabaseMode
+      ? '未配置租户，当前使用平台默认库单库模式。'
+      : tenants.length
+        ? `当前可选 ${tenants.length} 个租户，请先选择登录租户。`
       : '未配置租户，当前使用平台默认库单库模式。';
 
   const submit = useCallback(async () => {

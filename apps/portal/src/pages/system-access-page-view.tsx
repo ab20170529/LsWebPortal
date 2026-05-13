@@ -527,7 +527,7 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
   const accessibleEntries = getGrantedSystemIds(session)
     .map((systemId) => getPlatformSystemEntry(systemId))
     .filter((entry): entry is GrantedSystemEntry => entry !== null);
-  const hasBusinessContext = hasActiveCompany || (
+  const hasTenantDefaultContext = (
     session.loginStage === 'tenant' && session.businessDbRequired === false
   );
 
@@ -539,6 +539,7 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
   const [optimisticCompany, setOptimisticCompany] = useState<ServerOption | null>(null);
   const [searchValue, setSearchValue] = useState('');
   const activationRequestIdRef = React.useRef(0);
+  const hasBusinessContext = hasActiveCompany || hasTenantDefaultContext;
   const displayedCompanyKey = optimisticCompany?.companyKey ?? currentCompanyKey;
   const displayedCompanyTitle = optimisticCompany?.title ?? currentCompanyTitle;
   const businessContextTitle = displayedCompanyTitle || (hasBusinessContext ? '当前租户默认库' : '');
@@ -556,7 +557,12 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
     let active = true;
 
     const loadCompanies = async () => {
-      if (hasBusinessContext) {
+      const shouldLoadCompanies = (
+        session.businessDbRequired !== false
+        && (session.loginStage === 'tenant' || !hasActiveCompany)
+      );
+
+      if (!shouldLoadCompanies) {
         setCompanies([]);
         setCompanyError(null);
         setIsLoadingCompanies(false);
@@ -599,7 +605,12 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
     return () => {
       active = false;
     };
-  }, [hasBusinessContext, session.accessToken]);
+  }, [
+    hasActiveCompany,
+    session.accessToken,
+    session.businessDbRequired,
+    session.loginStage,
+  ]);
 
   useEffect(() => {
     if (optimisticCompany?.companyKey === currentCompanyKey) {

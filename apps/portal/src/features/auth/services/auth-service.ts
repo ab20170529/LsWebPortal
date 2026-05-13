@@ -57,6 +57,52 @@ type AuthSessionResponse = Omit<AuthSession, 'activeCompany' | 'admin' | 'loginS
   loginStage?: AuthLoginStage;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object');
+}
+
+function extractList<T>(value: unknown, aliasKey?: string, depth = 0): T[] {
+  if (Array.isArray(value)) {
+    return value as T[];
+  }
+
+  if (!isRecord(value) || depth > 5) {
+    return [];
+  }
+
+  const candidateKeys = [
+    aliasKey,
+    'data',
+    'list',
+    'records',
+    'rows',
+    'items',
+    'result',
+  ].filter((key): key is string => Boolean(key));
+
+  for (const key of candidateKeys) {
+    const candidate = value[key];
+
+    if (Array.isArray(candidate)) {
+      return candidate as T[];
+    }
+
+    const nested = extractList<T>(candidate, aliasKey, depth + 1);
+    if (nested.length > 0) {
+      return nested;
+    }
+  }
+
+  return [];
+}
+
+function isPlatformPseudoTenant(tenant: TenantOption) {
+  const tenantType = tenant.tenantType?.trim().toUpperCase();
+  return tenant.tenantCode === '__platform__'
+    || tenantType === 'PLATFORM_DB'
+    || tenantType === 'PLATFORM';
+}
+
 function normalizeActiveCompany(session: AuthSessionResponse): AuthActiveCompany | null {
   if (session.loginStage === 'tenant') {
     return null;
@@ -96,12 +142,13 @@ function normalizeSession(session: AuthSessionResponse): AuthSession {
 
 export async function fetchEmployeeOptions(query: EmployeeDirectoryQuery = FIXED_EMPLOYEE_DIRECTORY_QUERY): Promise<EmployeeOption[]> {
   try {
-    const employees = await apiRequest<EmployeeOption[]>(apiConfig.auth.employees, {
+    const response = await apiRequest<unknown>(apiConfig.auth.employees, {
       method: 'GET',
       query,
     });
+    const employees = extractList<EmployeeOption>(response, 'employees');
 
-    if (Array.isArray(employees) && employees.length > 0) {
+    if (employees.length > 0) {
       return employees;
     }
 
@@ -117,25 +164,32 @@ export async function fetchEmployeeOptions(query: EmployeeDirectoryQuery = FIXED
 }
 
 export async function fetchServerOptions(employeeId?: number): Promise<ServerOption[]> {
-  return apiRequest<ServerOption[]>(apiConfig.system.allServers, {
+  const response = await apiRequest<unknown>(apiConfig.system.allServers, {
     method: 'GET',
     query: employeeId ? { employeeId } : undefined,
   });
+
+  return extractList<ServerOption>(response);
 }
 
 export async function fetchTenantOptions(): Promise<TenantOption[]> {
-  return apiRequest<TenantOption[]>(apiConfig.auth.tenants, {
+  const response = await apiRequest<unknown>(apiConfig.auth.tenants, {
     method: 'GET',
   });
+
+  return extractList<TenantOption>(response)
+    .filter((tenant) => !isPlatformPseudoTenant(tenant));
 }
 
 export async function fetchAccessibleCompanies(accessToken: string): Promise<ServerOption[]> {
-  return apiRequest<ServerOption[]>(apiConfig.auth.businessDbs, {
+  const response = await apiRequest<unknown>(apiConfig.auth.businessDbs, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
     method: 'GET',
   });
+
+  return extractList<ServerOption>(response);
 }
 
 export async function loginWithIdentity(payload: IdentityLoginPayload): Promise<AuthSession> {
