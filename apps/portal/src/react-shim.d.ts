@@ -15,10 +15,21 @@ declare module 'react' {
       value: string;
     };
   };
+  export type KeyboardEvent<T = unknown> = {
+    ctrlKey?: boolean;
+    currentTarget: T;
+    key?: string;
+    metaKey?: boolean;
+    preventDefault: () => void;
+    target: T;
+  };
   export type ReactNode = any;
   export type PropsWithChildren<P = unknown> = P & { children?: any };
   export type HTMLAttributes<T = unknown> = Record<string, unknown>;
   export type ButtonHTMLAttributes<T = unknown> = Record<string, unknown>;
+  export type RefObject<T> = {
+    current: T;
+  };
   export type Context<T> = {
     Consumer: any;
     Provider: any;
@@ -30,6 +41,7 @@ declare module 'react' {
   export function useContext<T>(context: Context<T>): T;
   export function useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void;
   export function useMemo<T>(factory: () => T, deps: readonly unknown[]): T;
+  export function useRef<T>(initialValue: T): RefObject<T>;
   export function useState<T>(initialState: T | (() => T)): [T, (value: T | ((prev: T) => T)) => void];
   export function useSyncExternalStore<T>(
     subscribe: (listener: () => void) => () => void,

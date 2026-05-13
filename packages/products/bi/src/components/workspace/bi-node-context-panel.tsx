@@ -192,10 +192,6 @@ export function BiNodeContextPanel({
     },
   ];
 
-  const recommendedStep =
-    guideSteps.find((step) => !step.isDone && step.tone === 'next')
-    ?? (hasPreviewReady ? guideSteps[4] : null);
-
   return (
     <aside className="bi-context-panel">
       <div className="bi-context-panel-header">
@@ -280,7 +276,11 @@ export function BiNodeContextPanel({
                         <div className="bi-context-guide-title">{step.title}</div>
                         <div className="bi-context-guide-text">{step.description}</div>
                         <Button
-                          className={cx('bi-context-guide-action', step.isDone ? 'is-complete' : '')}
+                          className={cx(
+                            'bi-context-guide-action',
+                            step.isDone ? 'is-complete' : '',
+                            step.tone === 'next' ? 'is-next' : '',
+                          )}
                           disabled={isActionDisabled}
                           onClick={step.onAction}
                           tone="ghost"
@@ -292,29 +292,6 @@ export function BiNodeContextPanel({
                   })}
                 </div>
               </section>
-
-              {recommendedStep ? (
-                <section className="bi-panel-section">
-                  <div className="bi-panel-section-header">
-                    <div className="bi-panel-section-title">建议下一步</div>
-                  </div>
-                  <div className="bi-context-next-card">
-                    <div className="bi-context-next-kicker">推荐动作</div>
-                    <div className="bi-context-next-title">
-                      {`步骤 ${recommendedStep.stepNo}：${recommendedStep.title}`}
-                    </div>
-                    <div className="bi-context-next-text">{recommendedStep.description}</div>
-                    <div className="bi-context-next-actions">
-                      <Button
-                        disabled={recommendedStep.tone === 'blocked'}
-                        onClick={recommendedStep.onAction}
-                      >
-                        {recommendedStep.actionLabel}
-                      </Button>
-                    </div>
-                  </div>
-                </section>
-              ) : null}
 
               <section className="bi-panel-section">
                 <div className="bi-panel-section-header">

@@ -3,10 +3,12 @@ import { Button, cx } from '@lserp/ui';
 import { HistoryIcon, PlayIcon, ShareIcon } from './bi-icons';
 
 type BiTopToolbarProps = {
+  beginnerMode?: boolean;
   canPublish: boolean;
   canPreview: boolean;
   isMutating: boolean;
   nodePath: string[];
+  onBeginnerModeChange?: (beginnerMode: boolean) => void;
   onOpenDesign: () => void;
   onOpenPreview: () => void;
   onPublish: () => void;
@@ -15,10 +17,12 @@ type BiTopToolbarProps = {
 };
 
 export function BiTopToolbar({
+  beginnerMode = true,
   canPublish,
   canPreview,
   isMutating,
   nodePath,
+  onBeginnerModeChange,
   onOpenDesign,
   onOpenPreview,
   onPublish,
@@ -47,6 +51,22 @@ export function BiTopToolbar({
       </div>
 
       <div className="bi-top-toolbar-actions">
+        <div className="bi-workspace-mode-switch" aria-label="工作台模式">
+          <button
+            className={beginnerMode ? 'is-active' : ''}
+            onClick={() => onBeginnerModeChange?.(true)}
+            type="button"
+          >
+            新手模式
+          </button>
+          <button
+            className={!beginnerMode ? 'is-active' : ''}
+            onClick={() => onBeginnerModeChange?.(false)}
+            type="button"
+          >
+            高级模式
+          </button>
+        </div>
         <Button disabled={isMutating} onClick={onOpenDesign} tone="ghost">
           <span className="bi-toolbar-button-content">
             <HistoryIcon className="bi-toolbar-button-icon" />

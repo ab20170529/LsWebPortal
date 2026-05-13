@@ -82,7 +82,7 @@ export function BiDirectoryCanvas({
   const [searchTerm, setSearchTerm] = useState('');
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [highlightedNodeId, setHighlightedNodeId] = useState<number | null>(null);
-  const branchFocusEnabled = false;
+  const [branchFocusEnabled, setBranchFocusEnabled] = useState(false);
   const flatNodes = useMemo(() => flattenDirectoryNodes(nodes), [nodes]);
   const selectedNode = useMemo(
     () => flatNodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -106,7 +106,19 @@ export function BiDirectoryCanvas({
     }
     return path;
   }, [nodeIndex, selectedNode]);
-  const visibleNodes = flatNodes;
+  const focusNodeIds = useMemo(() => {
+    if (!branchFocusEnabled || !selectedNode) {
+      return null;
+    }
+
+    const ids = new Set(selectedPath.map((node) => node.id));
+    flattenDirectoryNodes([selectedNode]).forEach((node) => ids.add(node.id));
+    return ids;
+  }, [branchFocusEnabled, selectedNode, selectedPath]);
+  const visibleNodes = useMemo(
+    () => (focusNodeIds ? flatNodes.filter((node) => focusNodeIds.has(node.id)) : flatNodes),
+    [flatNodes, focusNodeIds],
+  );
   const displayStats = useMemo(
     () => ({
       assetCount,
@@ -289,6 +301,12 @@ export function BiDirectoryCanvas({
   }, [focusRequest]);
 
   useEffect(() => {
+    if (branchFocusEnabled && selectedNode) {
+      window.requestAnimationFrame(focusSelectedNode);
+    }
+  }, [branchFocusEnabled, selectedNodeId]);
+
+  useEffect(() => {
     if (highlightedNodeId == null) {
       return undefined;
     }
@@ -316,68 +334,69 @@ export function BiDirectoryCanvas({
       <div className="bi-canvas-toolbar">
         <div className="bi-canvas-toolbar-actions">
           <div className="bi-canvas-toolbar-group">
-          <Button onClick={onQuickAddRoot} tone="ghost">
-            <span className="bi-toolbar-button-content">
-              <PlusIcon className="bi-toolbar-button-icon" />
-              新增根节点
-            </span>
-          </Button>
+            <Button onClick={onQuickAddRoot} tone="ghost">
+              <span className="bi-toolbar-button-content">
+                <PlusIcon className="bi-toolbar-button-icon" />
+                新增根节点
+              </span>
+            </Button>
           </div>
           <div className="bi-canvas-toolbar-group">
-          <Button className="bi-canvas-toolbar-auto" onClick={resetCanvasViewport} tone="ghost">
-            <span className="bi-toolbar-button-content">
-              <GridIcon className="bi-toolbar-button-icon" />
-              自动布局
-            </span>
-          </Button>
-          <Button
-            className="bi-canvas-toolbar-button bi-canvas-toolbar-locate"
-            disabled={!selectedNode}
-            onClick={focusSelectedNode}
-            tone="ghost"
-          >
-            <span className="bi-toolbar-button-content">
-              <GridIcon className="bi-toolbar-button-icon" />
-              定位选中
-            </span>
-          </Button>
-          <Button className="bi-canvas-toolbar-button" onClick={resetCanvasViewport} tone="ghost">
-            <span className="bi-toolbar-button-content">
-              <GridIcon className="bi-toolbar-button-icon" />
-              回到默认位置
-            </span>
-          </Button>
-          <Button
-            className="bi-canvas-toolbar-button bi-canvas-toolbar-focus"
-            onClick={resetCanvasViewport}
-            tone="ghost"
-          >
-            <span className="bi-toolbar-button-content">
-              <GridIcon className="bi-toolbar-button-icon" />
-              {branchFocusEnabled ? '显示全部' : '聚焦分支'}
-            </span>
-          </Button>
+            <Button className="bi-canvas-toolbar-auto" onClick={resetCanvasViewport} tone="ghost">
+              <span className="bi-toolbar-button-content">
+                <GridIcon className="bi-toolbar-button-icon" />
+                自动布局
+              </span>
+            </Button>
+            <Button
+              className="bi-canvas-toolbar-button bi-canvas-toolbar-locate"
+              disabled={!selectedNode}
+              onClick={focusSelectedNode}
+              tone="ghost"
+            >
+              <span className="bi-toolbar-button-content">
+                <GridIcon className="bi-toolbar-button-icon" />
+                定位选中
+              </span>
+            </Button>
+            <Button className="bi-canvas-toolbar-button" onClick={resetCanvasViewport} tone="ghost">
+              <span className="bi-toolbar-button-content">
+                <GridIcon className="bi-toolbar-button-icon" />
+                回到默认位置
+              </span>
+            </Button>
+            <Button
+              className={`bi-canvas-toolbar-button bi-canvas-toolbar-focus${branchFocusEnabled ? ' is-active' : ''}`}
+              disabled={!selectedNode}
+              onClick={() => setBranchFocusEnabled((enabled) => !enabled)}
+              tone="ghost"
+            >
+              <span className="bi-toolbar-button-content">
+                <GridIcon className="bi-toolbar-button-icon" />
+                {branchFocusEnabled ? '显示全部' : '聚焦分支'}
+              </span>
+            </Button>
           </div>
           <div className="bi-canvas-toolbar-group">
-          <Button onClick={onSaveLayout} tone="ghost">
-            <span className="bi-toolbar-button-content">
-              <SaveStageIcon className="bi-toolbar-button-icon" />
-              保存布局
-            </span>
-          </Button>
+            <Button onClick={onSaveLayout} tone="ghost">
+              <span className="bi-toolbar-button-content">
+                <SaveStageIcon className="bi-toolbar-button-icon" />
+                保存布局
+              </span>
+            </Button>
           </div>
         </div>
 
         <form
           className="bi-canvas-search"
-          onSubmit={(event) => {
+          onSubmit={(event: { preventDefault: () => void }) => {
             event.preventDefault();
             selectSearchMatch();
           }}
         >
           <input
             className="bi-canvas-search-input"
-            onChange={(event) => setSearchTerm(event.target.value)}
+            onChange={(event: { target: HTMLInputElement }) => setSearchTerm(event.target.value)}
             placeholder="搜索节点名称 / code"
             value={searchTerm}
           />
@@ -493,6 +512,13 @@ export function BiDirectoryCanvas({
                         : (subtreeArchiveCountByNodeId[node.id] ?? 0) > 0
                           ? '当前节点或下级节点仍有 BI 档案，请先清理后再删除'
                           : undefined
+                }
+                focusTone={
+                  branchFocusEnabled && focusNodeIds?.has(node.id)
+                    ? selectedPath.some((pathNode) => pathNode.id === node.id)
+                      ? 'path'
+                      : 'descendant'
+                    : undefined
                 }
                 layout={getNodeCanvasMeta(node, layoutMap)}
                 node={node}

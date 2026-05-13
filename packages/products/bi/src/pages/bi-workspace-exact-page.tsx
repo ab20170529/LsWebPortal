@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ChangeEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 
 import type {
   DataAssetFieldSavePayload,
@@ -2661,7 +2669,7 @@ function ExactAiStage({
                   disabled={!selectedScreen || Boolean(chatPhase)}
                   maxLength={800}
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setChatPrompt(event.target.value)}
-                  onKeyDown={(event) => {
+                  onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
                     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                       event.preventDefault();
                       void handleSendMessage();
@@ -2677,7 +2685,7 @@ function ExactAiStage({
                       accept="image/*"
                       disabled={referenceImages.length >= MAX_CHAT_REFERENCE_IMAGES || !selectedScreen || Boolean(chatPhase)}
                       multiple
-                      onChange={(event) => {
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
                         void handleReferenceImageChange(event);
                       }}
                       type="file"
@@ -2727,7 +2735,7 @@ function ExactAiStage({
                     <input
                       accept="image/*"
                       disabled={!canAdjustBackground}
-                      onChange={(event) => {
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
                         void handleBackgroundUpload(event);
                       }}
                       type="file"
@@ -2737,7 +2745,7 @@ function ExactAiStage({
                   <div className="bi-exact-background-ai-row">
                     <input
                       disabled={!canAdjustBackground || !hasGenerationSources}
-                      onChange={(event) => setBackgroundPrompt(event.target.value)}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => setBackgroundPrompt(event.target.value)}
                       placeholder="例如：深蓝科技网格、发光数据流、城市天际线"
                       value={backgroundPrompt}
                     />

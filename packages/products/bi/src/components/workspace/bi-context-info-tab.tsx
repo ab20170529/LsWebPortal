@@ -37,6 +37,7 @@ export function BiContextInfoTab({
     orderNo: 0,
     status: 'ACTIVE',
   });
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     setForm({
@@ -46,6 +47,7 @@ export function BiContextInfoTab({
       orderNo: Number(node?.orderNo ?? 0),
       status: node?.status ?? 'ACTIVE',
     });
+    setDeleteConfirmOpen(false);
   }, [node, nodeTypes]);
 
   if (!node) {
@@ -172,12 +174,7 @@ export function BiContextInfoTab({
             </Button>
             <Button
               disabled={isMutating || isPendingNode}
-              onClick={() => {
-                if (!window.confirm(`确认删除节点“${node.nodeName}”吗？`)) {
-                  return;
-                }
-                void onDeleteSelectedNode(node.id);
-              }}
+              onClick={() => setDeleteConfirmOpen(true)}
               tone="ghost"
             >
               删除节点
@@ -185,6 +182,25 @@ export function BiContextInfoTab({
           </div>
         </div>
       </section>
+      {deleteConfirmOpen ? (
+        <div className="bi-confirm-inline">
+          <div className="bi-confirm-title">确认删除节点</div>
+          <div className="bi-confirm-text">将删除“{node.nodeName}”，该操作不可撤销。</div>
+          <div className="bi-confirm-actions">
+            <Button onClick={() => setDeleteConfirmOpen(false)} tone="ghost">
+              取消
+            </Button>
+            <Button
+              onClick={() => {
+                setDeleteConfirmOpen(false);
+                void onDeleteSelectedNode(node.id);
+              }}
+            >
+              确认删除
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

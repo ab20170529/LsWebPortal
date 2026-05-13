@@ -18,6 +18,7 @@ import {
   type BiArchiveTab,
   type BiWorkspaceSection,
 } from '../utils/bi-workspace-view-state';
+import { resolveBiWorkspaceNextStep } from '../utils/bi-workspace-next-step';
 import { Button, Card } from '@lserp/ui';
 
 function resolveLatestVersionId(versions: Array<{ id: number; versionNo?: number | null }>) {
@@ -81,6 +82,16 @@ function resolvePreviewTarget(screen: BiScreen | null) {
   };
 }
 
+const BI_WORKSPACE_MODE_STORAGE_KEY = 'bi.workspace.mode';
+
+function readBeginnerModePreference() {
+  try {
+    return window.localStorage.getItem(BI_WORKSPACE_MODE_STORAGE_KEY) !== 'advanced';
+  } catch {
+    return true;
+  }
+}
+
 export function BiWorkspacePage() {
   const initialView = useMemo(() => readBiWorkspaceViewState(window.location.search), []);
   const [activeSection, setActiveSection] = useState<BiWorkspaceSection>(initialView.section);
@@ -88,12 +99,14 @@ export function BiWorkspacePage() {
   const [contextCollapsed, setContextCollapsed] = useState(false);
   const [createPresetType, setCreatePresetType] = useState<'EXTERNAL' | 'INTERNAL' | null>(null);
   const [canvasFocusRequest, setCanvasFocusRequest] = useState(0);
+  const [beginnerMode, setBeginnerMode] = useState(readBeginnerModePreference);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   // 节点编辑弹窗状态
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editModalNode, setEditModalNode] = useState<BiDirectoryNode | null>(null);
   const [editFormName, setEditFormName] = useState('');
   const [editFormCode, setEditFormCode] = useState('');
+  const [deleteConfirmNode, setDeleteConfirmNode] = useState<BiDirectoryNode | null>(null);
   const workspace = useBiWorkspace({
     initialSelectedNodeId: initialView.nodeId,
     initialSelectedScreenId: initialView.screenId,
@@ -150,6 +163,25 @@ export function BiWorkspacePage() {
       statusText: '当前节点下的 BI 档案还没有任何版本，请先保存一个版本后再预览。',
     };
   }, [selectedNodeScreens, workspace.selectedNode, workspace.selectedScreen]);
+
+  const nextStep = useMemo(
+    () =>
+      resolveBiWorkspaceNextStep({
+        canPreview: previewState.canPreview,
+        node: workspace.selectedNode,
+        screens: selectedNodeScreens,
+        selectedScreen: workspace.selectedScreen,
+      }),
+    [previewState.canPreview, selectedNodeScreens, workspace.selectedNode, workspace.selectedScreen],
+  );
+
+  const sourceContinueState = useMemo(
+    () => ({
+      hint: nextStep.hint,
+      label: `下一步：${nextStep.actionLabel}`,
+    }),
+    [nextStep],
+  );
 
   const publishVersionId = useMemo(() => {
     if (
@@ -238,12 +270,27 @@ export function BiWorkspacePage() {
   }, [activeArchiveTab, activeSection, workspace.selectedNodeId, workspace.selectedScreenId]);
 
   useEffect(() => {
+    if (activeSection !== 'archives') {
+      return;
+    }
+    void workspace.refreshScreenSideData();
+  }, [activeSection, workspace.selectedScreenId]);
+
+  useEffect(() => {
     if (!toastMessage) {
       return undefined;
     }
     const timer = window.setTimeout(() => setToastMessage(null), 2400);
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(BI_WORKSPACE_MODE_STORAGE_KEY, beginnerMode ? 'beginner' : 'advanced');
+    } catch {
+      // Ignore storage failures; the mode still works for the current session.
+    }
+  }, [beginnerMode]);
 
   async function createNode(parent?: typeof workspace.selectedNode) {
     const parentNode = parent ?? null;
@@ -289,10 +336,12 @@ export function BiWorkspacePage() {
 
   async function handleDesignInternalArchive(targetNode = workspace.selectedNode) {
     if (!targetNode) {
+      setToastMessage('请先选择一个目录节点。');
       return;
     }
 
     workspace.setSelectedNodeId(targetNode.id);
+    workspace.clearError();
     const internalScreen =
       workspace.allScreens.find(
         (screen) => screen.nodeId === targetNode.id && screen.biType === 'INTERNAL',
@@ -301,17 +350,29 @@ export function BiWorkspacePage() {
       workspace.setSelectedScreenId(internalScreen.id);
       setCreatePresetType(null);
       openArchiveTab('design');
+      setToastMessage('已打开内置 BI，已进入设计生成。');
+      return;
+    }
+
+    if (targetNode.sourceAssetIds.length === 0) {
+      openSection('sources');
+      setToastMessage('请先绑定至少 1 个分析源，再创建内置 BI。');
       return;
     }
 
     const baseCode =
       slugifyCode(targetNode.nodeCode || targetNode.nodeName) || 'bi_screen';
-    const created = await workspace.createScreen({
-      biType: 'INTERNAL',
-      name: `${targetNode.nodeName}内置BI`,
-      nodeId: targetNode.id,
-      screenCode: `${baseCode}_internal_${Date.now()}`,
-    });
+    let created;
+    try {
+      created = await workspace.createScreen({
+        biType: 'INTERNAL',
+        name: `${targetNode.nodeName}内置BI`,
+        nodeId: targetNode.id,
+        screenCode: `${baseCode}_internal_${Date.now()}`,
+      });
+    } catch {
+      return;
+    }
     if (created && typeof created === 'object' && 'id' in created) {
       const createdScreen = created as { id: number; nodeId?: number | null };
       workspace.setSelectedNodeId(createdScreen.nodeId ?? null);
@@ -319,6 +380,7 @@ export function BiWorkspacePage() {
     }
     setCreatePresetType(null);
     openArchiveTab('design');
+    setToastMessage('已创建内置 BI，已进入设计生成。');
   }
 
   function handleCreateExternalArchive(targetNode = workspace.selectedNode) {
@@ -357,12 +419,12 @@ export function BiWorkspacePage() {
     const nextNodeCodeInput = editFormCode.trim();
 
     if (!nextNodeName) {
-      window.alert('节点名称不能为空。');
+      setToastMessage('节点名称不能为空。');
       return;
     }
     const nextNodeCode = slugifyCode(nextNodeCodeInput);
     if (!nextNodeCode) {
-      window.alert('节点编码不能为空，且需包含字母或数字。');
+      setToastMessage('节点编码不能为空，且需包含字母或数字。');
       return;
     }
 
@@ -399,43 +461,45 @@ export function BiWorkspacePage() {
     }
 
     if (targetNode.parentId == null && targetNode.children.length > 0) {
-      window.alert('根节点下还有子节点。只有没有子节点、没有 BI 档案的空根节点才可以删除。');
+      setToastMessage('根节点下还有子节点。只有没有子节点、没有 BI 档案的空根节点才可以删除。');
       return;
     }
 
     const subtreeNodeIds = new Set(flattenDirectoryNodes([targetNode]).map((node) => node.id));
     const blockingScreens = workspace.allScreens.filter((screen) => screen.nodeId != null && subtreeNodeIds.has(screen.nodeId));
     if (blockingScreens.length > 0) {
-      const shouldOpenArchives = window.confirm(
-        `节点“${targetNode.nodeName}”分支下还有 ${blockingScreens.length} 个 BI 档案，不能直接删除。\n\n请先到“管理 BI 档案”处理相关档案。是否现在前往处理？`,
-      );
-      if (shouldOpenArchives) {
-        const firstScreen = blockingScreens[0]!;
-        workspace.setSelectedNodeId(firstScreen.nodeId);
-        workspace.setSelectedScreenId(firstScreen.id);
-        setCreatePresetType(null);
-        openArchiveTab('base');
-      }
+      const firstScreen = blockingScreens[0]!;
+      workspace.setSelectedNodeId(firstScreen.nodeId);
+      workspace.setSelectedScreenId(firstScreen.id);
+      setCreatePresetType(null);
+      openArchiveTab('base');
+      setToastMessage(`该分支下还有 ${blockingScreens.length} 个 BI 档案，已打开档案管理，请先处理后再删除节点。`);
       return;
     }
 
-    const childWarning =
-      targetNode.children.length > 0
-        ? '\n\n该操作会同时删除它的下级节点，且不可撤销。'
-        : '\n\n该操作不可撤销。';
-    const confirmed = window.confirm(
-      `确定删除节点“${targetNode.nodeName}”？${childWarning}`,
-    );
-    if (!confirmed) {
+    setDeleteConfirmNode(targetNode);
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteConfirmNode(null);
+  }
+
+  function confirmDeleteNode() {
+    const targetNode = deleteConfirmNode;
+    if (!targetNode) {
       return;
     }
 
+    const subtreeNodeIds = new Set(flattenDirectoryNodes([targetNode]).map((node) => node.id));
     const fallbackNodeName =
-      workspace.flatNodes.find((node) => !subtreeNodeIds.has(node.id))?.nodeName ?? '空白画布';
+      workspace.flatNodes.find((node) => node.id === targetNode.parentId)?.nodeName ??
+      workspace.flatNodes.find((node) => !subtreeNodeIds.has(node.id))?.nodeName ??
+      '空白画布';
     void workspace.deleteDirectory(targetNode.id)
       .then(() => {
         setCanvasFocusRequest((request) => request + 1);
         setToastMessage(`节点已删除，已回到${fallbackNodeName}。`);
+        closeDeleteConfirm();
       })
       .catch(() => undefined);
   }
@@ -449,8 +513,30 @@ export function BiWorkspacePage() {
     window.open(previewState.href, '_blank', 'noopener,noreferrer');
   }
 
+  function continueByNextStep() {
+    if (nextStep.stage === 'select-node') {
+      locateCurrentNodeOnCanvas();
+      setToastMessage('请先在目录画布中选择一个节点。');
+      return;
+    }
+    if (nextStep.stage === 'bind-sources') {
+      openSection('sources');
+      return;
+    }
+    if (nextStep.stage === 'publish') {
+      handlePublishCurrent();
+      return;
+    }
+    if (nextStep.stage === 'preview') {
+      handleOpenPreview();
+      return;
+    }
+    void handleDesignInternalArchive();
+  }
+
   function handlePublishCurrent() {
     if (!workspace.selectedScreen || !publishVersionId) {
+      setToastMessage('请先生成或保存一个版本，再发布当前节点。');
       return;
     }
 
@@ -458,11 +544,15 @@ export function BiWorkspacePage() {
       workspace.generationTask?.screenId === workspace.selectedScreen.id &&
       workspace.generationTask.versionId === publishVersionId
     ) {
-      void workspace.publishGeneratedVersion(workspace.selectedScreen.id, publishVersionId);
+      void workspace.publishGeneratedVersion(workspace.selectedScreen.id, publishVersionId)
+        .then(() => setToastMessage('版本已发布，下一步可以打开预览页面确认展示效果。'))
+        .catch(() => undefined);
       return;
     }
 
-    void workspace.publishScreenVersion(workspace.selectedScreen.id, publishVersionId);
+    void workspace.publishScreenVersion(workspace.selectedScreen.id, publishVersionId)
+      .then(() => setToastMessage('版本已发布，下一步可以打开预览页面确认展示效果。'))
+      .catch(() => undefined);
   }
 
   if (workspace.isLoading && workspace.nodes.length === 0) {
@@ -521,10 +611,21 @@ export function BiWorkspacePage() {
             />
           ) : activeSection === 'sources' ? (
             <BiSourceManagementPanel
+              beginnerMode={beginnerMode}
               datasources={workspace.datasources}
+              continueFlowHint={sourceContinueState.hint}
+              continueFlowLabel={sourceContinueState.label}
               isMutating={workspace.isMutating}
-              node={null}
-              onBindSourceAssets={workspace.bindNodeSourceAssets}
+              node={workspace.selectedNode}
+              onBindSourceAssets={async (nodeId, sourceAssetIds) => {
+                await workspace.bindNodeSourceAssets(nodeId, sourceAssetIds);
+                setToastMessage(
+                  sourceAssetIds.length > 0
+                    ? `已绑定 ${sourceAssetIds.length} 个分析资产，下一步创建或打开内置 BI。`
+                    : '已清空当前节点的分析源绑定。',
+                );
+              }}
+              onContinueFlow={continueByNextStep}
               onCreateDatasource={workspace.createDatasource}
               onGenerateBizComments={workspace.generateAssetBizComments}
               onReplaceAssetFields={workspace.replaceAssetFields}
@@ -541,21 +642,45 @@ export function BiWorkspacePage() {
               generationTask={workspace.generationTask}
               isMutating={workspace.isMutating}
               node={workspace.selectedNode}
+              nextStep={nextStep}
               onActiveTabChange={setActiveArchiveTab}
               onClearCreatePreset={() => setCreatePresetType(null)}
-              onCreateScreen={workspace.createScreen}
+              onContinueFlow={continueByNextStep}
+              onCreateScreen={async (payload) => {
+                const screen = await workspace.createScreen(payload);
+                setToastMessage('BI 档案已创建，下一步进入设计生成。');
+                return screen;
+              }}
               onCreateShareToken={workspace.createShareToken}
-              onGenerateDraft={workspace.generateDraft}
+              onGenerateDraft={async (payload) => {
+                await workspace.generateDraft(payload);
+                setToastMessage('草稿已生成，下一步可以发布版本或先预览检查。');
+              }}
+              onNotify={setToastMessage}
+              onOpenSources={() => openSection('sources')}
               onPreviewPrompt={workspace.previewPrompt}
-              onPublishGeneratedVersion={workspace.publishGeneratedVersion}
-              onPublishVersion={workspace.publishScreenVersion}
+              onPublishGeneratedVersion={async (screenId, versionId) => {
+                await workspace.publishGeneratedVersion(screenId, versionId);
+                setToastMessage('版本已发布，下一步打开预览页面确认展示效果。');
+              }}
+              onPublishVersion={async (screenId, versionId) => {
+                await workspace.publishScreenVersion(screenId, versionId);
+                setToastMessage('版本已发布，下一步打开预览页面确认展示效果。');
+              }}
               onRegenerateVersion={workspace.regenerateVersion}
               onRevokeShareToken={workspace.revokeShareToken}
-              onSaveScreenVersion={workspace.saveScreenVersion}
+              onSaveScreenVersion={async (screenId, payload) => {
+                await workspace.saveScreenVersion(screenId, payload);
+                setToastMessage('版本内容已保存，下一步可以发布当前版本。');
+              }}
               onClearWorkspaceError={workspace.clearError}
               onSelectNode={(nodeId) => workspace.setSelectedNodeId(nodeId)}
               onSelectScreen={workspace.setSelectedScreenId}
-              onUpdateScreen={workspace.updateScreen}
+              onUpdateScreen={async (screenId, payload) => {
+                const screen = await workspace.updateScreen(screenId, payload);
+                setToastMessage('BI 档案信息已保存。');
+                return screen;
+              }}
               promptPreview={workspace.promptPreview}
               promptTemplates={workspace.promptTemplates}
               screens={workspace.allScreens}
@@ -610,10 +735,12 @@ export function BiWorkspacePage() {
         }
         toolbar={
           <BiTopToolbar
+            beginnerMode={beginnerMode}
             canPublish={Boolean(workspace.selectedScreen && publishVersionId)}
             canPreview={previewState.canPreview}
             isMutating={workspace.isMutating}
             nodePath={workspace.selectedNodePath.map((item) => item.nodeName)}
+            onBeginnerModeChange={setBeginnerMode}
             onOpenDesign={() => {
               if (workspace.selectedScreen?.biType === 'INTERNAL') {
                 openArchiveTab('design');
@@ -628,11 +755,37 @@ export function BiWorkspacePage() {
           />
         }
       />
+      {deleteConfirmNode ? (
+        <div
+          className="bi-modal-overlay"
+          onClick={(event: { currentTarget: EventTarget | null; target: EventTarget | null }) => {
+            if (event.target === event.currentTarget) {
+              closeDeleteConfirm();
+            }
+          }}
+        >
+          <div className="bi-confirm-dialog">
+            <div className="bi-confirm-title">确认删除节点</div>
+            <div className="bi-confirm-text">
+              将删除“{deleteConfirmNode.nodeName}”
+              {deleteConfirmNode.children.length > 0 ? '及其下级节点' : ''}，该操作不可撤销。
+            </div>
+            <div className="bi-confirm-actions">
+              <Button onClick={closeDeleteConfirm} tone="ghost">
+                取消
+              </Button>
+              <Button onClick={confirmDeleteNode}>
+                确认删除
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {/* 节点编辑弹窗 */}
       {editModalOpen && editModalNode ? (
         <div
           className="bi-modal-overlay"
-          onClick={(e) => {
+          onClick={(e: { currentTarget: EventTarget | null; target: EventTarget | null }) => {
             if (e.target === e.currentTarget) {
               closeEditModal();
             }
@@ -678,16 +831,16 @@ export function BiWorkspacePage() {
                   outline: 'none',
                   boxSizing: 'border-box',
                 }}
-                onFocus={(e) => {
+                onFocus={(e: { target: HTMLInputElement }) => {
                   e.target.style.borderColor = '#3b82f6';
                   e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)';
                 }}
-                onBlur={(e) => {
+                onBlur={(e: { target: HTMLInputElement }) => {
                   e.target.style.borderColor = '#d1d5db';
                   e.target.style.boxShadow = 'none';
                 }}
-                onChange={(e) => setEditFormName(e.target.value)}
-                onKeyDown={(e) => {
+                onChange={(e: { target: HTMLInputElement }) => setEditFormName(e.target.value)}
+                onKeyDown={(e: { key: string }) => {
                   if (e.key === 'Enter') {
                     handleSubmitEdit();
                   }
@@ -709,16 +862,16 @@ export function BiWorkspacePage() {
                   outline: 'none',
                   boxSizing: 'border-box',
                 }}
-                onChange={(e) => setEditFormCode(e.target.value)}
-                onFocus={(e) => {
+                onChange={(e: { target: HTMLInputElement }) => setEditFormCode(e.target.value)}
+                onFocus={(e: { target: HTMLInputElement }) => {
                   e.target.style.borderColor = '#3b82f6';
                   e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)';
                 }}
-                onBlur={(e) => {
+                onBlur={(e: { target: HTMLInputElement }) => {
                   e.target.style.borderColor = '#d1d5db';
                   e.target.style.boxShadow = 'none';
                 }}
-                onKeyDown={(e) => {
+                onKeyDown={(e: { key: string }) => {
                   if (e.key === 'Enter') {
                     handleSubmitEdit();
                   }

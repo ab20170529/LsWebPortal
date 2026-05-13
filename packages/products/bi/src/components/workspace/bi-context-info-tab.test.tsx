@@ -21,7 +21,6 @@ const node: BiDirectoryNode = {
 describe('BiContextInfoTab', () => {
   it('deletes the selected node after confirmation', async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const onDeleteSelectedNode = vi.fn().mockResolvedValue(undefined);
 
     render(
@@ -43,7 +42,8 @@ describe('BiContextInfoTab', () => {
     expect(deleteButton).toBeDefined();
     await user.click(deleteButton!);
 
-    expect(confirmSpy).toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /确认删除|Confirm delete/ }));
+
     expect(onDeleteSelectedNode).toHaveBeenCalledWith(18);
   });
 });
