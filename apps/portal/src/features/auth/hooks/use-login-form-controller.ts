@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortalAuth } from '@lserp/auth';
 
 import {
-  fetchAccessibleCompanies,
   fetchTenantOptions,
   loginWithIdentity,
 } from '../services/auth-service';
@@ -14,12 +13,14 @@ import {
   persistLegacyDesignerLoginContext,
   persistRememberedLoginState,
 } from '../services/storage-service';
+import {
+  buildPlatformTenantOption,
+  isPlatformTenantOption,
+} from '../services/tenant-options';
 import type { AuthSession, TenantOption } from '../types';
 
-type LoginSuccessTarget = '/business-dbs' | '/systems';
-
 type UseLoginFormControllerOptions = {
-  onSuccess: (session: AuthSession, target: LoginSuccessTarget) => void;
+  onSuccess: (session: AuthSession) => void;
 };
 
 type LoginFormState = {
@@ -30,14 +31,7 @@ type LoginFormState = {
   tenantCode: string;
 };
 
-const PLATFORM_DEFAULT_TENANT: TenantOption = {
-  tenantCode: '',
-  tenantName: '平台默认库',
-  tenantType: 'PLATFORM',
-  status: 'ACTIVE',
-  enableFlag: 1,
-  remark: '不进入租户库，使用平台默认库登录',
-};
+const PLATFORM_DEFAULT_TENANT: TenantOption = buildPlatformTenantOption();
 
 function normalizeErrorMessage(error: unknown): string {
   console.error('登录失败:', error);
@@ -83,7 +77,7 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
   );
   const isSingleDatabaseMode = !isLoadingTenants && (
     tenants.length === 0
-    || (tenants.length === 1 && tenants[0]?.tenantCode === PLATFORM_DEFAULT_TENANT.tenantCode)
+    || (tenants.length === 1 && isPlatformTenantOption(tenants[0]))
   );
 
   useEffect(() => {
@@ -163,8 +157,10 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
     setErrorMessage(null);
 
     try {
-      const activeTenantCode = selectedTenant?.tenantCode || undefined;
+      const isPlatformLogin = isPlatformTenantOption(selectedTenant);
+      const activeTenantCode = isPlatformLogin ? undefined : selectedTenant?.tenantCode || undefined;
       const isTenantDatabaseLogin = Boolean(activeTenantCode);
+      const fallbackLoginStage = isTenantDatabaseLogin ? 'tenant' : 'identity';
       const session = await loginWithIdentity({
         loginAccount,
         password: form.password,
@@ -175,7 +171,7 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
         ...session,
         activeCompany: session.loginStage === 'company' ? session.activeCompany : null,
         businessDbRequired: session.businessDbRequired,
-        loginStage: session.loginStage ?? (isTenantDatabaseLogin ? 'tenant' : 'company'),
+        loginStage: session.loginStage ?? fallbackLoginStage,
         tenantCode: session.tenantCode ?? activeTenantCode,
         tenantName: session.tenantName ?? (isTenantDatabaseLogin ? selectedTenant?.tenantName : undefined),
         username: session.username || loginAccount,
@@ -195,24 +191,21 @@ export function useLoginFormController({ onSuccess }: UseLoginFormControllerOpti
           employeeName: normalizedSession.employeeName,
           loginAccount,
           password: form.password,
-          tenantCode: activeTenantCode,
+          tenantCode: selectedTenant?.tenantCode ?? activeTenantCode,
         });
       } else {
         clearRememberedLoginState();
       }
 
-      const businessDbs = isTenantDatabaseLogin && normalizedSession.accessToken
-        ? await fetchAccessibleCompanies(normalizedSession.accessToken)
-        : [];
       const nextSession = {
         ...normalizedSession,
-        businessDbRequired: isTenantDatabaseLogin ? businessDbs.length > 0 : false,
+        businessDbRequired: normalizedSession.businessDbRequired,
       };
 
       persistAuthSession(nextSession, form.rememberCredentials);
       const bootstrapPayload = await resolvePortalBootstrapPayload(nextSession);
       applyAuthBootstrap(bootstrapPayload);
-      onSuccess(nextSession, businessDbs.length > 0 ? '/business-dbs' : '/systems');
+      onSuccess(nextSession);
     } catch (error) {
       setErrorMessage(normalizeErrorMessage(error));
     } finally {

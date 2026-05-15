@@ -17,6 +17,23 @@ The frontend then normalizes that payload into the local `AuthSession` shape and
 - `/systems` access gate rendering
 - route guards for `/designer`, `/erp`, and future domains
 
+## Login Tenant And Business DB Flow
+
+This flow is functionally aligned with LumClaw. It does not mean copying LumClaw page layout, styling, or component structure into Portal.
+
+- `GET /api/auth/tenants` should expose the default platform database pseudo-option before real tenant rows.
+- The platform database pseudo-option is identified by `tenantCode=__platform__` or `tenantType=PLATFORM_DB`.
+- Do not treat `tenantType=PLATFORM` as the pseudo platform option unless its `tenantCode` is `__platform__`; Java auth treats every other non-`__platform__` code as a real tenant login.
+- Selecting the platform database submits `POST /api/auth/login/identity` without a real `tenantCode`.
+- Selecting a real tenant may use the same identity endpoint with `tenantCode`; the backend delegates it into the tenant-login path.
+- Portal must preserve backend `loginStage` and `businessDbRequired`.
+- After login, route to `/systems`; that page owns both business database selection and system selection.
+- In `/systems`, after any non-company identity or tenant session, call `GET /api/auth/business-dbs` unless the backend explicitly returns `businessDbRequired=false`.
+- If accessible business databases are returned, render them in the left business-database area of `/systems`; the user confirms one there before entering a system.
+- Business database activation should use the selected `companyKey` contract and avoid inventing frontend-only database id fields.
+
+Important regression trap: platform selection must not call the plain password login endpoint as a fallback, because that can create a company-stage platform-default session and skip the `/systems` business database selector.
+
 ## Recommended Backend Tables
 
 The current direction is compatible with this backend model:

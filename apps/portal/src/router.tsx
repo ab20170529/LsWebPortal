@@ -19,7 +19,6 @@ import {
 import { PortalLoginPage } from './features/auth/portal-login-page';
 import { PortalSsoPage } from './features/auth/portal-sso-page';
 import { clearAuthSession } from './features/auth/services/storage-service';
-import { BusinessDbSelectionPage } from './pages/business-db-selection-page';
 import { AccessDeniedPage, SystemAccessPage } from './pages/system-access-page';
 import { PortalSystemManagerPage } from './pages/portal-system-manager-page';
 
@@ -32,7 +31,6 @@ const DesignerHomePage = React.lazy(() =>
 type RouteKey =
   | 'bi'
   | 'bi-display'
-  | 'business-dbs'
   | 'designer'
   | 'erp'
   | 'login'
@@ -101,7 +99,7 @@ function resolveRoute(pathname: string): RouteKey {
       return 'systems';
     case '/business-dbs':
     case '/companies':
-      return 'business-dbs';
+      return 'systems';
     case '/settings':
       return 'settings';
     case '/system-manager':
@@ -151,10 +149,6 @@ function getCurrentRouteRedirectTarget() {
 function isSystemRedirectTarget(target: string) {
   return (
     target === '/systems'
-    || target === '/business-dbs'
-    || target.startsWith('/business-dbs/')
-    || target === '/companies'
-    || target.startsWith('/companies/')
     || target === '/bi-display'
     || target.startsWith('/bi-display/')
     || target === '/designer'
@@ -176,16 +170,12 @@ function resolveAuthenticatedLoginRedirectTarget(session: Parameters<typeof hasA
   const searchParams = new URLSearchParams(window.location.search);
   const requestedTarget = searchParams.get('redirect');
   if (!requestedTarget?.startsWith('/')) {
-    if (session?.loginStage === 'tenant' && session.businessDbRequired !== false) {
-      return '/business-dbs';
-    }
-
     return '/systems';
   }
 
   const normalizedTarget = requestedTarget.replace(/^\/design\b/, '/designer');
   if (normalizedTarget === '/business-dbs' || normalizedTarget === '/companies') {
-    return normalizedTarget;
+    return '/systems';
   }
 
   if (!isSystemRedirectTarget(normalizedTarget)) {
@@ -416,6 +406,12 @@ export function PortalRouter() {
     || pathname === '/bi/public'
     || pathname.startsWith('/bi/public/');
   const isLegacyDesignerRoute = pathname === '/design' || pathname.startsWith('/design/');
+  const isLegacyBusinessDbRoute = (
+    pathname === '/business-dbs'
+    || pathname.startsWith('/business-dbs/')
+    || pathname === '/companies'
+    || pathname.startsWith('/companies/')
+  );
 
   useEffect(() => {
     if (isLegacyDesignerRoute) {
@@ -424,6 +420,13 @@ export function PortalRouter() {
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
   }, [isLegacyDesignerRoute]);
+
+  useEffect(() => {
+    if (isLegacyBusinessDbRoute) {
+      window.history.replaceState({}, '', `/systems${window.location.search}${window.location.hash}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  }, [isLegacyBusinessDbRoute]);
 
   useEffect(() => {
   if (isAuthenticated && session && route === 'login') {
@@ -471,10 +474,6 @@ export function PortalRouter() {
 
   if (route === 'systems') {
     return <SystemAccessPage session={session} />;
-  }
-
-  if (route === 'business-dbs') {
-    return <BusinessDbSelectionPage />;
   }
 
   if (isPlatformSystemRoute(route) && !hasActiveCompanySession(session)) {

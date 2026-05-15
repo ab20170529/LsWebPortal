@@ -25,6 +25,9 @@ export interface TenantOption {
   tenantCode: string;
   tenantName: string;
   tenantType?: string;
+  platformDbCode?: string;
+  platformDbName?: string;
+  database?: string;
   status?: string;
   enableFlag?: number;
   remark?: string;

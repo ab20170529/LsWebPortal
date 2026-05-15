@@ -1,5 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import {
+  getTenantOptionLabel,
+  isPlatformTenantOption,
+  PLATFORM_TENANT_CODE,
+} from '../services/tenant-options';
 import type { TenantOption } from '../types';
 
 type TenantSelectorProps = {
@@ -20,7 +25,7 @@ export function TenantSelector({
   tenants,
 }: TenantSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const containerRef = React.useRef(null as HTMLDivElement | null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -39,8 +44,13 @@ export function TenantSelector({
     () => tenants.find((tenant) => tenant.tenantCode === selectedCode) ?? null,
     [selectedCode, tenants],
   );
-  const selectorText = selectedTenant?.tenantName
-    ?? (isLoading ? '正在加载租户...' : tenants.length ? '请选择租户' : '平台默认库（单库模式）');
+  const selectorText = selectedTenant
+    ? getTenantOptionLabel(selectedTenant)
+    : isLoading
+      ? '正在加载租户...'
+      : tenants.length
+        ? '请选择租户'
+        : '平台默认库（单库模式）';
 
   return (
     <div ref={containerRef} className="space-y-1.5">
@@ -91,7 +101,9 @@ export function TenantSelector({
             <div className="relative p-2" role="listbox">
               {tenants.map((tenant) => {
                 const isActive = tenant.tenantCode === selectedCode;
-                const tenantCodeText = tenant.tenantCode || 'platform-default';
+                const tenantCodeText = tenant.tenantCode === PLATFORM_TENANT_CODE
+                  ? 'platform-default'
+                  : tenant.tenantCode || 'platform-default';
                 return (
                   <button
                     key={tenantCodeText}
@@ -115,11 +127,15 @@ export function TenantSelector({
                     }`}
                     >
                       <span className="material-symbols-outlined text-[18px]">
-                        {isActive ? 'check' : 'apartment'}
+                        {isActive
+                          ? 'check'
+                          : isPlatformTenantOption(tenant)
+                            ? 'domain'
+                            : 'apartment'}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13px] font-semibold">{tenant.tenantName}</div>
+                      <div className="truncate text-[13px] font-semibold">{getTenantOptionLabel(tenant)}</div>
                       <div className="mt-0.5 truncate text-[11px] text-slate-400">{tenantCodeText}</div>
                     </div>
                   </button>

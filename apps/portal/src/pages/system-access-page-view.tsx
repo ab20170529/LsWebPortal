@@ -2,6 +2,7 @@ import React, {
   startTransition,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type ReactNode,
@@ -62,23 +63,19 @@ const ACCESS_DENIED_DESC =
   '门户会根据当前账号的系统授权控制访问范围。若还未开通该系统，请先返回系统选择页，或联系管理员补齐授权后再进入。';
 const USER_AVATAR_PNG_SRC =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADu0lEQVR42u2b6VrTQBRAeURBQEFAEdkfxn1BxR33FTdE/2ML+AaigC3FDaTaphUcv0ky6Z3JpEty7zSlzPedBzinbTpzk7S07C0zq+20xfZzzji0n82z9nMOHec5OdZxIcc6ORM51vjCJwus7ZRLjfKdE3/YgYsulzi/GydIKxdHlj942WUyxiFaTxQZtXzXZJZ1XXGIl7hh+e6rnC3WfW2rfiH2HXfF6yh/iHOd84s1tXzPDYemlu+5ydlkTS3fe8uhqeV7pzZZ39QGa2r5vtsbrO8OUoRGlT/MufuTxV5+bukvmTznyL2QEajk55a2bWnIe86nEpjyNvd/sLrv8OY+bmvlt/L/JHkIlnx/rQEo5blwWSw3yGdOEUW+/4FDXQ42tcoLuHzCBUO+/+F31jDyggSIEFX+KOdRFREoLnhh5KUIy0UU+YoB4ibvRVh2IkSVH3j8zcbIGAte5aPISwEQ5AeeBATA3uRUDGCFCIAgf4zz9Ks/AsUOLzCAFSLAShFNPjhADOUFyZUiS64UUOQHn+kCIB9sxPY2jvK+ABSnOrGdjSrvBCjYYMkPTq+zoen1UgSKI60UwEIMgCQ/9BwGIDjPewEsxACI8r4AFMMMjAhU8kMvMqUAVJMceKqLIp9cLaDLD0sBCMdY8FQXJ/nhl0oAyhleosYIJuSlACYGmOJUpwL/5yWI5UdercEA5qa3UgBb3C9PccFT5UdewwAG5H2ffoA8/+QFlPJSAEp53de+GnnB/GqBRH50BgYw+JtX5bPiohcgP/9FYKHKj86k5fMAlrx3xQ+44EGyZVDlIejyXgAC+aC/umwlCoIdOUDKIYr86BtdgJjKC6D8gktY+TF9ADz5cpucMPKQBRCAE0Z+bDatnwtiXPAo5X0R0haevB0A4WpPLe8FSAvyNcmPzabK3xuI8j9vQt6L4MrbAbDkRYC4y5ci5D2qkR9/m6ru/mCY7a1peRhgcS2PJ28HCHGwMS0vAnB5EaCcfE0B+Krm4QS4vTUtzxHyHFR5J0C85bURAuTH36XCPSdU6ckMeLDZdfJehDJPZqinOpPyUoBMnkZerKCHE+BZ3rS8FyDjBqCSF0v3cEJVAYjk7QAZGIBQ3ouguT8Phxm7Wl4s9f68OsUxLb+YyZmTF0u9S+sLQCifLe7UV96LAEbX6gzPlPwHEcC0PFxidK2b4VF+7YV8bN4e42Nr3QCTSj627w/qBphighN2kwPlG+YNUlUejrHgMEM91UkA+YZ/l1gnD8/zKnuvmxta/wGB/sStM9KMlAAAAABJRU5ErkJggg==';
-const CONTEXT_REASON_ITEMS = [
-  '项目、ERP、BI 数据会按业务库隔离加载。',
-  '切换业务库会同步刷新会话和权限上下文。',
-];
 
 const CONTEXT_STATUS_COPY: Record<BusinessContextStatusKind, { label: string; message: string }> = {
   ready: {
     label: '已确认',
-    message: '当前业务库已激活，可以进入右侧系统开始工作。',
+    message: '可以进入右侧系统。',
   },
   required: {
     label: '需选择',
-    message: '先确认业务库，避免进入系统后看到错误公司的数据。',
+    message: '请选择一个业务库。',
   },
   switching: {
     label: '切换中',
-    message: '正在刷新业务上下文，稍后即可进入对应系统。',
+    message: '正在刷新业务库。',
   },
 };
 
@@ -172,7 +169,46 @@ function BrandMark() {
 }
 
 function PlatformHeader({ session }: { session: AuthSession }) {
+  const { signOut } = usePortalAuth();
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const displayName = session.employeeName ?? session.username ?? '张伟';
+  const accountName = session.username || session.displayName || displayName;
+
+  useEffect(() => {
+    if (!isUserMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !userMenuRef.current?.contains(target)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isUserMenuOpen]);
+
+  const handleSignOut = () => {
+    startTransition(() => {
+      setIsUserMenuOpen(false);
+      clearAuthSession();
+      signOut();
+      navigate('/');
+    });
+  };
 
   return (
     <header className="portal-system-gate__topbar">
@@ -200,13 +236,51 @@ function PlatformHeader({ session }: { session: AuthSession }) {
             </span>
             <span>消息中心</span>
           </button>
-          <button className="portal-system-gate__user" type="button">
-            <span className="portal-system-gate__avatar">
-              <img alt="" src={USER_AVATAR_PNG_SRC} />
-            </span>
-            <span className="portal-system-gate__user-name">{displayName}</span>
-            <span className="portal-system-gate__user-arrow"><IconChevronDown /></span>
-          </button>
+          <div ref={userMenuRef} className="portal-system-gate__user-menu">
+            <button
+              aria-expanded={isUserMenuOpen}
+              aria-haspopup="menu"
+              className="portal-system-gate__user"
+              onClick={() => {
+                setIsUserMenuOpen((current) => !current);
+              }}
+              type="button"
+            >
+              <span className="portal-system-gate__avatar">
+                <img alt="" src={USER_AVATAR_PNG_SRC} />
+              </span>
+              <span className="portal-system-gate__user-name">{displayName}</span>
+              <span className="portal-system-gate__user-arrow"><IconChevronDown /></span>
+            </button>
+            {isUserMenuOpen ? (
+              <div className="portal-system-gate__user-popover" role="menu">
+                <div className="portal-system-gate__user-summary">
+                  <strong>{displayName}</strong>
+                  <span>{accountName}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    navigate('/systems');
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span className="portal-system-gate__menu-icon"><IconGrid /></span>
+                  <span>系统选择</span>
+                </button>
+                <button
+                  className="portal-system-gate__user-menu-danger"
+                  onClick={handleSignOut}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span className="portal-system-gate__menu-icon"><IconSignOut /></span>
+                  <span>退出登录</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>
@@ -285,11 +359,9 @@ function Banner({ message, tone }: { message: string; tone: 'danger' | 'success'
 }
 
 function BusinessContextStatus({
-  company,
   companyTitle,
   status,
 }: {
-  company: ServerOption | null;
   companyTitle: string;
   status: BusinessContextStatusKind;
 }) {
@@ -297,29 +369,12 @@ function BusinessContextStatus({
 
   return (
     <div className={`portal-system-gate__context-card is-${status}`}>
-      <div className="portal-system-gate__context-kicker">当前业务上下文</div>
+      <div className="portal-system-gate__context-kicker">当前业务库</div>
       <div className="portal-system-gate__context-main">
         <h3>{companyTitle || '尚未选择业务库'}</h3>
         <span className="portal-system-gate__context-badge">{statusCopy.label}</span>
       </div>
       <p>{statusCopy.message}</p>
-      <div className="portal-system-gate__context-meta">
-        <span>{company ? `${company.serverip}:${company.serverport}` : '等待选择业务库'}</span>
-        <span>{company?.basename ?? '业务库未激活'}</span>
-      </div>
-    </div>
-  );
-}
-
-function BusinessContextNotes() {
-  return (
-    <div className="portal-system-gate__context-notes">
-      <div className="portal-system-gate__context-notes-title">为什么先确认业务库</div>
-      <ul>
-        {CONTEXT_REASON_ITEMS.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -367,9 +422,8 @@ function CompanyList({
                 <div className="portal-system-gate__company-name">{company.title}</div>
                 {isActive ? <span className="portal-system-gate__company-tag">当前使用</span> : null}
               </div>
-              <div className="portal-system-gate__company-desc">库描述：{company.title}业务数据库</div>
               <div className="portal-system-gate__company-time">
-                更新时间：{isSwitching ? '切换中...' : `${company.serverip}:${company.serverport}`}
+                {isSwitching ? '切换中...' : company.basename}
               </div>
             </div>
             {isActive ? (
@@ -543,8 +597,6 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
   const displayedCompanyKey = optimisticCompany?.companyKey ?? currentCompanyKey;
   const displayedCompanyTitle = optimisticCompany?.title ?? currentCompanyTitle;
   const businessContextTitle = displayedCompanyTitle || (hasBusinessContext ? '当前租户默认库' : '');
-  const displayedCompany =
-    optimisticCompany ?? companies.find((company) => company.companyKey === displayedCompanyKey) ?? null;
   const isSwitchingContext = Boolean(isActivatingCompanyKey);
   const canEnterSystem = hasBusinessContext && !isSwitchingContext;
   const contextStatus: BusinessContextStatusKind = isActivatingCompanyKey
@@ -706,12 +758,9 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
               </div>
 
               <BusinessContextStatus
-                company={displayedCompany}
                 companyTitle={businessContextTitle}
                 status={contextStatus}
               />
-              <BusinessContextNotes />
-
               {companyError ? <Banner message={companyError} tone="danger" /> : null}
               {gateMessage ? <Banner message={gateMessage} tone="success" /> : null}
               {!companyError && !gateMessage && !hasBusinessContext ? (
@@ -726,7 +775,7 @@ export function SystemAccessPage({ session }: SystemAccessPageProps) {
                 <>
                   <div className="portal-system-gate__subsection-row">
                     <span>可用业务库</span>
-                    <em>{isLoadingCompanies ? '同步中' : `${companies.length} 个上下文`}</em>
+                    <em>{isLoadingCompanies ? '同步中' : `${companies.length} 个`}</em>
                   </div>
 
                   <CompanyList
@@ -850,6 +899,16 @@ function IconBell() {
     <BaseIcon>
       <path d="M15 18H9" />
       <path d="M18 16V11a6 6 0 1 0-12 0v5l-1.5 2h15Z" />
+    </BaseIcon>
+  );
+}
+
+function IconSignOut() {
+  return (
+    <BaseIcon>
+      <path d="M10 5H6.8A1.8 1.8 0 0 0 5 6.8v10.4A1.8 1.8 0 0 0 6.8 19H10" />
+      <path d="M14 8l4 4-4 4" />
+      <path d="M18 12H9" />
     </BaseIcon>
   );
 }

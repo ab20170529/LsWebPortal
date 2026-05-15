@@ -25,11 +25,21 @@
 - `/erp`, `/project`, `/bi`, and `/bi-display` are product routes.
 - `/system-manager` is a special portal administration route.
 
+## Auth Tenant And Business DB Flow
+
+- `apps/portal/src/features/auth/services/auth-service.ts` owns auth API calls, including tenant list, identity login, and business DB session activation.
+- `apps/portal/src/features/auth/services/tenant-options.ts` owns platform-vs-tenant option normalization. `__platform__` and `PLATFORM_DB` mean the default platform database pseudo-option; a non-`__platform__` `tenantType=PLATFORM` row is still a real tenant login.
+- `apps/portal/src/features/auth/hooks/use-login-form-controller.ts` owns the login state machine. Platform database selection should call `/api/auth/login/identity`, then navigate to `/systems`.
+- `apps/portal/src/pages/system-access-page-view.tsx` owns the combined business database selector and system selector. It fetches `/api/auth/business-dbs` for non-company sessions and activates the selected business DB before system entry.
+- `apps/portal/src/features/auth/components/tenant-selector.tsx` should remain a Portal selector implementation. LumClaw alignment here means behavior and backend contract alignment, not page or visual style migration.
+
 ## Read First When Debugging
 
 1. `apps/portal/src/router.tsx`
 2. `packages/platform/auth/src/index.tsx`
-3. `packages/products/project/src/index.tsx`
+3. `apps/portal/src/features/auth/hooks/use-login-form-controller.ts`
+4. `apps/portal/src/features/auth/services/tenant-options.ts`
+5. `packages/products/project/src/index.tsx`
 
 ## Do Not Start Here
 

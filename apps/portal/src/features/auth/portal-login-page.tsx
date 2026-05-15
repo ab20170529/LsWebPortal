@@ -28,7 +28,17 @@ const LOGIN_HIGHLIGHTS = [
 ] as const;
 
 function normalizeRequestedTarget(target: string) {
-  return target.replace(/^\/design\b/, '/designer');
+  const normalizedTarget = target.replace(/^\/design\b/, '/designer');
+
+  if (normalizedTarget === '/business-dbs' || normalizedTarget.startsWith('/business-dbs/')) {
+    return '/systems';
+  }
+
+  if (normalizedTarget === '/companies' || normalizedTarget.startsWith('/companies/')) {
+    return '/systems';
+  }
+
+  return normalizedTarget;
 }
 
 function isSystemTarget(target: string) {
@@ -138,12 +148,7 @@ function LoginAccountInput({
 
 export function PortalLoginPage({ targetLabel }: PortalLoginPageProps) {
   const controller = useLoginFormController({
-    onSuccess: (_session, target) => {
-      if (target === '/business-dbs') {
-        navigate('/business-dbs');
-        return;
-      }
-
+    onSuccess: () => {
       navigate(resolvePostLoginTarget());
     },
   });

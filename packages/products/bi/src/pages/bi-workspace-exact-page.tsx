@@ -1599,7 +1599,7 @@ function ExactNodeDetail({
                   <select
                     aria-label="绑定BI档案"
                     disabled={isMutating || screens.length === 0}
-                    onChange={(event) => setArchiveIdText(event.target.value)}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) => setArchiveIdText(event.target.value)}
                     value={archiveIdText}
                   >
                     <option value="">请选择BI档案</option>
@@ -1630,7 +1630,7 @@ function ExactNodeDetail({
                   <input
                     aria-label="外链名称"
                     disabled={isMutating}
-                    onChange={(event) => setExternalDraft((current) => ({ ...current, name: event.target.value }))}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setExternalDraft((current) => ({ ...current, name: event.target.value }))}
                     value={externalDraft.name}
                   />
                 </label>
@@ -1639,7 +1639,7 @@ function ExactNodeDetail({
                   <input
                     aria-label="外链地址"
                     disabled={isMutating}
-                    onChange={(event) => setExternalDraft((current) => ({ ...current, targetUrl: event.target.value }))}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setExternalDraft((current) => ({ ...current, targetUrl: event.target.value }))}
                     placeholder="https://"
                     value={externalDraft.targetUrl}
                   />
@@ -1649,7 +1649,7 @@ function ExactNodeDetail({
                   <select
                     aria-label="外链打开方式"
                     disabled={isMutating}
-                    onChange={(event) => setExternalDraft((current) => ({ ...current, openMode: event.target.value }))}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) => setExternalDraft((current) => ({ ...current, openMode: event.target.value }))}
                     value={externalDraft.openMode}
                   >
                     <option value="iframe">内嵌打开</option>

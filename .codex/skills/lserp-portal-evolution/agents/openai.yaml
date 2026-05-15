@@ -1,4 +1,4 @@
 interface:
-  display_name: "LsERP Portal Evolution"
-  short_description: "Write stable portal findings back into docs"
-  default_prompt: "Use $lserp-portal-evolution to turn confirmed LsERPPortal findings into durable docs and skill notes."
+  display_name: "Portal Evolution"
+  short_description: "Write Portal lessons into repo-local docs."
+  default_prompt: "Use this skill after substantial LsERPPortal work to update rolling logs, handover docs, and repo-local skill references."

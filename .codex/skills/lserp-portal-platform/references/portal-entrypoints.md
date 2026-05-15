@@ -15,10 +15,12 @@ Use this reference when a task touches Portal shell startup, auth bootstrap, the
 - Exclude `packages/studio/designer` unless the user explicitly asks for legacy designer details.
 - Preserve route protocol, product package exports, and shell entry contracts unless the user asks to change them.
 - Keep shell-wide logic in `packages/platform`; keep product-specific behavior in `packages/products`.
+- Login behavior may be functionally aligned with LumClaw, but Portal page layout and visual style should remain Portal-owned. Preserve the `__platform__` platform database option, call `/api/auth/login/identity` for platform selection, and land on `/systems`; `system-access-page-view.tsx` owns the left-side business-library selector and fetches `/api/auth/business-dbs` there.
 
 ## Route Helpers
 
 - `/design` should be treated as compatibility input for `/designer`.
+- Business database selection is part of `/systems`, not a separate intermediate route.
 - `SystemAccessPage` is the system-gate handoff after auth.
 - `ProjectHomePage` is the product entry for `/project`.
 - `BiHomePage` and `ErpHomePage` are product entries reached through the Portal router.

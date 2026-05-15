@@ -10,6 +10,7 @@ Do not edit the workspace root or backend projects from this entry.
 3. Open `apps/portal/src/router.tsx`.
 4. Open `packages/platform/auth/src/index.tsx`.
 5. Open `packages/products/project/src/index.tsx` when the task touches the project product.
+6. For non-trivial or historical-debugging work, skim `docs/rolling/ai-development-log.md`.
 
 ## Working Rules
 
@@ -23,4 +24,4 @@ Do not edit the workspace root or backend projects from this entry.
 ## When To Use The Repo Skills
 
 - Use `.codex/skills/lserp-portal-platform` for shell boot, auth bootstrap, system gate, routes, package boundaries, and project-first entry points.
-- Use `.codex/skills/lserp-portal-evolution` for stable handover docs, map files, README links, and other durable write-backs.
+- Use `.codex/skills/lserp-portal-evolution` for rolling logs, stable handover docs, map files, README links, and other durable write-backs.

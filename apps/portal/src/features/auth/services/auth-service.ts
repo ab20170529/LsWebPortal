@@ -10,6 +10,7 @@ import type {
   TenantOption,
 } from '../types';
 import { apiRequest } from './http-client';
+import { ensurePlatformTenantOption } from './tenant-options';
 
 const FIXED_EMPLOYEE_DIRECTORY_QUERY = {
   basename: 'lserp_yw_jt',
@@ -96,13 +97,6 @@ function extractList<T>(value: unknown, aliasKey?: string, depth = 0): T[] {
   return [];
 }
 
-function isPlatformPseudoTenant(tenant: TenantOption) {
-  const tenantType = tenant.tenantType?.trim().toUpperCase();
-  return tenant.tenantCode === '__platform__'
-    || tenantType === 'PLATFORM_DB'
-    || tenantType === 'PLATFORM';
-}
-
 function normalizeActiveCompany(session: AuthSessionResponse): AuthActiveCompany | null {
   if (session.loginStage === 'tenant') {
     return null;
@@ -177,8 +171,7 @@ export async function fetchTenantOptions(): Promise<TenantOption[]> {
     method: 'GET',
   });
 
-  return extractList<TenantOption>(response)
-    .filter((tenant) => !isPlatformPseudoTenant(tenant));
+  return ensurePlatformTenantOption(extractList<TenantOption>(response));
 }
 
 export async function fetchAccessibleCompanies(accessToken: string): Promise<ServerOption[]> {
@@ -194,7 +187,12 @@ export async function fetchAccessibleCompanies(accessToken: string): Promise<Ser
 
 export async function loginWithIdentity(payload: IdentityLoginPayload): Promise<AuthSession> {
   try {
-    return await loginWithPassword(payload);
+    const response = await apiRequest<AuthSessionResponse>(apiConfig.auth.identityLogin, {
+      body: payload,
+      method: 'POST',
+    });
+
+    return normalizeSession(response);
   } catch (error) {
     if (!appConfig.features.enableMockData) {
       throw error;
