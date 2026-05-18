@@ -33,7 +33,7 @@
 
 .bi-display-topbar-left {
   min-width: 0;
-  gap: 30px;
+  gap: 18px;
 }
 
 .bi-display-brand {
@@ -45,9 +45,17 @@
 
 .bi-display-brand-logo {
   display: block;
-  height: 30px;
-  width: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   object-fit: contain;
+}
+
+.bi-display-brand-name {
+  color: #f4f4f5;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .bi-display-brand-mark {
@@ -441,7 +449,7 @@
 }
 
 .bi-display-detail-stage {
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .bi-display-root-wrap {

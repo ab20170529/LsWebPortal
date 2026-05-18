@@ -27,7 +27,7 @@ type BiDisplayPlatformPageProps = {
   platformCode: string;
 };
 
-const TOP_NAV_ITEMS = ['设备总览', '看板中心', '报警中心', '监控平台', '数据管理', '采集云平台'];
+const TOP_NAV_ITEMS = ['设备总览'];
 
 async function loadRuntimeScreen(nodeCode: string) {
   let meta: BiRuntimeScreen;
@@ -422,6 +422,15 @@ export function BiDisplayPlatformPage({
     return buildDisplayNodeSummaries(detailTopNode.children, screenMap);
   }, [detailTopNode, screenMap]);
 
+  const activeDetailTopNodeId = useMemo(() => {
+    const candidateId = detailActiveThirdNode?.id;
+    if (candidateId && detailTopSummaries.some((summary) => summary.node.id === candidateId)) {
+      return candidateId;
+    }
+
+    return detailTopSummaries[0]?.node.id ?? null;
+  }, [detailActiveThirdNode?.id, detailTopSummaries]);
+
   const detailNavItems = useMemo(() => {
     if (!detailActiveThirdNode) {
       return [];
@@ -496,9 +505,22 @@ export function BiDisplayPlatformPage({
             }}
             type="button"
           >
-            <img alt="Lumsoft" className="bi-display-brand-logo" src="/logo.png" />
+            <img alt="" className="bi-display-brand-logo" src="/favicon.svg" />
+            <span className="bi-display-brand-name">Lumsoft</span>
             <span className="bi-display-brand-mark">朗速BI</span>
           </button>
+
+          {isDetailRoute ? (
+            <button
+              className="bi-display-back-button"
+              onClick={() => {
+                navigateBiDisplay(getBiDisplayPlatformPath(platformCode));
+              }}
+              type="button"
+            >
+              ← 全厂总览
+            </button>
+          ) : null}
 
           <nav className="bi-display-topbar-nav">
             {isDetailRoute
@@ -506,7 +528,7 @@ export function BiDisplayPlatformPage({
                   <button
                     key={summary.node.id}
                     className={`bi-display-topbar-tab ${
-                      detailActiveThirdNode?.id === summary.node.id ? 'is-active' : ''
+                      activeDetailTopNodeId === summary.node.id ? 'is-active' : ''
                     }`}
                     onClick={() => {
                       navigateBiDisplay(getBiDisplayPlatformNodePath(platformCode, summary.node.nodeCode));
@@ -536,18 +558,6 @@ export function BiDisplayPlatformPage({
         </div>
 
         <div className="bi-display-topbar-actions">
-          {isDetailRoute ? (
-            <button
-              className="bi-display-back-button"
-              onClick={() => {
-                navigateBiDisplay(getBiDisplayPlatformPath(platformCode));
-              }}
-              type="button"
-            >
-              ← 全厂总览
-            </button>
-          ) : null}
-
           <label className="bi-display-topbar-search">
             <SearchIcon />
             <input
@@ -615,8 +625,6 @@ export function BiDisplayPlatformPage({
             </aside>
 
             <section className="bi-display-detail-main">
-              <DisplayTitleBanner title={`${focusNode.nodeName} 数据汇总`} />
-
               <div className="bi-display-detail-stage">
                 <BiDisplayRuntimeStage
                   error={runtimeError}
