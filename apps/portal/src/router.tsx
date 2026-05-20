@@ -568,7 +568,7 @@ export function PortalRouter() {
       );
     }
 
-    return <AppShell pathname={pathname}><ErpHomePage /></AppShell>;
+    return <ErpHomePage />;
   }
 
   if (route === 'settings') {
